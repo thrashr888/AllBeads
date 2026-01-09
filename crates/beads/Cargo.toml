@@ -1,0 +1,20 @@
+[package]
+name = "beads"
+version = "0.1.0"
+edition = "2021"
+description = "Rust wrapper for the Beads (bd) git-native issue tracker CLI"
+authors = ["Paul Thrasher <thrashr888@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/thrashr888/AllBeads"
+homepage = "https://github.com/thrashr888/AllBeads"
+documentation = "https://docs.rs/beads"
+keywords = ["beads", "issue-tracker", "git", "cli", "project-management"]
+categories = ["command-line-utilities", "development-tools"]
+readme = "README.md"
+rust-version = "1.70"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+chrono = "0.4"
