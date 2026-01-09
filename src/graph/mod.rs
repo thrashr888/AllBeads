@@ -8,8 +8,8 @@ mod ids;
 mod rig;
 mod shadow_bead;
 
-pub use bead::Bead;
+pub use bead::{Bead, IssueType, Priority, Status};
 pub use federated_graph::FederatedGraph;
 pub use ids::{BeadId, RigId};
 pub use rig::Rig;
-pub use shadow_bead::ShadowBead;
+pub use shadow_bead::{BeadUri, ShadowBead};
