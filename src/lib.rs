@@ -20,6 +20,7 @@
 pub mod config;
 pub mod error;
 pub mod graph;
+pub mod logging;
 pub mod storage;
 
 // Components (will be implemented in phases)

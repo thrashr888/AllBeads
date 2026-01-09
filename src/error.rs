@@ -1,37 +1,47 @@
 //! Error types for AllBeads
 //!
 //! Defines a comprehensive error enum covering all failure modes across the system.
+//! Uses thiserror for ergonomic error handling.
 
 use std::path::PathBuf;
+use thiserror::Error;
 
 /// Result type alias for AllBeads operations
 pub type Result<T> = std::result::Result<T, AllBeadsError>;
 
 /// Comprehensive error type for AllBeads operations
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum AllBeadsError {
     /// Configuration errors
+    #[error("Configuration error: {0}")]
     Config(String),
 
     /// Git operation errors
+    #[error("Git error: {0}")]
     Git(String),
 
     /// Storage/database errors
+    #[error("Storage error: {0}")]
     Storage(String),
 
     /// Network/HTTP errors
+    #[error("Network error: {0}")]
     Network(String),
 
     /// Parsing errors (JSONL, YAML, XML)
+    #[error("Parse error: {0}")]
     Parse(String),
 
     /// I/O errors
-    Io(std::io::Error),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 
     /// Issue not found
+    #[error("Issue not found: {0}")]
     IssueNotFound(String),
 
-    /// File lock errors
+    /// File lock errors (for Agent Mail)
+    #[error("File lock conflict: {path} locked by {holder} until {expires_at}")]
     LockConflict {
         path: PathBuf,
         holder: String,
@@ -39,53 +49,30 @@ pub enum AllBeadsError {
     },
 
     /// Authentication errors
+    #[error("Authentication error: {0}")]
     Auth(String),
 
+    /// JSON serialization/deserialization errors
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
+
+    /// YAML parsing errors
+    #[error("YAML error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
+
+    /// Git2 library errors
+    #[error("Git library error: {0}")]
+    Git2(#[from] git2::Error),
+
+    /// SQLite database errors
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
+    /// HTTP request errors
+    #[error("HTTP error: {0}")]
+    Http(#[from] reqwest::Error),
+
     /// Other errors
+    #[error("{0}")]
     Other(String),
 }
-
-impl std::fmt::Display for AllBeadsError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Config(msg) => write!(f, "Configuration error: {}", msg),
-            Self::Git(msg) => write!(f, "Git error: {}", msg),
-            Self::Storage(msg) => write!(f, "Storage error: {}", msg),
-            Self::Network(msg) => write!(f, "Network error: {}", msg),
-            Self::Parse(msg) => write!(f, "Parse error: {}", msg),
-            Self::Io(err) => write!(f, "I/O error: {}", err),
-            Self::IssueNotFound(id) => write!(f, "Issue not found: {}", id),
-            Self::LockConflict { path, holder, expires_at } => {
-                write!(
-                    f,
-                    "File lock conflict: {} locked by {} until {}",
-                    path.display(),
-                    holder,
-                    expires_at
-                )
-            }
-            Self::Auth(msg) => write!(f, "Authentication error: {}", msg),
-            Self::Other(msg) => write!(f, "{}", msg),
-        }
-    }
-}
-
-impl std::error::Error for AllBeadsError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::Io(err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl From<std::io::Error> for AllBeadsError {
-    fn from(err: std::io::Error) -> Self {
-        Self::Io(err)
-    }
-}
-
-// Placeholder for future conversions from library errors
-// impl From<serde_json::Error> for AllBeadsError { ... }
-// impl From<serde_yaml::Error> for AllBeadsError { ... }
-// impl From<git2::Error> for AllBeadsError { ... }
