@@ -52,6 +52,9 @@ reqwest = { version = "0.12", features = ["json"] }
 anyhow = "1.0"
 thiserror = "2.0"
 
+# File system utilities
+dirs = "5.0"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
