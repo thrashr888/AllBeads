@@ -89,6 +89,9 @@ pub enum IssueType {
     Task,
     Epic,
     Chore,
+    MergeRequest,
+    Molecule,
+    Gate,
 }
 
 impl std::fmt::Display for IssueType {
@@ -99,6 +102,9 @@ impl std::fmt::Display for IssueType {
             IssueType::Task => write!(f, "task"),
             IssueType::Epic => write!(f, "epic"),
             IssueType::Chore => write!(f, "chore"),
+            IssueType::MergeRequest => write!(f, "merge_request"),
+            IssueType::Molecule => write!(f, "molecule"),
+            IssueType::Gate => write!(f, "gate"),
         }
     }
 }
@@ -734,6 +740,9 @@ mod tests {
         assert_eq!(IssueType::Task.to_string(), "task");
         assert_eq!(IssueType::Epic.to_string(), "epic");
         assert_eq!(IssueType::Chore.to_string(), "chore");
+        assert_eq!(IssueType::MergeRequest.to_string(), "merge_request");
+        assert_eq!(IssueType::Molecule.to_string(), "molecule");
+        assert_eq!(IssueType::Gate.to_string(), "gate");
     }
 
     #[test]
