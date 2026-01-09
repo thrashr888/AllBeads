@@ -17,8 +17,11 @@
 //! - **mail**: Agent Mail protocol (Postmaster, file locking)
 
 // Core modules
+pub mod aggregator;
+pub mod cache;
 pub mod config;
 pub mod error;
+pub mod git;
 pub mod graph;
 pub mod logging;
 pub mod storage;
