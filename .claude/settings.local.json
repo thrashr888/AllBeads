@@ -1,13 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(tree:*)",
       "Bash(bd blocked)",
       "Bash(bd close:*)",
+      "Bash(bd config get:*)",
+      "Bash(bd count:*)",
       "Bash(bd create:*)",
+      "Bash(bd dep add:*)",
       "Bash(bd dep:*)",
+      "Bash(bd epic add-child:*)",
       "Bash(bd epic:*)",
+      "Bash(bd graph:*)",
       "Bash(bd list:*)",
+      "Bash(bd q:*)",
       "Bash(bd ready:*)",
       "Bash(bd show:*)",
       "Bash(bd update:*)",
@@ -33,9 +38,8 @@
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git status:*)",
-      "Bash(bd config get:*)",
-      "Bash(bd q:*)",
-      "Bash(sqlite3:*)"
+      "Bash(sqlite3:*)",
+      "Bash(tree:*)"
     ]
   }
 }
