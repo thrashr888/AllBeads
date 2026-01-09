@@ -45,9 +45,6 @@ impl Default for AggregatorConfig {
 
 /// Multi-Boss repository aggregator
 pub struct Aggregator {
-    /// AllBeads configuration
-    config: AllBeadsConfig,
-
     /// Boss repositories (keyed by context name)
     repos: HashMap<String, BossRepo>,
 
@@ -92,7 +89,6 @@ impl Aggregator {
         }
 
         Ok(Self {
-            config,
             repos,
             agg_config,
         })
