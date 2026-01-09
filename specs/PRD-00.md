@@ -1,4 +1,4 @@
-# The AllBeads Protocol: A Unified Architecture for Multi-Project AI Agent Orchestration and the "Boss" Meta-Repository
+# AllBeads: The Distributed Protocol for Agentic Orchestration and Communication
 
 ## 1. Introduction: The Crisis of Context in Autonomous Engineering
 
@@ -6,9 +6,15 @@ The paradigm of software engineering is undergoing a seismic shift, moving from 
 
 For decades, the Integrated Development Environment (IDE) served as the cockpit for the human developer, who maintained the high-level architecture, the dependency graph, and the execution plan within their own biological working memory. As we delegate increasing autonomy to AI agents, we confront the "Catastrophic Amnesia" problem.1 An AI agent, upon restarting a session, is effectively a new entity, tabula rasa, devoid of the historical nuance that guided previous decisions. Without a persistent external memory that is structured, queryable, and tightly coupled to the codebase, agents are condemned to relive the same discovery processes repeatedly, akin to the protagonist in the film *50 First Dates*.1
 
-This report serves as a comprehensive Product Requirements Document (PRD) and Request for Comments (RFC) for the "AllBeads" initiative. It analyzes the current landscape of agent orchestration—specifically the unstructured "Prose" paradigm exemplified by prose.md and the parallelized execution environment of conductor.build. It contrasts these with the structured, graph-theoretic approach of the "Beads" ecosystem pioneered by Steve Yegge. Finally, it proposes the novel **"Boss" Repository Architecture**: a meta-orchestration layer designed to aggregate distributed work graphs, visualize cross-repository dependencies via a terminal-based interface, and synchronize state with legacy enterprise systems like JIRA and GitHub Issues.
+This document serves as a comprehensive Product Requirements Document (PRD) and Request for Comments (RFC) for **AllBeads**: an open-source CLI and TUI product designed to be the "Inter-Process Communication" (IPC) layer for the AI workforce. It analyzes the current landscape of agent orchestration—specifically the unstructured "Prose" paradigm exemplified by prose.md and the parallelized execution environment of conductor.build. It contrasts these with the structured, graph-theoretic approach of the "Beads" ecosystem pioneered by Steve Yegge.
 
-The objective is to define a system where the "Manager" agent (The Mayor) and the "Executive" agent (The Boss) can collaborate across fifty distinct microservices without losing the strategic thread, transforming the AI from a mere coding assistant into a coherent, self-driving engineering organization.
+AllBeads extends the Beads foundation with two critical innovations:
+
+1. **Distributed Peer Model**: Unlike centralized orchestrators, AllBeads aggregates multiple independent "Boss" repositories—representing distinct contexts like Personal GitHub and Enterprise GitHub—into a unified "God Mode" dashboard without merging their data.
+
+2. **Agent Mail Integration**: AllBeads incorporates messaging and file locking protocols directly into the workflow, allowing agents to negotiate conflicts and reserve resources, preventing the "Too Many Cooks" failure mode common in multi-agent systems.
+
+The objective is to create an open-source (MIT licensed) tool that enables a human Architect to oversee a swarm of agents that not only track work (via Beads) but also communicate and coordinate (via Mail), transforming a collection of scripts into a self-organizing "Agent Village" that spans the entirety of a developer's digital life—from private hobby projects to massive enterprise codebases.
 
 ## 2. The Prose Paradigm and Conductor: Analysis of Current Orchestration Models
 
@@ -98,32 +104,121 @@ Gas Town introduces a rigorous taxonomy for the components of an AI colony, util
 
 Gas Town operates on the "Propulsion Principle": the idea that the state of work should be propelled forward by git hooks and persistent storage, not by the volatile memory of a running process.9 Every significant action (starting a task, finishing a task) triggers a git commit in the Beads directory. This means that if the power fails, or the agent crashes, or the context window overflows, the state is preserved on disk. Upon restart, the Mayor simply reads the .beads directory to reconstruct the exact state of the world.
 
-## 4. The AllBeads PRD: The "Boss" Repository Architecture
+## 4. The AllBeads PRD: Distributed Orchestration with Agent Communication
 
-We have established the limitations of Conductor (repo-bound) and the strengths of Beads (structured, git-backed). We now define the **AllBeads** architecture: a system to scale Beads from a single repository to an enterprise-grade "Boss" environment.
+We have established the limitations of Conductor (repo-bound) and the strengths of Beads (structured, git-backed). We now define the **AllBeads** product: an open-source CLI/TUI system that extends Beads from a single repository to a distributed, multi-context environment with inter-agent communication.
 
-### 4.1 Problem Statement: The Polyrepo Coordination Failure
+### 4.1 Problem Statement: The Identity and Coordination Failures
 
-Consider a modern microservices architecture comprising 50 distinct repositories: auth-service, payment-gateway, frontend-web, frontend-mobile, analytics-worker, etc..7  
-In the current Gas Town model, a human "Overseer" must manually install each Rig, instantiate a Mayor for each, and mentally track that "Task A in Auth" blocks "Task B in Frontend." There is no "God View."  
-The requirement is a **Meta-Repository**—a "Boss" repo—that aggregates the state of all member Rigs, creates a unified dependency graph, and synchronizes this state with the human management layer (JIRA/GitHub).
+Modern developers face two critical challenges:
 
-### 4.2 The "Boss" Concept: A Strategic Meta-Kernel
+#### 4.1.1 The Split-Identity Problem
 
-The "Boss" is not a Monorepo containing all code. It is a **Control Plane**. It functions similarly to the Google repo tool's manifest repository 11 or the myrepos (mr) configuration 12, but with active, agentic intelligence layered on top.
+Engineers rarely have one identity. They have:
+- **Work Identity**: Authenticated to enterprise GitHub (e.g., `ibm.github.com`) via VPN/SSO, bound by corporate policies and IP protection
+- **Personal Identity**: Authenticated to public GitHub (`github.com`) for open-source and hobby projects
 
-#### 4.2.1 Directory Structure of the Boss Repo
+**The Problem**: Existing tools force a choice or awkward context switching. Centralizing everything in one repository is a security violation (leaking intellectual property); separating them destroys the "single pane of glass" productivity engineers need.
 
-The Boss repository must adhere to a strict schema to enable automated tooling and agent discovery.
+**The AllBeads Solution**: AllBeads acts as a **Meta-Client**. It reads from `~/work/beads-boss` and `~/personal/beads-boss` simultaneously, aggregating them into a unified view without ever merging their data or crossing security boundaries.
+
+#### 4.1.2 The Agent Collision Problem
+
+When multiple AI agents work on a codebase simultaneously, they lack coordination mechanisms:
+- **File Clobbering**: Agent A refactors `auth.ts` while Agent B adds features to the same file, resulting in conflicting changes
+- **Duplicate Work**: Multiple agents independently attempt to fix the same bug without awareness of each other
+- **Resource Contention**: Agents consume API rate limits, compute resources, and context windows without coordination
+
+**The Problem**: Beads (Git) is excellent for **State** (what needs to be done) but poor for **Signaling** (who is touching what right now?).
+
+**The AllBeads Solution**: AllBeads integrates **Agent Mail** protocols, providing a "Post Office" where agents broadcast intent ("I am refactoring auth.ts") and acquire mutex locks on files, preventing the "Too Many Cooks" failure mode.
+
+### 4.2 Design Principles
+
+AllBeads is built on three foundational principles:
+
+#### 4.2.1 Federated Authority
+
+**There is no single "Master."** There are only Peers. Your "Work Boss" repository and "Personal Boss" repository are equals in the TUI. AllBeads never "crosses the streams"—it aggregates view-only, never pushing Personal beads to Work repos or vice versa.
+
+This enables:
+- **Security**: Enterprise IP stays in enterprise repos with enterprise authentication
+- **Flexibility**: Personal projects remain fully independent
+- **Unified UX**: Single dashboard for all work without compromising boundaries
+
+#### 4.2.2 Surgical Invasion
+
+AllBeads does not require codebases to be "re-platformed." It can surgically `init` a `.beads/` directory in a legacy 2015 repository, assign an agent to it, and track work without disrupting existing workflows, CI/CD pipelines, or team practices.
+
+This enables:
+- **Brownfield Adoption**: Add agents to existing codebases incrementally
+- **Zero Migration Cost**: No need to move issues from JIRA or GitHub
+- **Reversible**: `.beads/` can be removed with `git rm` if desired
+
+#### 4.2.3 Open Standards
+
+Built for the community with an **MIT License**, using standard protocols:
+- **JSONL** for beads storage (human-readable, git-friendly)
+- **MCP (Model Context Protocol)** for Agent Mail communication
+- **XML manifests** compatible with Google's `git-repo` tool
+- **Standard Git** for all state management
+
+This enables:
+- **Interoperability**: Works with any beads-compatible tool
+- **Extensibility**: Community can build plugins and adapters
+- **Transparency**: All state is inspectable, no lock-in
+
+### 4.3 The Boss Repository: Multi-Context Aggregation
+
+A "Boss" repository is a standard Git repository used to track high-level goals for a specific domain. Unlike traditional approaches, **AllBeads allows users to register multiple Boss repositories.**
+
+**User Story:**
+> "As a developer, I configure `~/.config/allbeads/config.yaml` to point to `github.com/me/life-boss` and `ibm.github.com/team-alpha/work-boss`. AllBeads pulls tasks from both. When I select a work task, it uses my IBM credentials. When I select a personal task, it uses my personal SSH key. The TUI shows both contexts unified, but they never intermix data."
+
+#### 4.3.1 Directory Structure of a Boss Repo
+
+Each Boss repository adheres to a standard schema:
 
 | Path | Description |
 | :---- | :---- |
-| /.boss/config.yaml | Global configuration, API keys (encrypted), and policy definitions. |
-| /.boss/graph/ | The aggregated SQLite/JSONL database of the federated graph. |
-| /manifests/default.xml | The definition of member Rigs (URLs, branches, paths). |
-| /beads/shadow/ | A directory containing "Shadow Beads"—pointers to external Rig beads. |
-| /agents/executive.md | The high-level "Constitution" for the Executive Agent. |
-| /dashboard/ | Source code for the TUI visualization tool. |
+| /.boss/config.yaml | Boss-specific configuration, integration settings, and policies |
+| /.boss/graph/ | The aggregated SQLite/JSONL database of the federated graph |
+| /manifests/default.xml | The definition of member Rigs (repositories, branches, paths) |
+| /beads/shadow/ | Shadow Beads—pointers to beads in member repositories |
+| /agents/personas/ | Agent persona definitions (security-specialist, ux-designer, etc.) |
+
+#### 4.3.2 Multi-Boss Configuration
+
+AllBeads configuration lives at `~/.config/allbeads/config.yaml`:
+
+```yaml
+contexts:
+  - name: personal
+    type: git
+    url: git@github.com:thrashr888/beads-boss.git
+    auth_strategy: ssh_agent
+
+  - name: work
+    type: git
+    url: https://ibm.github.com/cloud-team/beads-boss.git
+    auth_strategy: gh_enterprise_token
+    env_vars:
+      GITHUB_TOKEN: $IBM_GH_TOKEN
+    integrations:
+      jira:
+        url: https://jira.ibm.com
+        project: CLOUD
+
+agent_mail:
+  port: 8085
+  storage: ~/.config/allbeads/mail.db
+
+visualization:
+  theme: dark
+  default_view: kanban
+```
+
+**Security Note**: AllBeads maintains strict separation. Personal beads never leak into work contexts and vice versa. The aggregation happens only in the local TUI's in-memory state and local SQLite cache.
 
 ### 4.3 The Federated Graph Mechanism
 
@@ -142,17 +237,18 @@ When a Mayor in auth-service promotes a task to an Epic, the "Sheriff" daemon (d
 
 #### 4.3.2 The Sheriff Daemon: The Synchronization Engine
 
-The **Sheriff** is a long-running background process, written in Go, that enforces consistency across the federated graph. It is the "glue" of the AllBeads architecture.
+The **Sheriff** is a long-running background process that enforces consistency across the federated graph. It is the "glue" of the AllBeads architecture.
 
 **Technical Specification:**
 
-* **Language:** Go (Golang) 1.22+.  
-* **Concurrency:** Heavy usage of goroutines for parallel polling of Rigs and external APIs.  
-* **Event Loop:**  
-  1. **Poll Phase:** Iterate through manifests/default.xml. For each Rig, run git fetch origin refs/beads/*.  
-  2. **Diff Phase:** Compare the local .beads state of the Rig with the cached state in the Boss Graph.  
-  3. **Sync Phase:** If a Rig has new Epics, create Shadow Beads in Boss. If Boss has new directives (e.g., a "Global Mandate"), push new Beads to the Rig's .beads directory.  
-  4. **External Sync Phase:** Push/Pull changes to JIRA and GitHub Issues (detailed in Section 5).
+* **Language:** Rust with tokio async runtime for performance and safety
+* **Concurrency:** Async tasks for parallel polling of Rigs and external APIs
+* **Event Loop:**
+  1. **Poll Phase:** Iterate through manifests/default.xml. For each Rig, run `git fetch origin refs/beads/*`
+  2. **Diff Phase:** Compare the local `.beads` state of the Rig with the cached state in the Boss Graph
+  3. **Sync Phase:** If a Rig has new Epics, create Shadow Beads in Boss. If Boss has new directives (e.g., a "Global Mandate"), push new Beads to the Rig's `.beads` directory
+  4. **External Sync Phase:** Push/Pull changes to JIRA and GitHub Issues (detailed in Section 5)
+  5. **Mail Delivery Phase:** Process Agent Mail queue, deliver messages, enforce file locks
 
 ### 4.4 The Manifest Standard
 
@@ -180,6 +276,101 @@ To define the member Rigs, we adopt a schema compatible with the git-repo standa
 ```
 
 This XML allows the Sheriff to know not just *where* the code is, but *who* (which specialized agent persona) should be summoned to work on it, and *how* to namespace the beads (auth-xxx, ui-xxx) to ensure global uniqueness in the Boss graph.
+
+### 4.5 Agent Mail: The Communication and Coordination Layer
+
+While Beads provides the memory layer (what needs to be done), **Agent Mail** provides the signaling layer (who is doing what right now). This prevents the coordination failures that plague multi-agent systems.
+
+#### 4.5.1 The Post Office Architecture
+
+AllBeads includes a lightweight message server (the "Postmaster") implementing the MCP Agent Mail protocol. This server runs locally as part of the Sheriff daemon and provides:
+
+**Message Routing:**
+- Agents send messages to `agent_name@project_id` (e.g., `refactor_bot@legacy-repo-1`)
+- Human operator has an inbox: `human@localhost`
+- Broadcast channels: `all@project_id` for announcements
+
+**Delivery Guarantees:**
+- At-least-once delivery for critical messages (file locks, blocking notifications)
+- Best-effort for status updates (progress notifications, thoughts)
+- Persistent storage in SQLite (`~/.config/allbeads/mail.db`)
+
+#### 4.5.2 File Locking and Mutex Protocol
+
+The most critical feature of Agent Mail is **file locking** to prevent concurrent modifications:
+
+**Lock Request Flow:**
+
+1. **Agent Intent**: Agent `refactor_bot` wants to modify `src/auth/parser.rs`
+2. **Request Lock**: Sends message to Postmaster: `LOCK src/auth/parser.rs TTL=3600`
+3. **Check Availability**: Postmaster queries lock table in SQLite
+4. **Grant or Deny**:
+   - If free: Grant lease, store in database with expiration timestamp
+   - If locked: Deny with message indicating current holder and expiration time
+5. **Work Execution**: Agent performs modifications
+6. **Release**: Agent sends `UNLOCK src/auth/parser.rs` or lease expires
+
+**Conflict Resolution:**
+
+When an agent requests a locked file:
+```
+Agent B: LOCK src/auth/parser.rs
+Postmaster: DENIED - Locked by refactor_bot until 2026-01-09 14:30 UTC
+             Reason: "Refactoring authentication logic"
+
+             Options:
+             1. WAIT - Subscribe to unlock notification
+             2. STEAL - Request human approval to break lock
+             3. ABORT - Work on different task
+```
+
+#### 4.5.3 Message Types
+
+The Agent Mail protocol supports several message categories:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `LOCK` | Request exclusive file access | `LOCK src/db.rs TTL=1800` |
+| `UNLOCK` | Release file lock | `UNLOCK src/db.rs` |
+| `NOTIFY` | Inform about state changes | `NOTIFY "PR #402 ready for review"` |
+| `REQUEST` | Ask for human input | `REQUEST "Approve scope change for Epic ab-15k?"` |
+| `BROADCAST` | Announce to all agents | `BROADCAST "JIRA API rate limit exhausted, pausing"` |
+| `HEARTBEAT` | Agent liveness signal | `HEARTBEAT agent=refactor_bot status=working` |
+
+#### 4.5.4 Human Inbox Integration
+
+The TUI includes a dedicated "Mail" tab showing:
+
+**Incoming Messages:**
+- `Agent smith@auth-service: Blocked by file lock on config.yaml held by neo@frontend`
+- `Agent trinity@payment: PR #845 ready for review (3 files changed)`
+- `Agent oracle@analytics: REQUEST - Database migration will require 2 hours downtime, approve?`
+
+**Actions Available:**
+- **Reply**: Send message back to specific agent
+- **Approve/Deny**: For REQUEST messages
+- **Break Lock**: Override file lock (with confirmation)
+- **Kill Agent**: Terminate agent process
+
+#### 4.5.5 The "Janitor" Workflow
+
+A specialized use case for Agent Mail is the "Janitor" mode for legacy repository onboarding:
+
+```bash
+$ allbeads init --remote https://github.com/org/legacy-repo --janitor
+```
+
+This command:
+1. Clones the repository (sparse checkout for `.beads/` only initially)
+2. Injects a `.beads/` directory and initializes the database
+3. Creates an "Analysis" bead assigned to a Janitor agent
+4. The Janitor agent:
+   - Scans the codebase for issues (using static analysis, grep patterns, etc.)
+   - Creates new beads for bugs, tech debt, missing tests
+   - Broadcasts findings via Agent Mail: `NOTIFY "Created 47 tech debt issues in backlog"`
+   - Populates the Boss backlog without human intervention
+
+This enables "fire and forget" adoption of brownfield codebases.
 
 ## 5. Enterprise Integration: Bridging the Gap with JIRA and GitHub
 
@@ -224,68 +415,183 @@ Unlike JIRA, where the description is static, GitHub Issues are often conversati
 * **Mechanism:** The Sheriff subscribes to issue comments. When a human comments "Please also check the regex in parsing.go", the Sheriff appends this as a "Note" to the active Bead.  
 * **Discovery Link:** If an Agent discovers a bug and creates a discovered-from bead, the Sheriff automatically opens a GitHub Issue, tags the relevant human owners (based on CODEOWNERS), and links it back to the parent PR. This creates a seamless audit trail from "AI Discovery" to "Human Triage".
 
-## 6. Visualizing the Swarm: The "Boss Board" TUI
+## 6. Visualizing the Swarm: The Unified TUI ("All-Seeing Eye")
 
-A command-line tool (bd list) is insufficient for visualizing a graph spanning 50 repositories. We require a high-density information display. We propose the **Boss Board**, a Terminal User Interface (TUI) built with the Go bubbletea framework.15
+A command-line tool (`bd list`) is insufficient for visualizing work spanning multiple contexts and repositories. The **AllBeads TUI** serves as the command center, aggregating all Boss repositories into a single, coherent interface.
 
 ### 6.1 Why TUI?
 
-A TUI is preferred over a Web UI for this persona because:
+A TUI is preferred over a Web UI because:
 
-* It runs over SSH, allowing management of remote development boxes.  
-* It is "close to the metal," integrating directly with the local shell and git commands.  
-* It requires no browser context switching.
+* **SSH-Friendly**: Runs over SSH, allowing management of remote development boxes
+* **Low Latency**: Direct integration with local git commands and file system
+* **No Context Switching**: Stays in the terminal alongside editor and shell
+* **Lightweight**: Minimal resource footprint compared to Electron/web apps
 
-### 6.2 Component Architecture with Bubble Tea
+### 6.2 Component Architecture
 
-The bubbletea architecture follows The Elm Architecture (Model, View, Update), which is ideal for managing the complex state of a multi-repo dashboard.
+The TUI is built with **ratatui** (Rust TUI framework), following a message-passing architecture similar to The Elm Architecture.
 
 #### 6.2.1 The Data Model
 
-```go
-type Model struct {  
-    Graph       *beads.Graph      // The aggregated federated graph  
-    Rigs       RigStatus       // List of rigs and their health (clean/dirty/ahead/behind)  
-    Selection   CursorPosition    // User's focus  
-    Viewport    viewport.Model    // For scrolling long logs  
-    ActiveTab   int               // Kanban vs Graph vs Log  
+```rust
+struct AppState {
+    contexts: Vec<BossContext>,           // Multiple Boss repos (work, personal)
+    aggregated_graph: FederatedGraph,     // Unified view of all beads
+    active_agents: Vec<AgentStatus>,      // Running agent processes
+    mail_inbox: Vec<Message>,             // Agent Mail messages
+    file_locks: HashMap<PathBuf, Lock>,   // Current file locks
+    active_view: ViewMode,                // Kanban, Graph, Mail, Swarm
+    filter: Filter,                       // @work, @personal, #bug, etc.
+}
+
+enum ViewMode {
+    Kanban,      // Task board aggregated across all contexts
+    Graph,       // Dependency visualization
+    Mail,        // Agent communication inbox
+    Swarm,       // Real-time agent status
 }
 ```
 
-#### 6.2.2 Visualization Views (Lipgloss Styles)
+#### 6.2.2 The Four Primary Views
 
-View 1: The Strategic Kanban  
-Using lipgloss 17 for layout, we create a multi-column view representing the aggregation of all Rigs.
+**View 1: The Strategic Kanban**
 
-| To Do (Global) | In Progress (By Rig) | Blocked (Dependencies) | Done |
-| :---- | :---- | :---- | :---- |
-| **Auth:** JWT Refactor | **Auth:** Update Token (Mayor-1) | **Frontend:** Profile Page | **DB:** Schema Mig |
-| **Pay:** Add Stripe | **Pay:** Webhook List (Mayor-2) | *(Blocked by Auth: Token)* |  |
-
-View 2: The Dependency Web  
-This is the most critical view for the Boss. We render a node-link diagram using ASCII/Braille characters.  
+Aggregates beads from **all Boss contexts** into a unified board with context indicators:
 
 ```
-── blocks ──▶  
-▲ │  
-│ │  
-related blocks  
-│ ▼  
-◀── blocks ──  
+┌─ Backlog ────────────┬─ In Progress ─────────┬─ Blocked ─────────────┬─ Done ──────────┐
+│ @work [SEC-101]      │ @work [SEC-99]        │ @personal [ab-5]      │ @work [SEC-88]  │
+│ JWT Refactor         │ Token Update          │ Blog redesign         │ Schema migration│
+│ Priority: P1         │ Agent: refactor_bot   │ (Blocked by ab-3)     │ ✓ Merged        │
+│                      │ 🔒 auth.rs locked     │                       │                 │
+├──────────────────────┼───────────────────────┼───────────────────────┼─────────────────┤
+│ @personal [ab-8]     │ @work [PAY-45]        │ @work [FE-123]        │                 │
+│ Implement RSS        │ Stripe webhook        │ Profile page update   │                 │
+│ Priority: P3         │ Agent: payment_agent  │ (Blocked by SEC-99)   │                 │
+└──────────────────────┴───────────────────────┴───────────────────────┴─────────────────┘
 ```
 
-This visualization allows the human architect to instantly identify bottlenecks (e.g., "The Legacy-DB refactor is blocking Analytics, which is blocking the Q3 Report").  
+Key features:
+- **Context Tags**: `@work`, `@personal` color-coded
+- **Lock Indicators**: 🔒 shows active file locks
+- **Blocking Relationships**: Clearly marked with bead IDs
 
-View 3: The Agent Pulse  
-A sidebar component showing the real-time status of the swarm.
+**View 2: The Dependency Graph**
 
-* 🟢 **Mayor-Auth (PID 8821):** "Generating unit tests for user_model.go"  
-* 🟡 **Mayor-Frontend (PID 8845):** "Waiting for lint check..."  
-* 🔴 **Mayor-Pay (PID 8890):** "Error: API Rate Limit Exceeded"
+Renders cross-repository dependencies using ASCII/Unicode:
+
+```
+       @work                               @personal
+   ┌────────────┐                      ┌──────────────┐
+   │ SEC-99     │──blocks──▶           │ FE-123       │
+   │ JWT Token  │                      │ Profile Page │
+   └────────────┘                      └──────────────┘
+         │                                      │
+    related-to                             depends-on
+         │                                      │
+         ▼                                      ▼
+   ┌────────────┐                      ┌──────────────┐
+   │ SEC-101    │                      │ ab-3         │
+   │ Refactor   │                      │ CSS Framework│
+   └────────────┘                      └──────────────┘
+```
+
+Allows instant identification of cross-context bottlenecks.
+
+**View 3: Agent Mail Inbox**
+
+The communication hub for agent-human interaction:
+
+```
+┌─ Inbox (5 unread) ──────────────────────────────────────────────────────────────┐
+│ ● refactor_bot@auth-service                                        2 mins ago   │
+│   Subject: File lock conflict                                                   │
+│   Message: Requested auth.rs but locked by payment_agent. Should I wait or     │
+│            work on different file?                                              │
+│   [Reply] [Approve Wait] [Break Lock]                                          │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│ ● payment_agent@payment                                            5 mins ago   │
+│   Subject: PR #845 ready for review                                            │
+│   Message: Completed webhook implementation. 3 files changed, 12 tests pass.   │
+│   [View PR] [Approve Merge] [Request Changes]                                  │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│   oracle@analytics                                                 10 mins ago  │
+│   Subject: Migration requires downtime                                          │
+│   Message: Database migration will take ~2 hours. Approve deployment window?   │
+│   [Replied: "Approved for Saturday 3am"]                                       │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**View 4: The Swarm Monitor**
+
+Real-time status of all active agents across all contexts:
+
+```
+┌─ Active Agents ──────────────────────────────────────────────────────────────────┐
+│ @work Context (3 active)                                                        │
+│   🟢 refactor_bot (PID 8821) - auth-service                                     │
+│      Status: Generating unit tests for auth.rs                                  │
+│      Runtime: 15m 32s | Cost: $0.42 | Locked: [auth.rs, auth_test.rs]         │
+│                                                                                  │
+│   🟡 payment_agent (PID 8845) - payment-gateway                                 │
+│      Status: Waiting for CI checks...                                           │
+│      Runtime: 45m 12s | Cost: $1.23 | No locks                                 │
+│                                                                                  │
+│   🔴 frontend_agent (PID 8890) - frontend-web [ERROR]                           │
+│      Status: API Rate Limit Exceeded (retry in 3m)                              │
+│      Runtime: 1h 05m | Cost: $2.15                                             │
+│                                                                                  │
+│ @personal Context (1 active)                                                    │
+│   🟢 blog_agent (PID 9012) - personal-blog                                      │
+│      Status: Refactoring CSS grid layout                                        │
+│      Runtime: 8m 15s | Cost: $0.08 | Locked: [styles.css]                     │
+│                                                                                  │
+│ [Kill Agent] [Pause All] [Resume All] [View Logs]                              │
+└──────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 6.2.3 Filtering and Navigation
+
+Vim-style filtering allows quick context slicing:
+
+- `/` - Enter filter mode
+- `@work` - Show only work context
+- `@personal` - Show only personal context
+- `#bug` - Filter by tag
+- `@claude` - Filter by agent name
+- `/auth` - Text search across beads
+- Filters can be combined: `@work #p1 /authentication`
+
+**Keyboard Shortcuts:**
+
+| Key | Action |
+|-----|--------|
+| `Tab` | Cycle through views (Kanban → Graph → Mail → Swarm) |
+| `j/k` | Navigate up/down |
+| `Enter` | Open/focus selected item |
+| `/` | Enter filter mode |
+| `Esc` | Clear filters / go back |
+| `r` | Refresh from remotes |
+| `m` | Open mail composer |
+| `q` | Quit |
 
 ### 6.3 Implementation Details
 
-The TUI will run as a client connected to the Sheriff daemon via a local gRPC socket or by watching the SQLite file (using WAL mode for concurrent access). This separation ensures the UI remains responsive even if the Sheriff is performing heavy git network operations.
+The TUI is built with the following architecture:
+
+**Components:**
+- **ratatui**: Terminal rendering framework
+- **crossterm**: Terminal manipulation and event handling
+- **tokio**: Async runtime for real-time updates
+
+**Communication:**
+The TUI runs as a client connected to the Sheriff daemon via:
+- **IPC Socket**: Unix domain socket for low-latency commands
+- **Shared SQLite**: WAL mode for concurrent read access to state
+- **Event Stream**: Sheriff pushes updates (new beads, agent status changes, mail)
+
+This separation ensures the UI remains responsive even during heavy git network operations.
 
 ## 7. Operational Workflow: The "Migration" Scenario
 
@@ -315,31 +621,92 @@ To demonstrate the efficacy of the AllBeads architecture, we detail a complex op
 2. **Integration:** As the Backend and Analytics Rigs complete their work (PRs merged), the Sheriff updates the dependencies. The Frontend Rig (previously blocked) is now unlocked.  
 3. **Finalize:** The Frontend Mayor completes the UI updates. The Sheriff sees all sub-beads are closed. It marks the parent boss-mig-1 as Closed and transitions the JIRA Epic to "Done".
 
-## 8. Conclusion and Strategic Roadmap
+## 8. Conclusion: From Beads Boss to Beads Society
 
-The transition from human-centric to agent-centric software engineering requires a fundamental re-evaluation of our tooling infrastructure. Tools like conductor.build have successfully demonstrated the power of parallelized, worktree-isolated agents, but they remain constrained by the lack of a persistent, cross-repository memory layer.
+The transition from human-centric to agent-centric software engineering requires a fundamental re-evaluation of our tooling infrastructure. Tools like conductor.build have demonstrated the power of parallelized, worktree-isolated agents, but they remain constrained by single-repository scope and lack of persistent state. The beads ecosystem provides the memory layer, but lacks coordination primitives for multi-agent and multi-context scenarios.
 
-The **AllBeads** architecture, anchored by the **Boss Repository**, fills this void. By treating the organization's entire codebase not as a collection of text files but as a **Federated Graph of Intent**, we enable AI agents to operate with the strategic context of a Staff Engineer.
+**AllBeads bridges these gaps** by combining:
+- **Distributed Authority**: Multi-context aggregation respecting security boundaries (work/personal)
+- **Agent Communication**: Mail-based coordination preventing file clobbering and duplicate work
+- **Federated Memory**: Cross-repository dependency graphs with Shadow Beads
+- **Enterprise Integration**: Bi-directional sync with JIRA and GitHub Issues
+
+This moves beyond the concept of a single "Beads Boss" to a **"Beads Society"**—a networked ecosystem where agents communicate, negotiate resources, and coordinate across the entirety of a developer's digital life.
 
 ### 8.1 Comparative Summary
 
-| Feature | Prose.md (Current) | Conductor (Current) | AllBeads "Boss" (Proposed) |
-| :---- | :---- | :---- | :---- |
-| **Primary Context** | Unstructured Text | Ephemeral Worktree | Git-Backed Graph (JSONL) |
-| **Scope** | Single Session | Single Repo | Multi-Repo / Enterprise |
-| **State Persistence** | Low (Lost on Reset) | Medium (Repo-Bound) | High (Federated & Synced) |
-| **Conflict Resolution** | Manual Merge | Manual Review | Hash-Based / CRDT |
-| **Visualization** | Text Editor | Diff Viewer | Strategic TUI / Kanban |
-| **JIRA Integration** | Manual Copy-Paste | None | Bi-Directional Daemon |
-| **Agent Autonomy** | Junior Developer | Individual Contributor | Engineering Manager |
+| Feature | Prose.md | Conductor | Beads Alone | **AllBeads** |
+| :---- | :---- | :---- | :---- | :---- |
+| **Primary Context** | Unstructured Text | Ephemeral Worktree | Git-Backed JSONL | Multi-Boss Federation |
+| **Scope** | Single Session | Single Repo | Single Repo | Multi-Context / Multi-Repo |
+| **State Persistence** | Low (Volatile) | Medium (Repo-Bound) | High (Git-Native) | **Highest (Federated & Distributed)** |
+| **Agent Communication** | None | None | None | **Agent Mail + File Locks** |
+| **Identity Management** | Single | Single | Single | **Multi-Context (Work/Personal)** |
+| **Conflict Resolution** | Manual Merge | Manual Review | Hash-Based | **Hash-Based + Mutex Protocol** |
+| **Visualization** | Text Editor | Diff Viewer | CLI Only | **Unified TUI (4 views)** |
+| **JIRA Integration** | Manual | None | Plugin Possible | **Built-In Bi-Directional** |
+| **Agent Autonomy** | Junior Developer | Individual Contributor | Senior Developer | **Staff Engineer + Coordinator** |
+| **License** | N/A | Proprietary | MIT | **MIT (Open Source)** |
 
-### 8.2 Recommendations for Implementation
+### 8.2 Open Source Strategy and Roadmap
 
-1. **Standardize the Manifest:** Adopt the XML schema defined in Section 4.4 immediately to allow for Rig discovery.  
-2. **Build the Sheriff First:** The go-jira and githubv4 synchronization daemon is the critical path. Without it, the system remains an island.  
-3. **Deploy the TUI:** Trust is the currency of autonomy. The "Boss Board" is essential for humans to feel comfortable delegating control to the swarm.
+To ensure broad adoption and community contribution, AllBeads will be developed as an **MIT-licensed open-source project** with the following roadmap:
 
-By implementing the AllBeads architecture, organizations can move beyond the "Chatbot" phase of AI and enter the era of the **Self-Driving Organization**, where the software builds, tests, and repairs itself under the high-level strategic guidance of its human creators.
+**Phase 1: The Reader (Read-Only Aggregation)** - Q1 2026
+- CLI that reads multiple local `.beads` repositories
+- Basic TUI showing unified Kanban view
+- Multi-context configuration support
+- **Deliverable**: `allbeads list` shows work and personal tasks together
+
+**Phase 2: The Mailroom (Agent Communication)** - Q2 2026
+- Implement MCP Agent Mail server (Postmaster)
+- File locking/mutex protocol
+- Mail tab in TUI with human inbox
+- **Deliverable**: Agents can coordinate and prevent conflicts
+
+**Phase 3: The Writer (Distributed Boss)** - Q3 2026
+- Support `allbeads init --remote` for legacy repos
+- Janitor workflow for automated issue discovery
+- Sheriff daemon with git sync
+- **Deliverable**: Full write-back to Boss repos
+
+**Phase 4: Enterprise Integration** - Q4 2026
+- JIRA bi-directional sync
+- GitHub Issues integration
+- Plugin architecture for other systems (Linear, Asana)
+- **Deliverable**: Enterprise-ready orchestration
+
+**Phase 5: The Swarm (Advanced Agents)** - 2027
+- Agent lifecycle management (spawn, monitor, kill)
+- Cost tracking and budget management
+- Advanced dependency resolution across contexts
+- **Deliverable**: Self-managing agent workforce
+
+### 8.3 Community and Contribution
+
+**Dogfooding Requirement**: The AllBeads repository itself **must be managed by AllBeads**. All issues, PRs, and work coordination will use the tool being built. The `CONTRIBUTING.md` will explain how to:
+1. Install AllBeads locally
+2. Point it at the AllBeads Boss repository
+3. Pick up a "Good First Issue" tracked as a bead
+4. Have an agent assist with implementation
+
+**Plugin Ecosystem**: The Sheriff daemon will support plugins written in Rust, Python, or WASM, allowing community contributions for:
+- Additional integrations (Trello, Monday.com, Notion)
+- Custom agent personas
+- Alternative visualization themes
+- Domain-specific workflows (data science, devops, etc.)
+
+### 8.4 Impact and Vision
+
+By implementing AllBeads, the software development community can move beyond the "Chatbot" phase of AI and enter the era of the **Agent Society**—where software builds, tests, and repairs itself under strategic human guidance, across all contexts and repositories, with agents that communicate and coordinate like a real engineering team.
+
+The vision is not a single monolithic AI, but a **distributed swarm of specialized agents** that:
+- Respect security boundaries (enterprise/personal)
+- Coordinate via standardized protocols (Beads + Mail)
+- Operate transparently (all state in git)
+- Remain under human oversight (via the unified TUI)
+
+AllBeads transforms agents from isolated scripts into a **coherent, self-organizing workforce** that spans the polyrepo frontier.
 
 #### Works cited
 
