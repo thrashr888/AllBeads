@@ -1,12 +1,13 @@
 //! Type-safe ID wrappers for beads and rigs
 
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 /// Type-safe wrapper for bead IDs
 ///
 /// Prevents mixing up bead IDs with rig IDs at compile time.
 /// Format: prefix-hash (e.g., "ab-ldr", "work-5fm")
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BeadId(String);
 
 impl BeadId {
@@ -65,7 +66,7 @@ impl From<&str> for BeadId {
 ///
 /// Prevents mixing up rig IDs with bead IDs at compile time.
 /// Format: typically a path or name (e.g., "auth-service", "personal-blog")
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RigId(String);
 
 impl RigId {
