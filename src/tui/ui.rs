@@ -10,7 +10,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     if app.show_detail {
         draw_detail_view(f, app);
     } else {
@@ -18,7 +18,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 }
 
-fn draw_kanban_view(f: &mut Frame, app: &App) {
+fn draw_kanban_view(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -30,7 +30,11 @@ fn draw_kanban_view(f: &mut Frame, app: &App) {
 
     // Title
     let title = Paragraph::new("AllBeads - Multi-Context Task Aggregator")
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
 
@@ -44,29 +48,27 @@ fn draw_kanban_view(f: &mut Frame, app: &App) {
         ])
         .split(chunks[1]);
 
-    for (i, column) in Column::all().iter().enumerate() {
-        draw_column(f, app, *column, board_chunks[i]);
-    }
+    let columns = Column::all();
+    draw_column(f, app, columns[0], board_chunks[0]);
+    draw_column(f, app, columns[1], board_chunks[1]);
+    draw_column(f, app, columns[2], board_chunks[2]);
 
     // Help
-    let help_text = vec![
-        Line::from(vec![
-            Span::styled("Navigation: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw("j/k or ↑/↓ (up/down)  h/l or ←/→ (switch column)  "),
-            Span::styled("Enter: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw("View Details  "),
-            Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
-            Span::raw("Quit  "),
-            Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)),
-        ]),
-    ];
+    let help_text = vec![Line::from(vec![
+        Span::raw("j/k or ↑/↓ (up/down)  h/l or ←/→ (switch column)  "),
+        Span::styled("Enter: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw("View Details  "),
+        Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw("Quit  "),
+        Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)),
+    ])];
     let help = Paragraph::new(help_text)
         .style(Style::default().fg(Color::White))
         .block(Block::default().borders(Borders::ALL).title("Help"));
     f.render_widget(help, chunks[2]);
 }
 
-fn draw_column(f: &mut Frame, app: &App, column: Column, area: Rect) {
+fn draw_column(f: &mut Frame, app: &mut App, column: Column, area: Rect) {
     let is_selected = app.current_column == column;
     let border_style = if is_selected {
         Style::default().fg(Color::Yellow)
@@ -83,13 +85,18 @@ fn draw_column(f: &mut Frame, app: &App, column: Column, area: Rect) {
         .collect();
 
     let mut sorted_beads = beads;
-    sorted_beads.sort_by(|a, b| a.priority.cmp(&b.priority).then_with(|| a.title.cmp(&b.title)));
+    sorted_beads.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then_with(|| a.title.cmp(&b.title))
+    });
 
     let items: Vec<ListItem> = sorted_beads
         .iter()
         .enumerate()
         .map(|(i, bead)| {
-            let is_current = is_selected && i == app.selected_index;
+            // Only highlight in the selected column, using list_state selection
+            let is_current = is_selected && Some(i) == app.list_state.selected();
             create_bead_list_item(bead, is_current)
         })
         .collect();
@@ -102,9 +109,18 @@ fn draw_column(f: &mut Frame, app: &App, column: Column, area: Rect) {
                 .borders(Borders::ALL)
                 .border_style(border_style),
         )
-        .highlight_style(Style::default().add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
 
-    f.render_widget(list, area);
+    // Only use stateful rendering for the selected column
+    if is_selected {
+        f.render_stateful_widget(list, area, &mut app.list_state);
+    } else {
+        f.render_widget(list, area);
+    }
 }
 
 fn create_bead_list_item(bead: &Bead, is_selected: bool) -> ListItem<'_> {
@@ -119,11 +135,7 @@ fn create_bead_list_item(bead: &Bead, is_selected: bool) -> ListItem<'_> {
     let priority_str = format!("[{:?}] ", bead.priority);
 
     // Extract context tags
-    let context_tags: Vec<_> = bead
-        .labels
-        .iter()
-        .filter(|l| l.starts_with('@'))
-        .collect();
+    let context_tags: Vec<_> = bead.labels.iter().filter(|l| l.starts_with('@')).collect();
 
     let context_str = if !context_tags.is_empty() {
         let tags: Vec<&str> = context_tags.iter().map(|s| s.as_str()).collect();
@@ -148,10 +160,7 @@ fn create_bead_list_item(bead: &Bead, is_selected: bool) -> ListItem<'_> {
     ];
 
     if !context_str.is_empty() {
-        spans.push(Span::styled(
-            context_str,
-            Style::default().fg(Color::Cyan),
-        ));
+        spans.push(Span::styled(context_str, Style::default().fg(Color::Cyan)));
     }
 
     let style = if is_selected {
@@ -165,21 +174,25 @@ fn create_bead_list_item(bead: &Bead, is_selected: bool) -> ListItem<'_> {
     ListItem::new(Line::from(spans)).style(style)
 }
 
-fn draw_detail_view(f: &mut Frame, app: &App) {
+fn draw_detail_view(f: &mut Frame, app: &mut App) {
     if let Some(bead) = app.selected_bead() {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),  // Title
-                Constraint::Min(0),     // Content
-                Constraint::Length(3),  // Help (needs 3 for borders + 1 line of text)
+                Constraint::Length(3), // Title
+                Constraint::Min(0),    // Content
+                Constraint::Length(3), // Help (needs 3 for borders + 1 line of text)
             ])
             .split(f.area());
 
         // Title
         let title = format!("{}: {}", bead.id.as_str(), bead.title);
         let title_widget = Paragraph::new(title)
-            .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(title_widget, chunks[0]);
 
@@ -222,7 +235,12 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
         }
 
         if !bead.labels.is_empty() {
-            let labels = bead.labels.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ");
+            let labels = bead
+                .labels
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             text.push(Line::from(vec![
                 Span::styled("Labels: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::styled(labels, Style::default().fg(Color::Cyan)),
@@ -230,15 +248,28 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
         }
 
         if !bead.dependencies.is_empty() {
-            let deps = bead.dependencies.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", ");
+            let deps = bead
+                .dependencies
+                .iter()
+                .map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             text.push(Line::from(vec![
-                Span::styled("Depends on: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Depends on: ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(deps),
             ]));
         }
 
         if !bead.blocks.is_empty() {
-            let blocks = bead.blocks.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", ");
+            let blocks = bead
+                .blocks
+                .iter()
+                .map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
             text.push(Line::from(vec![
                 Span::styled("Blocks: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(blocks),
@@ -269,15 +300,13 @@ fn draw_detail_view(f: &mut Frame, app: &App) {
         f.render_widget(content, chunks[1]);
 
         // Help
-        let help_text = vec![
-            Line::from(vec![
-                Span::styled("Esc/Enter: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw("Back to Kanban  "),
-                Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw("Quit  "),
-                Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)),
-            ]),
-        ];
+        let help_text = vec![Line::from(vec![
+            Span::styled("Esc/Enter: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Back to Kanban  "),
+            Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw("Quit  "),
+            Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)),
+        ])];
         let help = Paragraph::new(help_text)
             .style(Style::default().fg(Color::White))
             .block(Block::default().borders(Borders::ALL).title("Help"));
