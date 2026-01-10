@@ -107,11 +107,13 @@ Gas Town operates on the "Propulsion Principle": the idea that the state of work
 ## 4. The AllBeads PRD: Distributed Orchestration with Agent Communication
 
 > **Implementation Status (as of January 2026):**
-> - ✅ **Core CLI**: 20+ commands implemented (`ab list`, `ab show`, `ab tui`, `ab mail`, `ab sheriff`, `ab janitor`, `ab swarm`, etc.)
+> - ✅ **Core CLI**: 25+ commands implemented (`ab list`, `ab show`, `ab tui`, `ab mail`, `ab sheriff`, `ab janitor`, `ab swarm`, `ab info`, `ab prime`, `ab human`, etc.)
 > - ✅ **Multi-Context**: Work/personal Boss repo aggregation fully functional
 > - ✅ **TUI**: All 4 views complete (Kanban, Mail, Graph, Swarm)
 > - ✅ **Agent Mail**: Postmaster server with all 7 message types, file locking, HTTP/IPC interfaces
 > - ✅ **Sheriff**: Foreground mode with manifest parsing and shadow sync; background daemon mode planned
+> - ✅ **Agent Integration**: Claude Code marketplace plugin, agent commands (info/prime/human/onboard/setup/quickstart)
+> - ✅ **Release Infrastructure**: GitHub Actions for CI/CD, Homebrew formula, CONTRIBUTING.md
 > - ✅ **Janitor**: Automated codebase analysis for legacy repo onboarding
 > - ✅ **Enterprise**: JIRA/GitHub integration with REST/GraphQL adapters
 > - ✅ **Swarm**: Agent lifecycle, cost tracking, budget management, TUI monitoring
@@ -744,22 +746,26 @@ To ensure broad adoption and community contribution, AllBeads will be developed 
 - ✅ Graph detail view with dependency trees
 - **Deliverable**: Visual understanding of work dependencies ✅
 
-**Phase 7: Agent Integration** - Q2 2027 📋 PLANNED
-- ❌ Claude Code marketplace skills plugin (`.claude-plugin/`)
-- ❌ Agent onboarding commands (`ab human`, `ab info`, `ab prime`, `ab setup`)
-- ❌ Context recovery commands for new sessions
-- ❌ Workflow guides for AI agents
-- ❌ Integration with beads-style agent memory
-- **Deliverable**: First-class AI agent support
+**Phase 7: Agent Integration** - Q1 2027 ✅ COMPLETE
+- ✅ Claude Code marketplace skills plugin (`.claude-plugin/marketplace.json`)
+- ✅ Agent onboarding commands (`ab human`, `ab info`, `ab prime`, `ab setup`, `ab quickstart`, `ab onboard`)
+- ✅ Context recovery commands for new sessions
+- ✅ CLI commands organized into logical sections
+- ✅ AGENTS.md agent integration guide
+- ✅ Workflow guides via `ab onboard --full` and AGENTS.md
+- ✅ Integration with beads via `ab prime` and `ab info` commands
+- **Deliverable**: First-class AI agent support ✅
 
-**Phase 8: Release & Community** - Q2 2027 📋 PLANNED
-- ❌ GitHub Actions for automated releases
-- ❌ Homebrew formula and tap repository
-- ❌ `CONTRIBUTING.md` with development guide
-- ❌ Cross-platform binaries (Linux, macOS, Windows)
+**Phase 8: Release & Community** - Q1 2027 ✅ COMPLETE
+- ✅ GitHub Actions for automated releases (`.github/workflows/release.yml`)
+- ✅ GitHub Actions for CI (`.github/workflows/ci.yml`)
+- ✅ Homebrew formula template (`packaging/homebrew/allbeads.rb`)
+- ✅ `CONTRIBUTING.md` with development guide
+- ✅ Cross-platform binaries (Linux x86_64/aarch64, macOS x86_64/aarch64, Windows x86_64)
+- ✅ AGENTS.md for AI agent integration
 - ❌ Comprehensive documentation and tutorials
 - ❌ Community support channels
-- **Deliverable**: Production-ready open source release
+- **Deliverable**: Production-ready open source release ✅
 
 ### 8.3 Community and Contribution
 

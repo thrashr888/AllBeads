@@ -34,7 +34,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Initialize AllBeads configuration or clone a remote repo with beads
+    // === Setup & Configuration ===
+
+    /// Initialize AllBeads configuration or clone a remote repo
     Init {
         /// Remote repository URL to clone and initialize
         #[arg(short, long)]
@@ -48,6 +50,21 @@ enum Commands {
         #[arg(short, long)]
         janitor: bool,
     },
+
+    /// Setup wizard for configuration
+    Setup,
+
+    /// Quickstart guide for AllBeads
+    Quickstart,
+
+    /// Manage contexts (Boss repositories)
+    #[command(subcommand)]
+    Context(ContextCommands),
+
+    /// Clear the local cache
+    ClearCache,
+
+    // === Viewing Beads ===
 
     /// List beads with optional filters
     List {
@@ -74,11 +91,16 @@ enum Commands {
         id: String,
     },
 
-    /// Show beads that are ready to work on
+    /// Show beads that are ready to work on (no blockers)
     Ready,
 
     /// Show all blocked beads
     Blocked,
+
+    /// Show aggregated statistics
+    Stats,
+
+    // === Analysis & Search ===
 
     /// Search beads by text (title, description, notes)
     Search {
@@ -89,7 +111,7 @@ enum Commands {
         #[arg(short = 'c', long)]
         context: Option<String>,
 
-        /// Filter by status (open, in_progress, blocked, deferred, closed). Prefix with ^ to negate (e.g., ^closed)
+        /// Filter by status. Prefix with ^ to negate (e.g., ^closed)
         #[arg(short = 's', long)]
         status: Option<String>,
 
@@ -101,7 +123,7 @@ enum Commands {
         #[arg(long)]
         priority_max: Option<String>,
 
-        /// Filter by type (bug, feature, task, epic, chore). Prefix with ^ to negate (e.g., ^epic)
+        /// Filter by type (bug, feature, task, epic, chore). Prefix with ^ to negate
         #[arg(short = 't', long = "type")]
         issue_type: Option<String>,
 
@@ -133,23 +155,6 @@ enum Commands {
         threshold: f64,
     },
 
-    /// Show aggregated statistics
-    Stats,
-
-    /// Launch Terminal UI (Kanban + Mail)
-    Tui,
-
-    /// Clear the local cache
-    ClearCache,
-
-    /// Manage contexts (Boss repositories)
-    #[command(subcommand)]
-    Context(ContextCommands),
-
-    /// Agent Mail commands
-    #[command(subcommand)]
-    Mail(MailCommands),
-
     /// Run janitor analysis on a repository
     Janitor {
         /// Path to repository (default: current directory)
@@ -164,6 +169,42 @@ enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
+
+    // === TUI & Interface ===
+
+    /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
+    Tui,
+
+    // === Agent Integration ===
+
+    /// Show project info and status for AI agents
+    Info,
+
+    /// Prime agent memory with project context
+    Prime,
+
+    /// Onboard to a project (for AI agents)
+    Onboard {
+        /// Show detailed workflow guide
+        #[arg(long)]
+        full: bool,
+    },
+
+    /// Send a message to human operator
+    Human {
+        /// Message to send to human
+        message: Option<String>,
+    },
+
+    /// Agent Mail commands
+    #[command(subcommand)]
+    Mail(MailCommands),
+
+    /// Agent swarm management commands
+    #[command(subcommand)]
+    Swarm(SwarmCommands),
+
+    // === Daemons & Sync ===
 
     /// Run the Sheriff daemon (background sync)
     Sheriff {
@@ -180,6 +221,8 @@ enum Commands {
         foreground: bool,
     },
 
+    // === Enterprise Integration ===
+
     /// JIRA integration commands
     #[command(subcommand)]
     Jira(JiraCommands),
@@ -187,10 +230,6 @@ enum Commands {
     /// GitHub integration commands
     #[command(subcommand, name = "github")]
     GitHub(GitHubCommands),
-
-    /// Agent swarm management commands
-    #[command(subcommand)]
-    Swarm(SwarmCommands),
 }
 
 #[derive(Subcommand, Debug)]
@@ -394,6 +433,19 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle swarm commands (don't need graph)
     if let Commands::Swarm(ref swarm_cmd) = cli.command {
         return handle_swarm_command(swarm_cmd);
+    }
+
+    // Handle agent commands that don't need graph
+    if let Commands::Quickstart = cli.command {
+        return handle_quickstart_command();
+    }
+
+    if let Commands::Setup = cli.command {
+        return handle_setup_command(&cli.config);
+    }
+
+    if let Commands::Human { ref message } = cli.command {
+        return handle_human_command(message);
     }
 
     // Load configuration
@@ -998,9 +1050,21 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) | Commands::Jira(_) | Commands::GitHub(_) | Commands::Swarm(_) => {
+        Commands::Info => {
+            handle_info_command(&graph)?;
+        }
+
+        Commands::Prime => {
+            handle_prime_command(&graph)?;
+        }
+
+        Commands::Onboard { full } => {
+            handle_onboard_command(full, &graph)?;
+        }
+
+        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) | Commands::Jira(_) | Commands::GitHub(_) | Commands::Swarm(_) | Commands::Quickstart | Commands::Setup | Commands::Human { .. } => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, and Swarm commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Quickstart, Setup, and Human commands should be handled before aggregation")
         }
     }
 
@@ -2437,6 +2501,416 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
                 Err(e) => return Err(e),
             }
         }
+    }
+
+    Ok(())
+}
+
+// === Agent Integration Commands (Phase 7) ===
+
+/// Handle the `info` command - show project info and status for AI agents
+fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Result<()> {
+    let stats = graph.stats();
+    let ready_count = graph.ready_beads().len();
+
+    println!();
+    println!("# AllBeads Project Info");
+    println!();
+    println!("## Summary");
+    println!();
+    println!("- Total beads: {}", stats.total_beads);
+    println!("- Open: {}", stats.open_beads);
+    println!("- In Progress: {}", stats.in_progress_beads);
+    println!("- Blocked: {}", stats.blocked_beads);
+    println!("- Closed: {}", stats.closed_beads);
+    println!("- Ready to work: {}", ready_count);
+    println!();
+
+    // Show contexts
+    use std::collections::HashMap;
+    let mut context_counts: HashMap<String, (usize, usize)> = HashMap::new();
+    for bead in graph.beads.values() {
+        for label in &bead.labels {
+            if label.starts_with('@') {
+                let entry = context_counts.entry(label.clone()).or_insert((0, 0));
+                entry.0 += 1;
+                if bead.status == Status::Open {
+                    entry.1 += 1;
+                }
+                break;
+            }
+        }
+    }
+
+    if !context_counts.is_empty() {
+        println!("## Contexts");
+        println!();
+        let mut contexts: Vec<_> = context_counts.iter().collect();
+        contexts.sort_by_key(|(ctx, _)| ctx.as_str());
+        for (context, (total, open)) in contexts {
+            println!("- {}: {} beads ({} open)", context, total, open);
+        }
+        println!();
+    }
+
+    // Show recent activity
+    let mut recent: Vec<_> = graph.beads.values().collect();
+    recent.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let recent: Vec<_> = recent.into_iter().take(5).collect();
+
+    if !recent.is_empty() {
+        println!("## Recent Activity");
+        println!();
+        for bead in recent {
+            println!("- [{}] {}: {}", format_status(bead.status), bead.id.as_str(), bead.title);
+        }
+        println!();
+    }
+
+    println!("## Quick Actions");
+    println!();
+    println!("- View ready work: `ab ready`");
+    println!("- View blocked work: `ab blocked`");
+    println!("- Launch TUI: `ab tui`");
+    println!("- Search beads: `ab search \"query\"`");
+
+    Ok(())
+}
+
+/// Handle the `prime` command - prime agent memory with project context
+fn handle_prime_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Result<()> {
+    println!("# AllBeads Context Priming");
+    println!();
+    println!("This command helps AI agents recover context about the project.");
+    println!();
+
+    // Project summary
+    let stats = graph.stats();
+    println!("## Project Status");
+    println!();
+    println!("AllBeads is aggregating {} beads across {} contexts.", stats.total_beads, graph.rigs.len());
+    println!();
+
+    // Active work
+    let in_progress: Vec<_> = graph.beads.values()
+        .filter(|b| b.status == Status::InProgress)
+        .collect();
+
+    if !in_progress.is_empty() {
+        println!("## In-Progress Work");
+        println!();
+        for bead in &in_progress {
+            println!("### {} - {}", bead.id.as_str(), bead.title);
+            if let Some(ref desc) = bead.description {
+                let short = if desc.len() > 200 { format!("{}...", &desc[..200]) } else { desc.clone() };
+                println!("{}", short);
+            }
+            println!();
+        }
+    }
+
+    // Blocked work needing attention
+    let blocked: Vec<_> = graph.beads.values()
+        .filter(|b| b.status == Status::Blocked || (!b.dependencies.is_empty() && b.status == Status::Open))
+        .take(5)
+        .collect();
+
+    if !blocked.is_empty() {
+        println!("## Blocked Work (top 5)");
+        println!();
+        for bead in &blocked {
+            println!("- {}: {} (blocked by: {})",
+                bead.id.as_str(),
+                bead.title,
+                bead.dependencies.iter().map(|d| d.as_str()).collect::<Vec<_>>().join(", ")
+            );
+        }
+        println!();
+    }
+
+    // Ready work
+    let ready = graph.ready_beads();
+    if !ready.is_empty() {
+        println!("## Ready Work (top 10)");
+        println!();
+        for bead in ready.iter().take(10) {
+            println!("- [{}] {}: {}", format_priority(bead.priority), bead.id.as_str(), bead.title);
+        }
+        println!();
+    }
+
+    println!("## Commands");
+    println!();
+    println!("- `ab info` - Project overview");
+    println!("- `ab ready` - Show work ready to start");
+    println!("- `ab show <id>` - Show bead details");
+    println!("- `ab tui` - Interactive dashboard");
+
+    Ok(())
+}
+
+/// Handle the `quickstart` command - show quickstart guide
+fn handle_quickstart_command() -> allbeads::Result<()> {
+    println!("# AllBeads Quickstart Guide");
+    println!();
+    println!("AllBeads is a distributed protocol for agentic orchestration and communication.");
+    println!("It aggregates beads (issues) from multiple git repositories into a unified view.");
+    println!();
+    println!("## Setup");
+    println!();
+    println!("1. Initialize AllBeads:");
+    println!("   ```");
+    println!("   ab init");
+    println!("   ```");
+    println!();
+    println!("2. Add repositories (contexts):");
+    println!("   ```");
+    println!("   cd /path/to/repo && ab context add");
+    println!("   ```");
+    println!();
+    println!("3. View aggregated beads:");
+    println!("   ```");
+    println!("   ab stats    # Summary");
+    println!("   ab list     # All beads");
+    println!("   ab tui      # Interactive dashboard");
+    println!("   ```");
+    println!();
+    println!("## Essential Commands");
+    println!();
+    println!("### Viewing Work");
+    println!("- `ab list` - List all beads");
+    println!("- `ab ready` - Show unblocked work");
+    println!("- `ab blocked` - Show blocked work");
+    println!("- `ab show <id>` - Show bead details");
+    println!("- `ab search \"query\"` - Search beads");
+    println!();
+    println!("### TUI Dashboard");
+    println!("- `ab tui` - Launch interactive dashboard");
+    println!("- Tab: Switch views (Kanban/Mail/Graph/Swarm)");
+    println!("- j/k: Navigate up/down");
+    println!("- Enter: Toggle detail view");
+    println!("- q: Quit");
+    println!();
+    println!("### Agent Integration");
+    println!("- `ab info` - Project status for agents");
+    println!("- `ab prime` - Context recovery after compaction");
+    println!("- `ab mail inbox` - View agent messages");
+    println!();
+    println!("## Learn More");
+    println!();
+    println!("- Documentation: See AGENTS.md in the repo");
+    println!("- Demo: Run `ab help` for all commands");
+
+    Ok(())
+}
+
+/// Handle the `setup` command - interactive setup wizard
+fn handle_setup_command(config_path: &Option<String>) -> allbeads::Result<()> {
+    let config_file = if let Some(path) = config_path {
+        PathBuf::from(path)
+    } else {
+        AllBeadsConfig::default_path()
+    };
+
+    println!("# AllBeads Setup Wizard");
+    println!();
+
+    // Check if already initialized
+    if config_file.exists() {
+        let config = AllBeadsConfig::load(&config_file)?;
+        println!("AllBeads is already configured at: {}", config_file.display());
+        println!();
+        println!("Current configuration:");
+        println!("  Contexts: {}", config.contexts.len());
+        for ctx in &config.contexts {
+            println!("    - {}: {}", ctx.name, ctx.url);
+        }
+        println!();
+        println!("To add more contexts:");
+        println!("  cd /path/to/repo && ab context add");
+        println!();
+        println!("To remove a context:");
+        println!("  ab context remove <name>");
+        println!();
+        println!("To start fresh, delete the config file:");
+        println!("  rm {}", config_file.display());
+        return Ok(());
+    }
+
+    // Not initialized - provide setup instructions
+    println!("AllBeads is not yet configured.");
+    println!();
+    println!("## Step 1: Initialize");
+    println!();
+    println!("Run the following command to create the configuration:");
+    println!("  ab init");
+    println!();
+    println!("Or clone an existing Boss repository:");
+    println!("  ab init --remote git@github.com:org/boss-repo.git");
+    println!();
+    println!("## Step 2: Add Contexts");
+    println!();
+    println!("Navigate to each repository you want to track and add it:");
+    println!("  cd /path/to/repo && ab context add");
+    println!();
+    println!("The repository must have a .beads/ directory (created by the beads issue tracker).");
+    println!();
+    println!("## Step 3: View Beads");
+    println!();
+    println!("Once configured, you can view aggregated beads:");
+    println!("  ab stats    # Summary");
+    println!("  ab list     # All beads");
+    println!("  ab tui      # Interactive dashboard");
+
+    Ok(())
+}
+
+/// Handle the `onboard` command - onboarding guide for AI agents
+fn handle_onboard_command(full: bool, graph: &allbeads::graph::FederatedGraph) -> allbeads::Result<()> {
+    println!("# AllBeads Agent Onboarding");
+    println!();
+
+    if full {
+        // Full workflow guide
+        println!("## Workflow Guide");
+        println!();
+        println!("### 1. Context Recovery");
+        println!();
+        println!("After compaction or starting a new session:");
+        println!("```bash");
+        println!("ab prime    # Recover context from beads/issues");
+        println!("ab info     # Show current project status");
+        println!("```");
+        println!();
+        println!("### 2. Finding Work");
+        println!();
+        println!("```bash");
+        println!("ab ready    # Show unblocked work");
+        println!("ab blocked  # Show blocked work (dependencies)");
+        println!("ab search \"keyword\" --status open  # Search");
+        println!("```");
+        println!();
+        println!("### 3. Session Completion (\"Landing the Plane\")");
+        println!();
+        println!("Before ending any session, complete this checklist:");
+        println!();
+        println!("1. **File remaining work** - Create issues for incomplete tasks");
+        println!("2. **Run quality gates** - `cargo test && cargo clippy`");
+        println!("3. **Update issue status** - Mark completed work as closed");
+        println!("4. **Sync and push**:");
+        println!("   ```bash");
+        println!("   git pull --rebase");
+        println!("   bd sync       # If using beads issue tracker");
+        println!("   git add -A && git commit -m \"message\"");
+        println!("   git push");
+        println!("   git status    # Verify \"up to date\"");
+        println!("   ```");
+        println!("5. **Clean git state** - No uncommitted changes");
+        println!("6. **Provide handoff context** - Summary for next session");
+        println!();
+        println!("**Critical rule**: Work is NOT complete until `git push` succeeds.");
+        println!();
+        println!("### 4. Visual Design System");
+        println!();
+        println!("Status indicators (no emojis in CLI output):");
+        println!("- `○` Open");
+        println!("- `◐` In Progress");
+        println!("- `●` Blocked");
+        println!("- `✓` Closed");
+        println!("- `❄` Deferred");
+        println!();
+        println!("Priority colors:");
+        println!("- P0: Red (critical)");
+        println!("- P1: Light Red (high)");
+        println!("- P2: Yellow (medium)");
+        println!("- P3: Blue (low)");
+        println!("- P4: Gray (backlog)");
+    } else {
+        // Quick onboarding summary
+        let stats = graph.stats();
+        let ready_count = graph.ready_beads().len();
+
+        println!("## Project Overview");
+        println!();
+        println!("- {} total beads across {} contexts", stats.total_beads, graph.rigs.len());
+        println!("- {} open, {} in progress, {} blocked", stats.open_beads, stats.in_progress_beads, stats.blocked_beads);
+        println!("- {} beads ready to work on", ready_count);
+        println!();
+        println!("## Quick Commands");
+        println!();
+        println!("```bash");
+        println!("ab ready        # Find work to do");
+        println!("ab show <id>    # View bead details");
+        println!("ab tui          # Interactive dashboard");
+        println!("```");
+        println!();
+        println!("Run `ab onboard --full` for the complete workflow guide.");
+    }
+
+    Ok(())
+}
+
+/// Handle the `human` command - communication channel to human operator
+fn handle_human_command(message: &Option<String>) -> allbeads::Result<()> {
+    use allbeads::mail::{Address, Message, MessageType, NotifyPayload, Postmaster, Severity};
+
+    // Get mail database path
+    let mail_db_path = AllBeadsConfig::default_path()
+        .parent()
+        .map(|p| p.join("mail.db"))
+        .ok_or_else(|| {
+            allbeads::AllBeadsError::Config("Could not determine mail database path".to_string())
+        })?;
+
+    // Get project ID from config
+    let project_id = match AllBeadsConfig::load_default() {
+        Ok(config) => config
+            .contexts
+            .first()
+            .map(|c| c.name.clone())
+            .unwrap_or_else(|| "default".to_string()),
+        Err(_) => "default".to_string(),
+    };
+
+    let mut postmaster = Postmaster::with_project_id(mail_db_path, &project_id)?;
+
+    if let Some(msg) = message {
+        // Send message to human
+        let human = Address::human();
+        let agent_addr = Address::new("agent", &project_id)?;
+
+        let mail = Message::new(
+            agent_addr,
+            human,
+            MessageType::Notify(NotifyPayload::new(msg).with_severity(Severity::Info)),
+        );
+
+        postmaster.send(mail)?;
+        println!("Message sent to human operator.");
+        println!();
+        println!("The human can view it with:");
+        println!("  ab mail inbox");
+        println!("  ab tui  (Mail tab)");
+    } else {
+        // Interactive mode info
+        println!("# Human Communication Channel");
+        println!();
+        println!("Use this command to send messages to the human operator.");
+        println!();
+        println!("## Usage");
+        println!();
+        println!("Send a message:");
+        println!("  ab human \"Your message here\"");
+        println!();
+        println!("The human will see it in:");
+        println!("  ab mail inbox");
+        println!("  ab tui  (Mail tab)");
+        println!();
+        println!("## Example Messages");
+        println!();
+        println!("- Status update: `ab human \"Completed refactoring auth module\"`");
+        println!("- Request help: `ab human \"Need clarification on API design\"`");
+        println!("- Report issue: `ab human \"Found potential security issue in login flow\"`");
     }
 
     Ok(())

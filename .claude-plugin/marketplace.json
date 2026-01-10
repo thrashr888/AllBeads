@@ -1,0 +1,15 @@
+{
+  "name": "allbeads-marketplace",
+  "description": "Local marketplace for AllBeads plugin development",
+  "owner": {
+    "name": "Paul Shortino"
+  },
+  "plugins": [
+    {
+      "name": "allbeads",
+      "source": "./claude-plugin",
+      "description": "Distributed protocol for agentic orchestration and communication",
+      "version": "0.1.0"
+    }
+  ]
+}
