@@ -125,7 +125,7 @@ ab ready
 ab show ab-123
 
 # Launch Kanban TUI
-ab tui
+ab kanban
 ```
 
 See [demo.md](demo.md) for more examples.
@@ -184,13 +184,13 @@ allbeads ready
 allbeads show <bead-id>
 ```
 
-#### TUI (Terminal User Interface)
+#### Kanban Board (TUI)
 
 ```bash
 # Launch Kanban board
-allbeads tui
+allbeads kanban
 
-# TUI Keyboard shortcuts:
+# Keyboard shortcuts:
 #   j/k or ↑/↓    - Move up/down in current column
 #   h/l or ←/→    - Switch between columns
 #   Enter         - View bead details

@@ -8,9 +8,23 @@ Config file location: `~/.config/allbeads/config.yaml`
 
 ## Setup
 
+### Initialize AllBeads
+
+First, initialize the configuration:
+
+```bash
+# Initialize AllBeads (creates ~/.config/allbeads/config.yaml)
+ab init
+```
+
+### Setup alias
+
 Setup alias for convenient testing:
+
 ```bash
 alias ab='cargo run --quiet -- --cached'
+# Or for release build:
+alias ab='./target/release/allbeads --cached'
 ```
 
 The `--cached` flag uses cached data without fetching from remotes (faster for testing).
@@ -18,13 +32,17 @@ The `--cached` flag uses cached data without fetching from remotes (faster for t
 ## Quick Command Reference
 
 ```bash
+# Initialization
+ab init                           # Initialize config file
+
 # Context management
-ab context add <name> <url>      # Add a Boss repository
+ab context add <path>             # Add repo (infers name/URL from git)
+ab context add . --url <url>      # Add current dir with explicit URL
 ab context list                   # List all contexts
 ab context remove <name>          # Remove a context
 
 # Viewing beads
-ab kanban                         # Launch Kanban board (Terminal UI)
+ab kanban                            # Launch Kanban board (Terminal UI)
 ab stats                          # Show aggregated statistics
 ab list                           # List all beads
 ab list --status open             # Filter by status
@@ -50,31 +68,43 @@ AllBeads aggregates beads from multiple "Boss" repositories (contexts).
 
 ### Add a Boss repository
 
+The easiest way to add a repository is from within the repo directory:
+
 ```bash
-# Using SSH URL (recommended with ssh_agent)
-ab context add work git@github.com:org/boss-work.git
+# Add current directory (auto-detects name from folder, URL from git remote)
+cd ~/workspace/my-project
+ab context add .
 
-# With custom path
-ab context add personal git@github.com:you/boss.git --path ~/repos/boss
+# Add with explicit URL (useful if remote isn't set)
+ab context add . --url git@github.com:org/my-project.git
 
-# With HTTPS and personal access token
-ab context add enterprise https://github.company.com/boss.git --auth personal_access_token
+# Add with explicit name
+ab context add . --name work
+
+# Add a different directory
+ab context add ~/workspace/another-project
 ```
 
-**Note:** If you use an HTTPS URL with `ssh_agent` (default), you'll see a warning:
+**Authentication is auto-detected:**
 
+- SSH URLs (`git@github.com:...`) use `ssh_agent`
+- HTTPS URLs use `personal_access_token` (reads from `GITHUB_TOKEN` or `gh auth token`)
+
+**Manual authentication override:**
+
+```bash
+# Force SSH agent
+ab context add . --auth ssh_agent
+
+# Force personal access token
+ab context add . --auth personal_access_token
 ```
-⚠️  Warning: Using HTTPS URL with ssh_agent authentication may fail.
-   Suggestion: Use SSH URL instead:
-   git@github.com:org/boss-work.git
 
-   To add with SSH URL:
-   allbeads context add work git@github.com:org/boss-work.git
-```
+**Token resolution order for HTTPS:**
 
-**Best practices:**
-- Use SSH URLs (`git@github.com:...`) with `ssh_agent` (default)
-- Use HTTPS URLs only with `--auth personal_access_token` or `--auth gh_enterprise_token`
+1. `<CONTEXT_NAME>_TOKEN` environment variable (e.g., `WORK_TOKEN`)
+2. `GITHUB_TOKEN` environment variable
+3. `gh auth token` (GitHub CLI)
 
 ### List all configured contexts
 
@@ -83,6 +113,7 @@ ab context list
 ```
 
 Example output:
+
 ```
 Configured contexts (3):
 
@@ -95,11 +126,6 @@ Configured contexts (3):
     URL:  https://github.com/thrashr888/QDOS.git
     Path: /Users/thrashr888/workspace/QDOS
     Auth: SshAgent
-
-  ethertext
-    URL:  https://github.com/thrashr888/ethertext.git
-    Path: /Users/thrashr888/workspace/ethertext
-    Auth: SshAgent
 ```
 
 ### Remove a context
@@ -108,7 +134,7 @@ Configured contexts (3):
 ab context remove ethertext
 ```
 
-## Kanban Board
+## Kanban Board (TUI)
 
 Launch the interactive Kanban dashboard:
 
@@ -117,6 +143,7 @@ ab kanban
 ```
 
 **Features:**
+
 - **Kanban Board**: Three columns (Open, In Progress, Closed)
 - **Color-Coded Priorities**: P0 (red) through P4 (gray)
 - **Context Tags**: Shows which repo each bead is from (@allbeads, @qdos, etc.)
@@ -125,6 +152,7 @@ ab kanban
 - **Read-Only**: View and navigate beads (editing requires Phase 2)
 
 **Keybindings:**
+
 ```
 j / ↓      Move down
 k / ↑      Move up
@@ -140,6 +168,7 @@ Ctrl+C     Quit
 The bottom of the screen shows available keybindings and indicates `[READ-ONLY]` mode.
 
 **Tips:**
+
 - Use `ab kanban` (with `--cached`) for fastest startup
 - Navigate between columns to see different workflow stages
 - Press Enter on any bead to see full details, dependencies, and description
@@ -155,9 +184,10 @@ View summary across all contexts:
 ab stats
 ```
 
-Example output:
+Example output (colors shown in terminal):
+
 ```
-AllBeads Statistics:
+📊 AllBeads Statistics:
 
   Total beads:      374
   Total shadows:    0
@@ -268,6 +298,7 @@ ab blocked
 ```
 
 Example output shows what each bead is blocked by:
+
 ```
 Blocked beads: 47
 
@@ -308,6 +339,7 @@ ab duplicates --threshold 0.9
 ```
 
 Example output:
+
 ```
 Potential duplicates (threshold: 80%): 5 pairs
 
@@ -329,6 +361,7 @@ ab show ab-oqy
 ```
 
 Example output:
+
 ```
 ab-oqy: Implement basic TUI with ratatui
 Status:       open
@@ -398,17 +431,29 @@ RUST_LOG=allbeads::aggregator=debug cargo run -- stats
 
 ## Multi-Repository Workflow
 
-### Example: Aggregating three Boss repositories
+### Example: Aggregating multiple Boss repositories
 
 ```bash
-# Add multiple contexts
-ab context add allbeads https://github.com/thrashr888/AllBeads.git
-ab context add qdos https://github.com/thrashr888/QDOS.git
-ab context add work https://github.com/org/boss-work.git
+# Initialize AllBeads first
+ab init
 
-# Clear cache and fetch fresh data
-ab clear-cache
-cargo run --quiet -- stats
+# Add repositories from their directories
+cd ~/workspace/AllBeads
+ab context add .
+
+cd ~/workspace/QDOS
+ab context add .
+
+cd ~/workspace/work-project
+ab context add . --name work
+
+# Or add from anywhere with explicit paths
+ab context add ~/workspace/AllBeads
+ab context add ~/workspace/QDOS
+ab context add ~/workspace/work-project --name work
+
+# View aggregated stats across all repos
+ab stats
 
 # View work from specific context
 ab list --context work --status open
@@ -418,6 +463,9 @@ ab list --priority P1 --status open
 
 # See what's ready to work on
 ab ready
+
+# Launch Kanban board
+ab kanban
 ```
 
 ## Tips
