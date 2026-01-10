@@ -94,6 +94,10 @@ pub struct ShadowBead {
     /// Optional notes about this shadow
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+
+    /// External reference for integration tracking (e.g., "jira:PROJ-123", "github:owner/repo#456")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_ref: Option<String>,
 }
 
 impl ShadowBead {
@@ -116,6 +120,7 @@ impl ShadowBead {
             labels: HashSet::new(),
             last_synced: chrono::Utc::now().to_rfc3339(),
             notes: None,
+            external_ref: None,
         }
     }
 
@@ -135,6 +140,127 @@ impl ShadowBead {
     /// Check if this shadow bead has cross-repo blockers
     pub fn has_cross_repo_blockers(&self) -> bool {
         !self.cross_repo_dependencies.is_empty()
+    }
+
+    /// Create a ShadowBead from an external source (JIRA, GitHub, etc.)
+    ///
+    /// This is a convenience constructor for integration adapters.
+    pub fn from_external(
+        id: impl Into<BeadId>,
+        summary: impl Into<String>,
+        external_uri: impl Into<String>,
+    ) -> ShadowBeadBuilder {
+        ShadowBeadBuilder::new(id.into(), summary.into(), external_uri.into())
+    }
+}
+
+/// Builder for ShadowBead from external sources
+pub struct ShadowBeadBuilder {
+    id: BeadId,
+    summary: String,
+    pointer: BeadUri,
+    status: Status,
+    context: String,
+    description: String,
+    priority: Option<u8>,
+    issue_type: Option<String>,
+    external_ref: Option<String>,
+    labels: HashSet<String>,
+}
+
+impl ShadowBeadBuilder {
+    /// Create a new builder
+    pub fn new(id: BeadId, summary: String, external_uri: String) -> Self {
+        Self {
+            id,
+            summary,
+            pointer: BeadUri::from_string(external_uri),
+            status: Status::Open,
+            context: String::new(),
+            description: String::new(),
+            priority: None,
+            issue_type: None,
+            external_ref: None,
+            labels: HashSet::new(),
+        }
+    }
+
+    /// Set the status
+    pub fn with_status(mut self, status: impl Into<String>) -> Self {
+        let status_str = status.into();
+        self.status = match status_str.to_lowercase().as_str() {
+            "open" => Status::Open,
+            "in_progress" | "in progress" => Status::InProgress,
+            "blocked" => Status::Blocked,
+            "closed" | "done" => Status::Closed,
+            _ => Status::Open,
+        };
+        self
+    }
+
+    /// Set the priority (0-4)
+    pub fn with_priority(mut self, priority: u8) -> Self {
+        self.priority = Some(priority);
+        self
+    }
+
+    /// Set the issue type
+    pub fn with_issue_type(mut self, issue_type: impl Into<String>) -> Self {
+        self.issue_type = Some(issue_type.into());
+        self
+    }
+
+    /// Set the description
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = description.into();
+        self
+    }
+
+    /// Set the context
+    pub fn with_context(mut self, context: impl Into<String>) -> Self {
+        self.context = context.into();
+        self
+    }
+
+    /// Set the external reference
+    pub fn with_external_ref(mut self, external_ref: impl Into<String>) -> Self {
+        self.external_ref = Some(external_ref.into());
+        self
+    }
+
+    /// Add a label
+    pub fn with_label(mut self, label: impl Into<String>) -> Self {
+        self.labels.insert(label.into());
+        self
+    }
+
+    /// Build the ShadowBead
+    pub fn build(self) -> ShadowBead {
+        ShadowBead {
+            id: self.id,
+            pointer: self.pointer,
+            summary: self.summary,
+            status: self.status,
+            context: self.context,
+            cross_repo_dependencies: Vec::new(),
+            cross_repo_blocks: Vec::new(),
+            labels: self.labels,
+            last_synced: chrono::Utc::now().to_rfc3339(),
+            notes: None,
+            external_ref: self.external_ref,
+        }
+    }
+}
+
+/// Convenience wrapper for creating ShadowBead from external sources
+impl ShadowBead {
+    /// Alias for from_external to make the integration code cleaner
+    pub fn external(
+        id: impl Into<BeadId>,
+        summary: impl Into<String>,
+        external_uri: impl Into<String>,
+    ) -> ShadowBeadBuilder {
+        Self::from_external(id, summary, external_uri)
     }
 }
 

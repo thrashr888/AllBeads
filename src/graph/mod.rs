@@ -12,4 +12,4 @@ pub use bead::{Bead, IssueType, Priority, Status};
 pub use federated_graph::{FederatedGraph, GraphStats};
 pub use ids::{BeadId, RigId};
 pub use rig::{AuthStrategy as RigAuthStrategy, Rig};
-pub use shadow_bead::{BeadUri, ShadowBead};
+pub use shadow_bead::{BeadUri, ShadowBead, ShadowBeadBuilder};

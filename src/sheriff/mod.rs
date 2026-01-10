@@ -13,7 +13,7 @@
 //! 1. **Poll Phase**: Fetch beads updates from all Rigs
 //! 2. **Diff Phase**: Compare Rig state with cached Boss state
 //! 3. **Sync Phase**: Create/update Shadow Beads, push Boss directives to Rigs
-//! 4. **External Sync**: Bi-directional sync with JIRA/GitHub (Phase 4)
+//! 4. **External Sync**: Bi-directional sync with JIRA/GitHub
 //! 5. **Mail Delivery**: Process pending agent mail
 //!
 //! ## Communication
@@ -52,10 +52,12 @@
 //! ```
 
 mod daemon;
+mod external_sync;
 mod sync;
 
 pub use daemon::{
     Sheriff, SheriffBuilder, SheriffCommand, SheriffConfig, SheriffEvent, SheriffStats,
     DEFAULT_POLL_INTERVAL,
 };
+pub use external_sync::{ExternalSyncConfig, ExternalSyncEvent, ExternalSyncResult, ExternalSyncer};
 pub use sync::{sync_rig_to_shadows, ShadowSync, SyncResult};

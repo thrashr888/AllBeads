@@ -718,11 +718,13 @@ To ensure broad adoption and community contribution, AllBeads will be developed 
 - ✅ Sheriff daemon with git sync (foreground mode)
 - **Deliverable**: Full write-back to Boss repos ✅
 
-**Phase 4: Enterprise Integration** - Q4 2026 🔄 IN PROGRESS
-- ❌ JIRA bi-directional sync (placeholder only)
-- ❌ GitHub Issues integration (placeholder only)
-- ❌ Plugin architecture for other systems (Linear, Asana)
-- **Deliverable**: Enterprise-ready orchestration
+**Phase 4: Enterprise Integration** - Q4 2026 ✅ COMPLETE
+- ✅ JIRA bi-directional sync (REST API adapter)
+- ✅ GitHub Issues integration (GraphQL + REST API adapter)
+- ✅ Plugin architecture for other systems (extensible structs)
+- ✅ External sync in Sheriff daemon
+- ✅ CLI commands: `ab jira`, `ab github`
+- **Deliverable**: Enterprise-ready orchestration ✅
 
 **Phase 5: The Swarm (Advanced Agents)** - 2027 📋 PLANNED
 - ❌ Agent lifecycle management (spawn, monitor, kill)

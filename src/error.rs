@@ -81,6 +81,10 @@ pub enum AllBeadsError {
     #[error("Address error: {0}")]
     Address(#[from] AddressError),
 
+    /// Integration errors (JIRA, GitHub, plugins)
+    #[error("Integration error: {0}")]
+    Integration(String),
+
     /// Other errors
     #[error("{0}")]
     Other(String),

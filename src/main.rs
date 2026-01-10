@@ -179,6 +179,14 @@ enum Commands {
         #[arg(short, long)]
         foreground: bool,
     },
+
+    /// JIRA integration commands
+    #[command(subcommand)]
+    Jira(JiraCommands),
+
+    /// GitHub integration commands
+    #[command(subcommand, name = "github")]
+    GitHub(GitHubCommands),
 }
 
 #[derive(Subcommand, Debug)]
@@ -195,6 +203,56 @@ enum MailCommands {
 
     /// Show unread message count
     Unread,
+}
+
+#[derive(Subcommand, Debug)]
+enum JiraCommands {
+    /// Pull issues from JIRA with ai-agent label
+    Pull {
+        /// JIRA project key (e.g., PROJ)
+        #[arg(short, long)]
+        project: String,
+
+        /// JIRA server URL (e.g., https://company.atlassian.net)
+        #[arg(short, long)]
+        url: String,
+
+        /// Label filter (default: ai-agent)
+        #[arg(short, long, default_value = "ai-agent")]
+        label: String,
+
+        /// Show raw issue data
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Show JIRA configuration status
+    Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum GitHubCommands {
+    /// Pull issues from GitHub with ai-agent label
+    Pull {
+        /// GitHub owner/organization
+        #[arg(short, long)]
+        owner: String,
+
+        /// Repository name (optional, pulls from all if not specified)
+        #[arg(short, long)]
+        repo: Option<String>,
+
+        /// Label filter (default: ai-agent)
+        #[arg(short, long, default_value = "ai-agent")]
+        label: String,
+
+        /// Show raw issue data
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Show GitHub configuration status
+    Status,
 }
 
 #[derive(Subcommand, Debug)]
@@ -258,6 +316,16 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle mail commands (don't need graph)
     if let Commands::Mail(ref mail_cmd) = cli.command {
         return handle_mail_command(mail_cmd);
+    }
+
+    // Handle JIRA commands (don't need graph)
+    if let Commands::Jira(ref jira_cmd) = cli.command {
+        return handle_jira_command(jira_cmd);
+    }
+
+    // Handle GitHub commands (don't need graph)
+    if let Commands::GitHub(ref github_cmd) = cli.command {
+        return handle_github_command(github_cmd);
     }
 
     // Load configuration
@@ -862,9 +930,9 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) => {
+        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) | Commands::Jira(_) | Commands::GitHub(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, and Mail commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, and GitHub commands should be handled before aggregation")
         }
     }
 
@@ -1959,6 +2027,216 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
             } else {
                 println!("{} unread message(s).", count);
             }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_jira_command(cmd: &JiraCommands) -> allbeads::Result<()> {
+    use allbeads::config::JiraIntegration;
+    use allbeads::integrations::JiraAdapter;
+
+    match cmd {
+        JiraCommands::Pull {
+            project,
+            url,
+            label,
+            verbose,
+        } => {
+            // Check for token in environment
+            let token = std::env::var("JIRA_API_TOKEN").ok();
+            if token.is_none() {
+                eprintln!("Warning: JIRA_API_TOKEN environment variable not set.");
+                eprintln!("Set it with: export JIRA_API_TOKEN='your-api-token'");
+                eprintln!();
+            }
+
+            let config = JiraIntegration {
+                url: url.clone(),
+                project: project.clone(),
+                token_env: Some("JIRA_API_TOKEN".to_string()),
+            };
+
+            let mut adapter = JiraAdapter::new(config);
+            if let Some(t) = token {
+                adapter.set_auth_token(t);
+            }
+
+            println!("Pulling issues from JIRA project {} with label '{}'...", project, label);
+            println!();
+
+            // Run async pull
+            let rt = tokio::runtime::Runtime::new()?;
+            let issues = rt.block_on(async { adapter.pull_agent_issues(label).await })?;
+
+            if issues.is_empty() {
+                println!("No issues found with label '{}'", label);
+            } else {
+                println!("Found {} issues:", issues.len());
+                println!();
+                for issue in &issues {
+                    let status = &issue.fields.status.name;
+                    let priority = issue
+                        .fields
+                        .priority
+                        .as_ref()
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("None");
+
+                    println!(
+                        "[{}] [{}] {}: {}",
+                        priority, status, issue.key, issue.fields.summary
+                    );
+
+                    if *verbose {
+                        if let Some(ref desc) = issue.fields.description {
+                            let short_desc = if desc.len() > 100 {
+                                format!("{}...", &desc[..100])
+                            } else {
+                                desc.clone()
+                            };
+                            println!("  Description: {}", short_desc);
+                        }
+                        println!("  URL: {}/browse/{}", url, issue.key);
+                        println!();
+                    }
+                }
+            }
+        }
+
+        JiraCommands::Status => {
+            let has_token = std::env::var("JIRA_API_TOKEN").is_ok();
+            println!("JIRA Integration Status");
+            println!();
+            println!(
+                "  API Token: {}",
+                if has_token {
+                    "Set (JIRA_API_TOKEN)".to_string()
+                } else {
+                    "Not set".to_string()
+                }
+            );
+            println!();
+            println!("To configure JIRA integration:");
+            println!("  1. Create an API token at: https://id.atlassian.com/manage/api-tokens");
+            println!("  2. Set the environment variable:");
+            println!("     export JIRA_API_TOKEN='your-api-token'");
+            println!();
+            println!("Usage:");
+            println!("  ab jira pull --project PROJ --url https://company.atlassian.net");
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_github_command(cmd: &GitHubCommands) -> allbeads::Result<()> {
+    use allbeads::config::GitHubIntegration;
+    use allbeads::integrations::GitHubAdapter;
+
+    match cmd {
+        GitHubCommands::Pull {
+            owner,
+            repo,
+            label,
+            verbose,
+        } => {
+            // Check for token in environment
+            let token = std::env::var("GITHUB_TOKEN")
+                .or_else(|_| std::env::var("GH_TOKEN"))
+                .ok();
+            if token.is_none() {
+                eprintln!("Warning: GITHUB_TOKEN or GH_TOKEN environment variable not set.");
+                eprintln!("Set it with: export GITHUB_TOKEN='your-personal-access-token'");
+                eprintln!();
+            }
+
+            let config = GitHubIntegration {
+                url: "https://api.github.com".to_string(),
+                owner: owner.clone(),
+                repo_pattern: repo.clone(),
+            };
+
+            let mut adapter = GitHubAdapter::new(config);
+            if let Some(t) = token {
+                adapter.set_auth_token(t);
+            }
+
+            let repo_display = repo.as_deref().unwrap_or("all repositories");
+            println!(
+                "Pulling issues from GitHub {}/{} with label '{}'...",
+                owner, repo_display, label
+            );
+            println!();
+
+            // Run async pull
+            let rt = tokio::runtime::Runtime::new()?;
+            let issues = rt.block_on(async { adapter.pull_agent_issues(label).await })?;
+
+            if issues.is_empty() {
+                println!("No issues found with label '{}'", label);
+            } else {
+                println!("Found {} issues:", issues.len());
+                println!();
+                for issue in &issues {
+                    let state_icon = if issue.state == "OPEN" { "O" } else { "C" };
+                    let labels: Vec<_> = issue.labels.nodes.iter().map(|l| l.name.as_str()).collect();
+                    let labels_str = if labels.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" [{}]", labels.join(", "))
+                    };
+
+                    println!(
+                        "[{}] {}#{}: {}{}",
+                        state_icon,
+                        issue.repository.name_with_owner,
+                        issue.number,
+                        issue.title,
+                        labels_str
+                    );
+
+                    if *verbose {
+                        if let Some(ref body) = issue.body {
+                            let short_body = if body.len() > 100 {
+                                format!("{}...", &body[..100])
+                            } else {
+                                body.clone()
+                            };
+                            println!("  Body: {}", short_body);
+                        }
+                        println!("  URL: {}", issue.url);
+                        println!();
+                    }
+                }
+            }
+        }
+
+        GitHubCommands::Status => {
+            let has_token = std::env::var("GITHUB_TOKEN")
+                .or_else(|_| std::env::var("GH_TOKEN"))
+                .is_ok();
+            println!("GitHub Integration Status");
+            println!();
+            println!(
+                "  API Token: {}",
+                if has_token {
+                    "Set (GITHUB_TOKEN or GH_TOKEN)".to_string()
+                } else {
+                    "Not set".to_string()
+                }
+            );
+            println!();
+            println!("To configure GitHub integration:");
+            println!("  1. Create a personal access token at: https://github.com/settings/tokens");
+            println!("     (requires 'repo' scope for private repos, 'public_repo' for public)");
+            println!("  2. Set the environment variable:");
+            println!("     export GITHUB_TOKEN='your-personal-access-token'");
+            println!();
+            println!("Usage:");
+            println!("  ab github pull --owner myorg");
+            println!("  ab github pull --owner myorg --repo myrepo");
         }
     }
 

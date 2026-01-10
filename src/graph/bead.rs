@@ -47,6 +47,12 @@ impl From<u8> for Priority {
     }
 }
 
+impl From<Priority> for u8 {
+    fn from(priority: Priority) -> u8 {
+        priority as u8
+    }
+}
+
 /// Issue type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
