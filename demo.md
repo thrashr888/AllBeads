@@ -1,6 +1,6 @@
 # AllBeads CLI Demo
 
-This guide demonstrates AllBeads CLI commands for multi-repository bead aggregation.
+This guide demonstrates AllBeads CLI commands for multi-repository bead aggregation, enterprise integration, and agent coordination.
 
 ## Configuration
 
@@ -15,6 +15,9 @@ First, initialize the configuration:
 ```bash
 # Initialize AllBeads (creates ~/.config/allbeads/config.yaml)
 ab init
+
+# Or clone an existing Boss repository
+ab init --remote git@github.com:org/boss-repo.git
 ```
 
 ### Setup alias
@@ -34,6 +37,7 @@ The `--cached` flag uses cached data without fetching from remotes (faster for t
 ```bash
 # Initialization
 ab init                           # Initialize config file
+ab init --remote <url>            # Clone existing Boss repo
 
 # Context management
 ab context add <path>             # Add repo (infers name/URL from git)
@@ -42,7 +46,7 @@ ab context list                   # List all contexts
 ab context remove <name>          # Remove a context
 
 # Viewing beads
-ab tui                               # Launch TUI (Kanban + Mail)
+ab tui                            # Launch TUI (Kanban + Mail)
 ab stats                          # Show aggregated statistics
 ab list                           # List all beads
 ab list --status open             # Filter by status
@@ -60,6 +64,25 @@ ab search --priority-min P0       # Filter by priority
 ab search --sort updated -r       # Sort by updated, reverse
 ab duplicates                     # Find duplicate beads
 ab duplicates --threshold 0.6     # Adjust similarity threshold
+
+# Sheriff daemon
+ab sheriff --foreground           # Run sync daemon
+ab sheriff -f -p 10               # Custom poll interval
+
+# Agent mail
+ab mail send --to <addr> --subject "..." --body "..."
+ab mail list                      # List messages
+ab mail unread                    # Check unread count
+
+# Janitor analysis
+ab janitor <path>                 # Analyze repo for issues
+ab janitor <path> --dry-run       # Preview without creating
+
+# Enterprise integration
+ab jira status                    # Check JIRA config
+ab jira pull -p PROJ -u <url>     # Pull JIRA issues
+ab github status                  # Check GitHub config
+ab github pull -o <owner>         # Pull GitHub issues
 
 # Cache management
 ab clear-cache                    # Clear the cache
@@ -137,9 +160,9 @@ Configured contexts (3):
 ab context remove ethertext
 ```
 
-## Kanban Board (TUI)
+## TUI Dashboard
 
-Launch the interactive Kanban dashboard:
+Launch the interactive dashboard with Kanban and Mail views:
 
 ```bash
 ab tui
@@ -148,34 +171,221 @@ ab tui
 **Features:**
 
 - **Kanban Board**: Three columns (Open, In Progress, Closed)
+- **Mail View**: Agent message inbox
 - **Color-Coded Priorities**: P0 (red) through P4 (gray)
 - **Context Tags**: Shows which repo each bead is from (@allbeads, @qdos, etc.)
 - **Vim Navigation**: j/k for up/down, h/l for column switching
-- **Detail View**: Press Enter to see full bead information
-- **Read-Only**: View and navigate beads (editing requires Phase 2)
 
 **Keybindings:**
 
 ```
-j / ↓      Move down
-k / ↑      Move up
-h / ←      Previous column
-l / →      Next column
+Tab        Switch between Kanban and Mail views
+j / Down   Move down
+k / Up     Move up
+h / Left   Previous column (Kanban)
+l / Right  Next column (Kanban)
 Enter      Toggle detail view
 Esc        Close detail view
 q          Quit
 Ctrl+C     Quit
 ```
 
-**Help Footer:**
-The bottom of the screen shows available keybindings and indicates `[READ-ONLY]` mode.
+## Sheriff Daemon
 
-**Tips:**
+The Sheriff daemon synchronizes beads across repositories and external systems.
 
-- Use `ab tui` (with `--cached`) for fastest startup
-- Navigate between columns to see different workflow stages
-- Press Enter on any bead to see full details, dependencies, and description
-- Text selection now works - mouse capture disabled
+### Run in foreground
+
+```bash
+# Basic foreground mode (recommended for development)
+ab sheriff --foreground
+
+# With custom poll interval (seconds)
+ab sheriff --foreground --poll-interval 10
+
+# Short form
+ab sheriff -f -p 10
+```
+
+### Event output
+
+When running in foreground, the Sheriff prints sync events:
+
+```
+[2026-01-10 12:00:00] Starting Sheriff daemon...
+[2026-01-10 12:00:00] Poll cycle started
+[2026-01-10 12:00:01] Synced rig 'auth-service': 3 shadows updated
+[2026-01-10 12:00:02] External sync: 5 JIRA issues pulled
+[2026-01-10 12:00:02] Poll cycle complete (2.1s)
+```
+
+## Agent Mail
+
+The Agent Mail system enables messaging between agents.
+
+### Send messages
+
+```bash
+# Send a notification
+ab mail send --to agent-1 --subject "Task Complete" --body "Finished the auth refactor"
+
+# Send to broadcast address (all agents)
+ab mail send --to broadcast --subject "Announcement" --body "Deploying v2.0"
+```
+
+### List messages
+
+```bash
+# List messages for human inbox
+ab mail list
+```
+
+Example output:
+
+```
+Messages for human:
+
+[2026-01-10 11:30:00] From: agent-1
+  Subject: Task Update
+  Body: Completed auth-service refactor...
+
+[2026-01-10 10:15:00] From: agent-2
+  Subject: Help Request
+  Body: Need clarification on API design...
+```
+
+### Check unread count
+
+```bash
+ab mail unread
+```
+
+## Janitor Analysis
+
+The Janitor analyzes repositories and discovers potential issues.
+
+### Analyze a repository
+
+```bash
+# Full analysis with issue creation
+ab janitor /path/to/repo
+
+# Dry run (preview what would be created)
+ab janitor /path/to/repo --dry-run
+```
+
+### Analysis output
+
+```
+Analyzing repository: /path/to/repo
+
+Found 5 potential issues:
+
+[bug] Large file detected: data/backup.sql (150MB)
+  Recommendation: Add to .gitignore or use Git LFS
+
+[task] Missing README in src/utils/
+  Recommendation: Add documentation
+
+[chore] Outdated dependency: lodash@3.10.1
+  Recommendation: Update to latest version
+
+Would create 5 issues (--dry-run mode)
+```
+
+## Enterprise Integration
+
+### JIRA Integration
+
+```bash
+# Check JIRA configuration status
+ab jira status
+```
+
+Output:
+
+```
+JIRA Integration Status
+
+  API Token: Not set
+
+To configure JIRA integration:
+  1. Create an API token at: https://id.atlassian.com/manage/api-tokens
+  2. Set the environment variable:
+     export JIRA_API_TOKEN='your-api-token'
+
+Usage:
+  ab jira pull --project PROJ --url https://company.atlassian.net
+```
+
+```bash
+# Pull issues from JIRA
+export JIRA_API_TOKEN='your-token'
+ab jira pull --project PROJ --url https://company.atlassian.net --label ai-agent
+
+# With verbose output
+ab jira pull -p PROJ -u https://company.atlassian.net --verbose
+```
+
+Output:
+
+```
+Pulling issues from JIRA project PROJ with label 'ai-agent'...
+
+Found 3 issues:
+
+[High] [In Progress] PROJ-123: Implement OAuth flow
+[Medium] [Open] PROJ-456: Add rate limiting
+[Low] [Open] PROJ-789: Update documentation
+```
+
+### GitHub Integration
+
+```bash
+# Check GitHub configuration status
+ab github status
+```
+
+Output:
+
+```
+GitHub Integration Status
+
+  API Token: Set (GITHUB_TOKEN or GH_TOKEN)
+
+To configure GitHub integration:
+  1. Create a personal access token at: https://github.com/settings/tokens
+     (requires 'repo' scope for private repos, 'public_repo' for public)
+  2. Set the environment variable:
+     export GITHUB_TOKEN='your-personal-access-token'
+
+Usage:
+  ab github pull --owner myorg
+  ab github pull --owner myorg --repo myrepo
+```
+
+```bash
+# Pull issues from GitHub organization
+ab github pull --owner myorg
+
+# Pull from specific repository
+ab github pull --owner myorg --repo myrepo --label ai-agent
+
+# With verbose output
+ab github pull -o myorg --verbose
+```
+
+Output:
+
+```
+Pulling issues from GitHub myorg/all repositories with label 'ai-agent'...
+
+Found 5 issues:
+
+[O] myorg/api#123: Add authentication middleware [backend, ai-agent]
+[O] myorg/web#456: Implement dark mode [frontend, ai-agent]
+[C] myorg/api#789: Fix memory leak [bug, ai-agent]
+```
 
 ## Viewing Beads
 
@@ -187,10 +397,10 @@ View summary across all contexts:
 ab stats
 ```
 
-Example output (colors shown in terminal):
+Example output:
 
 ```
-📊 AllBeads Statistics:
+AllBeads Statistics:
 
   Total beads:      374
   Total shadows:    0
@@ -235,9 +445,6 @@ ab list --status in_progress
 
 # Show blocked beads
 ab list --status blocked
-
-# Show closed beads
-ab list --status closed
 ```
 
 Available statuses: `open`, `in_progress`, `blocked`, `deferred`, `closed`, `tombstone`
@@ -245,48 +452,23 @@ Available statuses: `open`, `in_progress`, `blocked`, `deferred`, `closed`, `tom
 ### Filter by priority
 
 ```bash
-# Show P1 beads (using priority name)
+# Show P1 beads
 ab list --priority P1
-
-# Show priority 2 beads (using number)
-ab list --priority 2
 
 # Show critical P0 beads
 ab list --priority P0
 ```
 
-Priority levels: `P0` (critical) through `P4` (backlog), or use numbers `0-4`.
-
-### Filter by context
-
-When you have multiple Boss repositories, filter by context:
-
-```bash
-# Show beads from allbeads context
-ab list --context allbeads
-
-# Show beads from qdos context
-ab list --context qdos
-
-# Show beads from work context
-ab list --context work
-```
-
-Beads are automatically tagged with `@<context-name>` labels.
+Priority levels: `P0` (critical) through `P4` (backlog)
 
 ### Combine filters
 
 ```bash
 # Show open P1 beads in the work context
 ab list --status open --priority P1 --context work
-
-# Show all open beads across contexts
-ab list --status open
 ```
 
 ### Show ready-to-work beads
-
-Find beads that are ready to work on (open status, no blockers):
 
 ```bash
 ab ready
@@ -294,101 +476,55 @@ ab ready
 
 ### Show blocked beads
 
-View all beads that are blocked by dependencies:
-
 ```bash
 ab blocked
-```
-
-Example output shows what each bead is blocked by:
-
-```
-Blocked beads: 47
-
-[P0] [open] et-9ku: Create RookeryClient.swift with auth flow (@ethertext)
-  → Blocked by: et-6tl
-[P1] [open] ab-oqy: Implement basic TUI with ratatui (@allbeads)
-  → Blocked by: ab-8ik
-```
-
-### Search beads
-
-Powerful search with filters across all contexts:
-
-```bash
-# Basic text search
-ab search "TUI"
-
-# Search within a specific context
-ab search "agent" --context rookery
-
-# Filter by status
-ab search --status open
-ab search "bug" --status in_progress
-
-# Negate filters with ^ prefix (shell-safe)
-ab search --status=^closed              # All non-closed items
-ab search --type=^epic --status=^closed # Non-epic, non-closed items
-
-# Filter by priority range
-ab search --priority-min P0 --priority-max P2
-ab search "critical" --priority-min 0 --priority-max 1
-
-# Filter by type
-ab search --type epic
-ab search --type feature --status open
-
-# Filter by label
-ab search --label backend --label urgent
-
-# Filter by assignee
-ab search --assignee alice
-
-# Sort results
-ab search --status open --sort priority
-ab search --sort created --reverse
-ab search --sort title -n 20
-
-# Combine filters for powerful queries
-ab search "database" --context work --status open --priority-min P1 --sort updated
-
-# Available sort fields: priority, created, updated, status, id, title, type
-# Available statuses: open, in_progress, blocked, deferred, closed
-# Available types: bug, feature, task, epic, chore
-```
-
-### Find duplicate beads
-
-Detect potential duplicates across all contexts:
-
-```bash
-# Use default threshold (80% similarity)
-ab duplicates
-
-# Lower threshold to find more potential matches
-ab duplicates --threshold 0.6
-
-# Higher threshold for stricter matching
-ab duplicates --threshold 0.9
 ```
 
 Example output:
 
 ```
-Potential duplicates (threshold: 80%): 5 pairs
+Blocked beads: 47
 
-Similarity: 100%
-  QDOS-pcm: Refactor Beads integration as plugin
-  QDOS-duu: Refactor Beads integration as plugin
+[P0] [open] et-9ku: Create RookeryClient.swift with auth flow (@ethertext)
+  Blocked by: et-6tl
+[P1] [open] ab-oqy: Implement basic TUI with ratatui (@allbeads)
+  Blocked by: ab-8ik
+```
 
-Similarity: 75%
-  AllBeads-06z: Implement core data structures
-  ab-0lo: Core Data Structures
+### Search beads
+
+```bash
+# Basic text search
+ab search "TUI"
+
+# Filter by status
+ab search --status open
+
+# Negate filters with ^ prefix
+ab search --status=^closed
+
+# Filter by priority range
+ab search --priority-min P0 --priority-max P2
+
+# Sort results
+ab search --status open --sort priority
+ab search --sort created --reverse
+
+# Combine filters
+ab search "database" --context work --status open --priority-min P1 --sort updated
+```
+
+### Find duplicate beads
+
+```bash
+# Default threshold (80% similarity)
+ab duplicates
+
+# Lower threshold
+ab duplicates --threshold 0.6
 ```
 
 ### Show bead details
-
-View full information about a specific bead:
 
 ```bash
 ab show ab-oqy
@@ -401,8 +537,8 @@ ab-oqy: Implement basic TUI with ratatui
 Status:       open
 Priority:     P1
 Type:         Task
-Created:      2026-01-09T13:45:06.638459-08:00 by thrashr888
-Updated:      2026-01-10T00:45:22.390809+00:00
+Created:      2026-01-09T13:45:06 by thrashr888
+Updated:      2026-01-10T00:45:22
 Labels:       @allbeads
 Depends on:   ab-8ik
 
@@ -415,25 +551,17 @@ Bead detail view, Simple filtering by context
 
 ### Clear cache
 
-Force a fresh aggregation on the next command:
-
 ```bash
 ab clear-cache
 ```
 
-### View cache status
-
-The `stats` command shows cache age and expiration status.
-
-### Use cached data
-
-The alias includes `--cached` by default for faster commands. To fetch fresh data:
+### Use cached vs fresh data
 
 ```bash
-# Without cache
-cargo run --quiet -- stats
-
 # With cache (faster)
+ab --cached stats
+
+# Without cache (fresh data)
 ab stats
 ```
 
@@ -442,8 +570,6 @@ Cache expires after 5 minutes by default.
 ## Debugging
 
 ### Enable logging
-
-To see INFO/DEBUG logs, set `RUST_LOG`:
 
 ```bash
 # Show INFO level logs
@@ -459,7 +585,6 @@ RUST_LOG=allbeads=debug cargo run --quiet -- stats
 ### Verbose git operations
 
 ```bash
-# See git clone/fetch operations
 RUST_LOG=allbeads::aggregator=debug cargo run -- stats
 ```
 
@@ -471,22 +596,12 @@ RUST_LOG=allbeads::aggregator=debug cargo run -- stats
 # Initialize AllBeads first
 ab init
 
-# Add repositories from their directories
-cd ~/workspace/AllBeads
-ab context add .
+# Add repositories
+cd ~/workspace/AllBeads && ab context add .
+cd ~/workspace/QDOS && ab context add .
+cd ~/workspace/work-project && ab context add . --name work
 
-cd ~/workspace/QDOS
-ab context add .
-
-cd ~/workspace/work-project
-ab context add . --name work
-
-# Or add from anywhere with explicit paths
-ab context add ~/workspace/AllBeads
-ab context add ~/workspace/QDOS
-ab context add ~/workspace/work-project --name work
-
-# View aggregated stats across all repos
+# View aggregated stats
 ab stats
 
 # View work from specific context
@@ -495,10 +610,7 @@ ab list --context work --status open
 # Find all P1 beads across all repos
 ab list --priority P1 --status open
 
-# See what's ready to work on
-ab ready
-
-# Launch Kanban board
+# Launch TUI
 ab tui
 ```
 
@@ -507,7 +619,6 @@ ab tui
 - **Use the alias**: `ab` with `--cached` is fast for repeated commands
 - **Fresh data**: Remove `--cached` when you need the latest from remotes
 - **Context tags**: All beads are tagged with `@<context-name>` for filtering
-- **Cache expiry**: Default is 5 minutes, configured in config.yaml
-- **Parallel contexts**: Add as many Boss repos as you need to aggregate
-- **Context breakdown**: Use `ab stats` to see bead distribution across contexts
-- **SSH vs HTTPS**: Use SSH URLs (`git@github.com:...`) with default `ssh_agent` auth
+- **Sheriff foreground**: Use `--foreground` during development to see sync events
+- **Environment tokens**: Set `JIRA_API_TOKEN` and `GITHUB_TOKEN` for integrations
+- **Dry run**: Use `--dry-run` with janitor to preview before creating issues

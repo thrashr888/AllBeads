@@ -2,6 +2,7 @@
 
 use super::app::{App, Column, Tab};
 use super::mail_view;
+use super::swarm_view;
 use crate::graph::{Bead, Priority};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -23,6 +24,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Tab::Mail => {
             draw_mail_tab(f, app);
         }
+        Tab::Swarm => {
+            draw_swarm_tab(f, app);
+        }
     }
 }
 
@@ -39,25 +43,55 @@ fn draw_mail_tab(f: &mut Frame, app: &mut App) {
     mail_view::draw(f, &mut app.mail_view, chunks[1]);
 }
 
+fn draw_swarm_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    swarm_view::draw(f, &mut app.swarm_view, chunks[1]);
+}
+
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    let tab_titles: Vec<String> = if app.has_mail() {
+    let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
+
+    // Add mail tab if available
+    if app.has_mail() {
         let unread = app.unread_mail_count();
         if unread > 0 {
-            vec!["Kanban".to_string(), format!("Mail ({})", unread)]
+            tab_titles.push(format!("Mail ({})", unread));
         } else {
-            vec!["Kanban".to_string(), "Mail".to_string()]
+            tab_titles.push("Mail".to_string());
         }
-    } else {
-        vec!["Kanban".to_string()]
+    }
+
+    // Add swarm tab if available
+    if app.has_swarm() {
+        let active = app.active_agent_count();
+        if active > 0 {
+            tab_titles.push(format!("Swarm ({})", active));
+        } else {
+            tab_titles.push("Swarm".to_string());
+        }
+    }
+
+    // Calculate selected index
+    let tab_index = match app.current_tab {
+        Tab::Kanban => 0,
+        Tab::Mail => 1,
+        Tab::Swarm => {
+            if app.has_mail() { 2 } else { 1 }
+        }
     };
 
     let tabs = Tabs::new(tab_titles.iter().map(|s| Line::from(s.as_str())).collect::<Vec<_>>())
         .block(Block::default().borders(Borders::ALL).title("AllBeads"))
-        .select(match app.current_tab {
-            Tab::Kanban => 0,
-            Tab::Mail => 1,
-        })
+        .select(tab_index)
         .style(Style::default().fg(Color::White))
         .highlight_style(
             Style::default()

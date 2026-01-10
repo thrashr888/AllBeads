@@ -1,8 +1,10 @@
 //! TUI application state
 
 use super::mail_view::MailView;
+use super::swarm_view::SwarmView;
 use crate::graph::{Bead, FederatedGraph, Status};
 use crate::mail::{Address, Postmaster};
+use crate::swarm::AgentManager;
 use ratatui::widgets::ListState;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -13,6 +15,7 @@ pub enum Tab {
     #[default]
     Kanban,
     Mail,
+    Swarm,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -51,6 +54,7 @@ pub struct App {
     pub show_detail: bool,
     pub current_tab: Tab,
     pub mail_view: MailView,
+    pub swarm_view: SwarmView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
 }
@@ -66,6 +70,7 @@ impl App {
             show_detail: false,
             current_tab: Tab::Kanban,
             mail_view: MailView::new(),
+            swarm_view: SwarmView::new(),
             postmaster: None,
             inbox_address: Address::human(),
         }
@@ -100,17 +105,45 @@ impl App {
         self.mail_view.unread_count()
     }
 
+    /// Check if swarm is available
+    pub fn has_swarm(&self) -> bool {
+        self.swarm_view.has_manager()
+    }
+
+    /// Get active agent count
+    pub fn active_agent_count(&self) -> usize {
+        self.swarm_view.active_count()
+    }
+
+    /// Set the agent manager for swarm view
+    pub fn set_agent_manager(&mut self, manager: Arc<AgentManager>) {
+        self.swarm_view.set_manager(manager);
+    }
+
     /// Switch to next tab
     pub fn next_tab(&mut self) {
-        if self.has_mail() {
-            self.current_tab = match self.current_tab {
-                Tab::Kanban => Tab::Mail,
-                Tab::Mail => Tab::Kanban,
-            };
-            // Refresh mail when switching to mail tab
-            if self.current_tab == Tab::Mail {
-                self.refresh_mail();
-            }
+        let has_mail = self.has_mail();
+        let has_swarm = self.has_swarm();
+
+        self.current_tab = match (self.current_tab, has_mail, has_swarm) {
+            // With both mail and swarm
+            (Tab::Kanban, true, _) => Tab::Mail,
+            (Tab::Mail, _, true) => Tab::Swarm,
+            (Tab::Mail, _, false) => Tab::Kanban,
+            (Tab::Swarm, _, _) => Tab::Kanban,
+
+            // With only mail
+            (Tab::Kanban, false, true) => Tab::Swarm,
+
+            // With nothing extra
+            _ => Tab::Kanban,
+        };
+
+        // Refresh data when switching to specific tabs
+        match self.current_tab {
+            Tab::Mail => self.refresh_mail(),
+            Tab::Swarm => self.swarm_view.refresh(),
+            _ => {}
         }
     }
 

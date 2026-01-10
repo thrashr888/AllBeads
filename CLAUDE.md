@@ -4,24 +4,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**AllBeads** is a Rust implementation of the "Boss Repository Architecture" - a meta-orchestration system for AI agent workflows across multiple git repositories. This is a greenfield project with comprehensive specifications but no implementation yet.
+**AllBeads** is a Rust implementation of the "Boss Repository Architecture" - a meta-orchestration system for AI agent workflows across multiple git repositories.
 
-### What This Will Be
+### What AllBeads Does
 
 From specs/PRD-00.md, AllBeads implements:
 - **Sheriff Daemon**: Synchronization engine that federates beads (issues) across multiple repositories
 - **Boss Board TUI**: Terminal-based dashboard for visualizing cross-repo dependencies and work status
 - **Federated Graph**: Unified dependency graph aggregating work from distributed "Rig" repositories
 - **Enterprise Integration**: Bi-directional sync with JIRA and GitHub Issues
-- **Manifest System**: XML-based configuration for managing member repositories
+- **Agent Mail System**: Messaging protocol for agent-to-agent communication
+- **Janitor Workflow**: Automated issue discovery and repository analysis
 
 ### Current State
 
-This is a brand new Rust project initialized with `cargo init`. The codebase currently contains:
-- `specs/PRD-00.md`: 20,000+ word comprehensive architecture specification
-- `Cargo.toml`: Rust project configuration (edition 2024)
-- `src/main.rs`: Empty starter file
-- `.beads/`: Beads issue tracker (available for project management)
+Phases 1-4 are complete. Phase 5 (The Swarm) is in progress.
+
+**Implemented:**
+- Multi-repository aggregation from git remotes (SSH/HTTPS)
+- SQLite cache layer with automatic expiration
+- Context-aware filtering (@work, @personal, etc.)
+- Full CLI with filtering, search, and display commands
+- Kanban TUI with keyboard navigation
+- Mail TUI for agent messages
+- Agent Mail protocol (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
+- Postmaster daemon with message routing
+- Sheriff daemon with git sync (foreground mode)
+- `allbeads init --remote` for existing repositories
+- Janitor workflow for automated issue discovery
+- JIRA bi-directional sync (REST API)
+- GitHub Issues integration (GraphQL + REST)
+- Plugin architecture for extensibility
+
+**In Progress (Phase 5):**
+- Agent lifecycle management (spawn, monitor, kill)
+- Cost tracking and budget management
+- Advanced dependency resolution across contexts
 
 ## Rust Development Commands
 
@@ -110,69 +128,97 @@ cargo doc --document-private-items
 
 ## Architecture Overview
 
-### Core Components (To Be Implemented)
+### Core Components
 
-Based on the PRD, the system consists of:
-
-#### 1. Sheriff Daemon
-The synchronization engine written in Rust with:
+#### 1. Sheriff Daemon (`src/sheriff/`)
+The synchronization engine:
+- `daemon.rs`: Main event loop with configurable poll intervals
+- `sync.rs`: State synchronization between Boss and Rigs
+- `external_sync.rs`: JIRA/GitHub bi-directional sync
 - Concurrent repository polling using tokio async runtime
 - Git operations for fetching beads from member repositories
-- Diff and merge logic for Shadow Beads
-- External API integration (JIRA via REST, GitHub via GraphQL)
-- Event loop with configurable poll intervals
 
-#### 2. Boss Board TUI
-Terminal interface for visualization using Rust TUI libraries (ratatui or similar):
-- Multi-view dashboard (Kanban, Dependency Graph, Agent Status)
-- Real-time updates from Sheriff daemon
-- Interactive navigation and filtering
-- ASCII/Unicode graph rendering for dependency visualization
+#### 2. Boss Board TUI (`src/tui/`)
+Terminal interface using ratatui:
+- `kanban.rs`: Kanban board view with columns (Open, In Progress, Closed)
+- `mail.rs`: Agent Mail inbox view
+- Real-time updates, interactive navigation
+- Color-coded priorities (P0=red through P4=gray)
 
-#### 3. Data Structures
+#### 3. Agent Mail (`src/mail/`)
+Messaging protocol for agent coordination:
+- `postmaster.rs`: Message routing and delivery
+- `server.rs`: HTTP server for mail API
+- `locks.rs`: Resource locking protocol
+- `address.rs`: Agent addressing system
+- Message types: LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT
 
-Key entities:
-- **Shadow Bead**: Pointer to beads in member repositories with metadata
-- **Rig**: Configuration for a member repository (path, remote, persona)
-- **Manifest**: XML definition of all managed repositories
-- **Federated Graph**: Aggregated dependency graph with cross-repo links
+#### 4. Data Structures (`src/graph/`)
+Core entities:
+- `bead.rs`: Native Bead representation
+- `shadow_bead.rs`: Shadow Bead pointing to Rigs with cross-repo context
+- `rig.rs`: Member repository configuration
+- `federated_graph.rs`: Aggregated dependency graph
+- `ids.rs`: Type-safe BeadId and RigId
 
-#### 4. Integration Adapters
-- **JIRA Adapter**: Bi-directional sync using Atlassian REST API
-- **GitHub Adapter**: GraphQL-based issue sync
-- **Git Adapter**: Native git operations for beads federation
+#### 5. Integration Adapters (`src/integrations/`)
+External system sync:
+- `jira.rs`: JIRA REST API adapter with JQL search
+- `github.rs`: GitHub GraphQL + REST API adapter
+- `plugin.rs`: Plugin architecture for extensibility
 
-### Directory Structure (Planned)
+#### 6. Janitor (`src/janitor/`)
+Repository analysis and issue discovery:
+- `analyzer.rs`: Static analysis for potential issues
+- `rules.rs`: Configurable analysis rules
+
+### Directory Structure
 
 ```
 src/
-  main.rs              # CLI entry point
-  lib.rs              # Library root
-  sheriff/            # Sheriff daemon implementation
-    daemon.rs         # Main event loop
-    poll.rs           # Repository polling
-    sync.rs           # State synchronization
-  boss_board/         # TUI implementation
-    app.rs            # Main application state
-    views/            # Different view components
-  graph/              # Federated graph data structures
-    shadow_bead.rs    # Shadow bead representation
-    rig.rs            # Rig configuration
-    graph.rs          # Graph operations
-  manifest/           # Manifest parsing
-    parser.rs         # XML manifest parser
-    schema.rs         # Manifest data structures
-  integrations/       # External service adapters
-    jira.rs
-    github.rs
-  storage/            # Data persistence
-    sqlite.rs         # SQLite operations
-    jsonl.rs          # JSONL format handling
+  main.rs              # CLI entry point (clap)
+  lib.rs               # Library exports
+  error.rs             # Custom error types
+  aggregator/          # Multi-repo aggregation
+  cache/               # SQLite caching
+  config/              # Configuration management
+    boss_context.rs    # Context configuration
+    mod.rs             # Config loading/saving
+  git/                 # Git operations (git2)
+  graph/               # Core data structures
+    bead.rs            # Bead entity
+    shadow_bead.rs     # Shadow Bead with builder
+    rig.rs             # Rig configuration
+    federated_graph.rs # Graph operations
+    ids.rs             # Type-safe IDs
+  integrations/        # External service adapters
+    jira.rs            # JIRA REST API
+    github.rs          # GitHub GraphQL/REST
+    plugin.rs          # Plugin architecture
+  janitor/             # Repository analysis
+    analyzer.rs        # Issue discovery
+    rules.rs           # Analysis rules
+  mail/                # Agent Mail protocol
+    address.rs         # Agent addressing
+    postmaster.rs      # Message routing
+    server.rs          # HTTP server
+    locks.rs           # Resource locking
+    message.rs         # Message types
+  manifest/            # XML manifest parsing
+    parser.rs          # Manifest parser
+    schema.rs          # Manifest data structures
+  sheriff/             # Sheriff daemon
+    daemon.rs          # Event loop
+    sync.rs            # State synchronization
+    external_sync.rs   # JIRA/GitHub sync
+  storage/             # Data persistence
+    jsonl.rs           # JSONL format handling
+  tui/                 # Terminal UI
+    kanban.rs          # Kanban board view
+    mail.rs            # Mail view
 ```
 
-## Key Rust Crates to Consider
-
-Based on the architecture requirements:
+## Key Rust Crates Used
 
 ### Core Functionality
 - `tokio`: Async runtime for Sheriff daemon
@@ -183,36 +229,34 @@ Based on the architecture requirements:
 
 ### Git Operations
 - `git2`: libgit2 bindings for Rust
-- `gix`: Pure Rust git implementation (alternative)
 
 ### TUI
-- `ratatui`: Terminal UI framework (successor to tui-rs)
+- `ratatui`: Terminal UI framework
 - `crossterm`: Terminal manipulation
 
 ### Data Storage
 - `rusqlite`: SQLite bindings
-- `sqlx`: Async SQL toolkit (if using async storage)
 
 ### External Integrations
 - `reqwest`: HTTP client for REST APIs
-- `graphql_client`: GraphQL client for GitHub
 - `serde_xml_rs`: XML parsing for manifests
 
 ### Utilities
 - `anyhow`: Error handling
 - `thiserror`: Custom error types
 - `tracing`: Structured logging
-- `config`: Configuration management
+- `chrono`: Date/time handling
+- `async-trait`: Async traits
 
 ## Beads Issue Tracking
 
-This repository uses `bd` (beads) for issue tracking. Beads is available but not required for development.
+This repository uses `bd` (beads) for issue tracking.
 
 ### Essential Beads Commands
 
 ```bash
 # Create issues
-bd create --title="Implement Sheriff daemon" --type=feature --priority=1
+bd create --title="Implement feature X" --type=feature --priority=1
 
 # List and filter
 bd list --status=open
@@ -235,9 +279,9 @@ Use beads for tracking multi-session work and complex features with dependencies
 
 1. **Read the PRD**: `specs/PRD-00.md` is the authoritative specification
 2. **Check for work**: `bd ready` to see prioritized issues
-3. **Plan the feature**: Consider creating a design doc for complex components
-4. **Implement iteratively**: Start with core data structures, then build outward
-5. **Test as you go**: Write unit tests alongside implementation
+3. **Run tests**: `cargo test` to ensure clean baseline
+4. **Implement iteratively**: Start with tests, then implementation
+5. **Verify**: Run `cargo clippy` and `cargo fmt` before committing
 
 ### Code Organization Principles
 
@@ -252,7 +296,7 @@ Use beads for tracking multi-session work and complex features with dependencies
 - **Unit tests**: Test individual functions and methods
 - **Integration tests**: Test component interactions (in `tests/` directory)
 - **Doc tests**: Include examples in documentation comments
-- **Property tests**: Consider `proptest` for complex data structures
+- Currently 160+ tests covering core functionality
 
 ### Error Handling
 
@@ -277,6 +321,7 @@ The core innovation is treating multiple repositories' beads as a unified graph:
 - **Native Bead**: Lives in a Rig's `.beads/` directory, managed by that repo's team
 - **Shadow Bead**: Lives in Boss repo, points to a Native Bead, adds cross-repo context
 - Shadow Beads contain: summary, status (mirrored), pointer URI, and cross-repo dependencies
+- ShadowBeadBuilder pattern for creating from external sources (JIRA, GitHub)
 
 ### Manifest-Driven Configuration
 
@@ -294,13 +339,14 @@ Compatible with Google's git-repo tool but with AllBeads-specific annotations.
 2. **Diff Phase**: Compare Rig state with cached Boss state
 3. **Sync Phase**: Create/update Shadow Beads, push Boss directives to Rigs
 4. **External Sync**: Bi-directional sync with JIRA/GitHub
-5. **Sleep**: Configurable interval before next iteration
+5. **Mail Delivery**: Process pending agent messages
+6. **Sleep**: Configurable interval before next iteration
 
-## Common Rust Patterns for This Project
+## Common Rust Patterns in This Project
 
 ### Async Operations
 
-Most I/O (git, HTTP) should be async:
+Most I/O (git, HTTP) is async:
 
 ```rust
 use tokio;
@@ -320,6 +366,12 @@ let rig = Rig::builder()
     .persona("security-specialist")
     .prefix("auth")
     .build()?;
+
+let shadow = ShadowBead::external(id, summary, uri)
+    .with_status("open")
+    .with_priority(1)
+    .with_external_ref("jira:PROJ-123")
+    .build();
 ```
 
 ### Type-Safe IDs
@@ -346,17 +398,42 @@ fn load_config() -> anyhow::Result<Config> {
 }
 ```
 
+## CLI Commands Reference
+
+### Core Commands
+- `ab init` / `ab init --remote <url>` - Initialize or clone
+- `ab context add/list/remove` - Manage contexts
+- `ab list/show/ready/blocked` - View beads
+- `ab search` - Search with filters
+- `ab stats` - Aggregated statistics
+
+### Daemon Commands
+- `ab sheriff --foreground` - Run Sheriff daemon
+- `ab mail send/list/unread` - Agent Mail operations
+
+### Analysis Commands
+- `ab janitor <path>` - Analyze repository
+- `ab duplicates` - Find duplicate beads
+
+### Integration Commands
+- `ab jira status/pull` - JIRA integration
+- `ab github status/pull` - GitHub integration
+
+### TUI Commands
+- `ab tui` - Launch dashboard (Tab switches Kanban/Mail)
+
 ## References
 
 - **PRD**: `specs/PRD-00.md` - Complete architectural specification
+- **DEMO.md**: Usage examples and command reference
 - **Beads Project**: https://github.com/steveyegge/beads
-- **Gas Town**: https://github.com/steveyegge/gastown (inspiration for Rig/Mayor concepts)
 - **Rust Book**: https://doc.rust-lang.org/book/
 - **Tokio Docs**: https://tokio.rs/
 
 ## Project-Specific Notes
 
-- This is implementing a concept from the PRD - the PRD mentions Go, but we're using Rust
-- The PRD references bubbletea (Go TUI), we'll use ratatui (Rust equivalent)
-- Focus on implementing the Sheriff daemon first, then the TUI
-- The beads integration is critical - this tool manages beads, so deep familiarity with beads' JSONL format and SQLite schema will be essential
+- The PRD references Go and bubbletea, but we use Rust and ratatui
+- The beads integration is critical - deep familiarity with beads' JSONL format is essential
+- All async code uses tokio runtime
+- SQLite (rusqlite) is used for caching, mail storage, and locks
+- JIRA uses REST API v3, GitHub uses GraphQL for search + REST for mutations

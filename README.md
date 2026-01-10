@@ -12,64 +12,85 @@ AllBeads implements the "Boss Repository" pattern - a control plane that:
 - **Synchronizes state** bi-directionally with JIRA and GitHub Issues
 - **Visualizes cross-repo work** through a terminal-based dashboard
 - **Enables strategic coordination** between AI agents working across distributed codebases
+- **Provides agent-to-agent messaging** for distributed coordination
 
 Think of it as a "meta-issue-tracker" that sits above your microservices, giving agents and architects a coherent view of work spanning 10, 20, or 50+ repositories.
 
 ## Architecture
 
-AllBeads consists of four core components:
+AllBeads consists of five core components:
 
 ### 1. Sheriff Daemon
-Background service that:
+Background synchronization service that:
 - Polls member repositories for beads updates
 - Creates "Shadow Beads" in the Boss repo for Epic-level work
 - Syncs state with JIRA and GitHub Issues
 - Manages the federated dependency graph
+- Runs in foreground or background mode
 
 ### 2. Boss Board TUI
 Terminal-based dashboard providing:
-- Multi-view visualization (Kanban, Dependency Graph, Agent Status)
+- Multi-view visualization (Kanban, Mail views)
 - Real-time updates from the Sheriff daemon
 - Interactive navigation and filtering
 - Cross-repository dependency visualization
 
-### 3. Federated Graph
+### 3. Agent Mail System
+Distributed messaging protocol:
+- Message types: LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT
+- Postmaster daemon for message routing
+- Resource locking for coordination
+- SQLite-backed persistence
+
+### 4. Federated Graph
 Data structure representing:
 - Shadow Beads pointing to native beads in member repositories
 - Cross-repo dependencies (`bead://repo-name/bead-id` URIs)
 - Rig configurations (member repository metadata)
 - Aggregated work state across the entire organization
 
-### 4. Manifest System
-XML-based configuration defining:
-- Member repositories (location, branch, remote)
-- Agent personas (security-specialist, ux-designer, etc.)
-- Bead prefixes for namespacing
-- External integration mappings
+### 5. Enterprise Integration
+External system adapters:
+- **JIRA**: REST API adapter with JQL search and status sync
+- **GitHub**: GraphQL + REST API for issue management
+- **Plugin Architecture**: Extensible for Linear, Asana, etc.
 
 ## Current State
 
 **Phase 1 (The Reader) - Complete**
+- Multi-repository aggregation from git remotes (SSH and HTTPS)
+- SQLite cache layer with automatic expiration
+- Context-aware filtering (@work, @personal, etc.)
+- Full CLI with filtering, search, and display commands
+- Kanban TUI with keyboard navigation
+- bd JSONL format compatibility
 
-AllBeads provides read-only aggregation of multiple Boss repositories:
+**Phase 2 (The Mailroom) - Complete**
+- Message types (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
+- Postmaster daemon with SQLite storage
+- Message routing and delivery
+- Resource locking protocol
+- TUI Mail view integration
 
-- ✅ Multi-repository aggregation from git remotes (SSH and HTTPS)
-- ✅ SQLite cache layer with automatic expiration
-- ✅ Context-aware filtering (@work, @personal, etc.)
-- ✅ Full CLI with filtering, search, and display commands
-- ✅ Kanban TUI with keyboard navigation
-- ✅ bd JSONL format compatibility
-- ✅ Integration tests covering core functionality
+**Phase 3 (The Writer) - Complete**
+- Sheriff daemon with git sync (foreground mode)
+- `allbeads init --remote` for existing repositories
+- Janitor workflow for automated issue discovery
+- Full write-back to Boss repos
 
-**Phase 2 (The Mailroom) - In Progress**
+**Phase 4 (Enterprise Integration) - Complete**
+- JIRA bi-directional sync (REST API adapter)
+- GitHub Issues integration (GraphQL + REST)
+- External sync in Sheriff daemon
+- CLI commands: `ab jira`, `ab github`
+- Plugin architecture for extensibility
 
-Agent-to-agent messaging protocol:
+**Phase 5 (The Swarm) - In Progress**
+- Agent lifecycle management
+- Cost tracking and budget management
+- Advanced dependency resolution
 
-- ✅ Message types defined (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
-- ⬜ Postmaster daemon
-- ⬜ Message persistence and routing
-
-See [demo.md](demo.md) for usage examples and [ARCHITECTURE.md](ARCHITECTURE.md) for technical details.
+See [DEMO.md](DEMO.md) for usage examples.
 
 ## Getting Started
 
@@ -115,20 +136,21 @@ ab list
 # Filter by status
 ab list --status open
 
-# Filter by priority
-ab list --priority P1
-
 # Show ready-to-work beads (no blockers)
 ab ready
 
-# Show bead details
-ab show ab-123
-
 # Launch TUI (Kanban + Mail)
 ab tui
+
+# Run Sheriff daemon in foreground
+ab sheriff --foreground
+
+# Check JIRA/GitHub integration status
+ab jira status
+ab github status
 ```
 
-See [demo.md](demo.md) for more examples.
+See [DEMO.md](DEMO.md) for more examples.
 
 ### CLI Reference
 
@@ -137,6 +159,9 @@ See [demo.md](demo.md) for more examples.
 ```bash
 # Initialize AllBeads (creates ~/.config/allbeads/config.yaml)
 allbeads init
+
+# Initialize from existing remote repository
+allbeads init --remote git@github.com:org/boss-repo.git
 ```
 
 #### Context Management
@@ -174,27 +199,81 @@ allbeads list --status <status>
 # Filter by priority (P0-P4 or 0-4)
 allbeads list --priority <priority>
 
-# Filter by context
-allbeads list --context <context-name>
-
 # Show beads ready to work (no blockers)
 allbeads ready
 
+# Show blocked beads
+allbeads blocked
+
 # Show detailed information about a bead
 allbeads show <bead-id>
+
+# Search beads
+allbeads search "query"
+allbeads search --status open --type feature
 ```
 
-#### Kanban Board (TUI)
+#### Sheriff Daemon
 
 ```bash
-# Launch Kanban board
-allbeads kanban
+# Run in foreground (recommended for development)
+allbeads sheriff --foreground
+
+# Run with custom poll interval (seconds)
+allbeads sheriff --foreground --poll-interval 10
+
+# Run with specific manifest
+allbeads sheriff --manifest manifests/work.xml --foreground
+```
+
+#### Agent Mail
+
+```bash
+# Send a test notification
+allbeads mail send --to agent-1 --subject "Test" --body "Hello"
+
+# List messages for the human inbox
+allbeads mail list
+
+# Check unread count
+allbeads mail unread
+```
+
+#### Janitor Analysis
+
+```bash
+# Analyze repository for potential issues
+allbeads janitor /path/to/repo
+
+# Dry run (show what would be created)
+allbeads janitor /path/to/repo --dry-run
+```
+
+#### Enterprise Integration
+
+```bash
+# JIRA commands
+allbeads jira status                    # Check configuration
+allbeads jira pull --project PROJ --url https://company.atlassian.net
+
+# GitHub commands
+allbeads github status                  # Check configuration
+allbeads github pull --owner myorg      # Pull from organization
+allbeads github pull --owner myorg --repo myrepo  # Pull from specific repo
+```
+
+#### TUI Dashboard
+
+```bash
+# Launch TUI (Kanban + Mail views)
+allbeads tui
 
 # Keyboard shortcuts:
-#   j/k or ↑/↓    - Move up/down in current column
-#   h/l or ←/→    - Switch between columns
-#   Enter         - View bead details
-#   Esc           - Back to board
+#   Tab           - Switch between Kanban and Mail views
+#   j/k or Up/Down - Move up/down
+#   h/l or Left/Right - Switch columns (Kanban)
+#   Enter         - View details
+#   Esc           - Back
 #   q             - Quit
 ```
 
@@ -221,6 +300,13 @@ contexts:
     url: https://github.com/org/boss-work.git
     path: /Users/you/workspace/boss-work
     auth_strategy: ssh_agent
+    integrations:
+      jira:
+        url: https://company.atlassian.net
+        project: PROJ
+      github:
+        url: https://github.com
+        owner: myorg
 
   - name: personal
     type: git
@@ -251,16 +337,30 @@ AllBeads/
 │   ├── cache/              # SQLite caching
 │   ├── config/             # Configuration management
 │   ├── git/                # Git operations
-│   ├── graph/              # Bead graph data structures
+│   ├── graph/              # Bead/Shadow/Rig data structures
+│   ├── integrations/       # JIRA, GitHub adapters
+│   │   ├── jira.rs         # JIRA REST API client
+│   │   ├── github.rs       # GitHub GraphQL/REST client
+│   │   └── plugin.rs       # Plugin architecture
+│   ├── janitor/            # Automated issue discovery
 │   ├── mail/               # Agent Mail protocol
+│   │   ├── postmaster.rs   # Message routing
+│   │   ├── server.rs       # HTTP server
+│   │   └── locks.rs        # Resource locking
+│   ├── manifest/           # XML manifest parsing
+│   ├── sheriff/            # Sheriff daemon
+│   │   ├── daemon.rs       # Event loop
+│   │   ├── sync.rs         # State synchronization
+│   │   └── external_sync.rs # JIRA/GitHub sync
 │   ├── storage/            # JSONL parsing
-│   └── tui/                # Kanban TUI
+│   └── tui/                # Terminal UI
+│       ├── kanban.rs       # Kanban board view
+│       └── mail.rs         # Mail view
 ├── tests/
 │   └── integration_test.rs # Integration tests
 ├── .beads/                 # Issue tracking database
 ├── Cargo.toml              # Rust dependencies
 ├── CLAUDE.md               # AI agent development guide
-├── ARCHITECTURE.md         # Technical architecture
 └── README.md               # This file
 ```
 
@@ -290,10 +390,19 @@ A "Rig" is a member repository managed by the Boss. Each Rig:
 - May have an assigned agent persona (security-specialist, frontend-expert, etc.)
 - Contributes Shadow Beads for Epic-level work to the Boss graph
 
+### Agent Mail
+
+The messaging protocol enables agents to:
+- Send notifications between agents
+- Request and release resource locks
+- Broadcast announcements
+- Track heartbeats for agent health monitoring
+
 ## Documentation
 
-- **[PRD](specs/PRD-00.md)**: 20,000+ word architectural specification covering the Boss Repository pattern, Sheriff daemon, federated graph, TUI design, and enterprise integration strategy
-- **[CLAUDE.md](CLAUDE.md)**: Development guide for AI agents and developers, including Rust patterns, architecture overview, and common workflows
+- **[PRD](specs/PRD-00.md)**: 20,000+ word architectural specification
+- **[DEMO.md](DEMO.md)**: Usage examples and command reference
+- **[CLAUDE.md](CLAUDE.md)**: Development guide for AI agents
 
 ## Issue Tracking
 
@@ -301,7 +410,7 @@ This project uses [beads](https://github.com/steveyegge/beads) for issue trackin
 
 ```bash
 # Create a new issue
-bd create --title="Implement Sheriff daemon" --type=feature --priority=1
+bd create --title="Implement feature X" --type=feature --priority=1
 
 # List open issues
 bd list --status=open
@@ -320,35 +429,18 @@ Issues are prefixed with `ab-` (AllBeads).
 
 - **Language**: Rust (edition 2024)
 - **Async Runtime**: tokio
-- **TUI Framework**: ratatui
-- **Git Operations**: git2 or gix
+- **TUI Framework**: ratatui + crossterm
+- **Git Operations**: git2
 - **HTTP Client**: reqwest
 - **Error Handling**: anyhow + thiserror
 - **Serialization**: serde (JSON/YAML/XML)
-
-See [CLAUDE.md](CLAUDE.md) for complete list of recommended crates.
-
-## Inspiration & Related Projects
-
-- **[beads](https://github.com/steveyegge/beads)**: Git-native issue tracking for AI agents
-- **[Gas Town](https://github.com/steveyegge/gastown)**: Multi-agent workspace orchestration
-- **[Conductor](https://conductor.build)**: AI-powered development with git worktrees
-- **Google repo**: Multi-repository management tool
-
-AllBeads builds on these concepts to create a federated orchestration layer for enterprise-scale AI agent coordination.
+- **Database**: SQLite (rusqlite)
+- **Logging**: tracing
 
 ## Contributing
-
-This is an early-stage project. Key areas needing implementation:
-
-1. **Core data structures**: Shadow Bead, Rig, Federated Graph
-2. **Sheriff daemon**: Event loop, polling, sync logic
-3. **Manifest parser**: XML parsing compatible with git-repo standard
-4. **Boss Board TUI**: Terminal dashboard with multiple views
-5. **Integration adapters**: JIRA and GitHub sync
 
 See `bd ready` for current work items.
 
 ---
 
-*AllBeads: Orchestrating AI agent swarms across the polyrepo frontier* 🤖
+*AllBeads: Orchestrating AI agent swarms across the polyrepo frontier*

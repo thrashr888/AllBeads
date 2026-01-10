@@ -4,9 +4,11 @@
 
 mod app;
 pub mod mail_view;
+pub mod swarm_view;
 mod ui;
 
 pub use app::{App, Tab};
+pub use swarm_view::SwarmView;
 
 use crate::graph::FederatedGraph;
 use crate::Result;
@@ -97,6 +99,16 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Enter => app.mail_view.toggle_detail(),
                         KeyCode::Esc => app.mail_view.close_detail(),
                         KeyCode::Char('r') => app.mark_message_read(),
+                        _ => {}
+                    },
+                    Tab::Swarm => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.swarm_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.swarm_view.previous(),
+                        KeyCode::Enter => app.swarm_view.toggle_detail(),
+                        KeyCode::Esc => app.swarm_view.close_detail(),
+                        KeyCode::Char('p') => app.swarm_view.pause_selected(),
+                        KeyCode::Char('r') => app.swarm_view.resume_selected(),
+                        KeyCode::Char('x') => app.swarm_view.kill_selected(),
                         _ => {}
                     },
                 }

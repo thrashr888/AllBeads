@@ -33,6 +33,7 @@ pub mod integrations;
 pub mod mail;
 pub mod manifest;
 pub mod sheriff;
+pub mod swarm;
 
 // Re-exports
 pub use error::{AllBeadsError, Result};

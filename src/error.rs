@@ -85,6 +85,10 @@ pub enum AllBeadsError {
     #[error("Integration error: {0}")]
     Integration(String),
 
+    /// Swarm/Agent management errors
+    #[error("Swarm error: {0}")]
+    Swarm(String),
+
     /// Other errors
     #[error("{0}")]
     Other(String),

@@ -187,6 +187,10 @@ enum Commands {
     /// GitHub integration commands
     #[command(subcommand, name = "github")]
     GitHub(GitHubCommands),
+
+    /// Agent swarm management commands
+    #[command(subcommand)]
+    Swarm(SwarmCommands),
 }
 
 #[derive(Subcommand, Debug)]
@@ -253,6 +257,65 @@ enum GitHubCommands {
 
     /// Show GitHub configuration status
     Status,
+}
+
+#[derive(Subcommand, Debug)]
+enum SwarmCommands {
+    /// List all agents
+    List {
+        /// Filter by context
+        #[arg(short = 'c', long)]
+        context: Option<String>,
+
+        /// Only show active agents
+        #[arg(short, long)]
+        active: bool,
+    },
+
+    /// Show aggregated swarm statistics
+    Stats,
+
+    /// Set budget for a context
+    Budget {
+        /// Context name
+        context: String,
+
+        /// Budget limit in USD
+        limit: f64,
+    },
+
+    /// Spawn a test agent (for demonstration)
+    SpawnDemo {
+        /// Agent name
+        #[arg(default_value = "test-agent")]
+        name: String,
+
+        /// Context
+        #[arg(short = 'c', long, default_value = "default")]
+        context: String,
+
+        /// Agent persona (general, refactor-bot, test-writer, security-specialist)
+        #[arg(short, long, default_value = "general")]
+        persona: String,
+    },
+
+    /// Kill an agent
+    Kill {
+        /// Agent ID
+        id: String,
+    },
+
+    /// Pause an agent
+    Pause {
+        /// Agent ID
+        id: String,
+    },
+
+    /// Resume a paused agent
+    Resume {
+        /// Agent ID
+        id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -326,6 +389,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle GitHub commands (don't need graph)
     if let Commands::GitHub(ref github_cmd) = cli.command {
         return handle_github_command(github_cmd);
+    }
+
+    // Handle swarm commands (don't need graph)
+    if let Commands::Swarm(ref swarm_cmd) = cli.command {
+        return handle_swarm_command(swarm_cmd);
     }
 
     // Load configuration
@@ -930,9 +998,9 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) | Commands::Jira(_) | Commands::GitHub(_) => {
+        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) | Commands::Jira(_) | Commands::GitHub(_) | Commands::Swarm(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, and GitHub commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, and Swarm commands should be handled before aggregation")
         }
     }
 
@@ -2237,6 +2305,137 @@ fn handle_github_command(cmd: &GitHubCommands) -> allbeads::Result<()> {
             println!("Usage:");
             println!("  ab github pull --owner myorg");
             println!("  ab github pull --owner myorg --repo myrepo");
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
+    use allbeads::swarm::{AgentManager, AgentPersona, SpawnRequest};
+
+    // Create a shared agent manager (in a real app, this would be persisted)
+    let manager = AgentManager::new();
+
+    match cmd {
+        SwarmCommands::List { context, active } => {
+            let agents = if let Some(ctx) = context {
+                manager.list_by_context(ctx)
+            } else if *active {
+                manager.list_active()
+            } else {
+                manager.list()
+            };
+
+            if agents.is_empty() {
+                println!("No agents found.");
+                println!();
+                println!("Spawn a demo agent with: ab swarm spawn-demo");
+            } else {
+                println!("Agents ({}):", agents.len());
+                println!();
+                for agent in &agents {
+                    let status_emoji = agent.status.emoji();
+                    let rig_str = agent
+                        .rig
+                        .as_ref()
+                        .map(|r| format!(" [{}]", r))
+                        .unwrap_or_default();
+                    println!(
+                        "{} {} ({}) - {}{} - ${:.2} - {}",
+                        status_emoji,
+                        agent.name,
+                        agent.id,
+                        agent.persona,
+                        rig_str,
+                        agent.cost.total_usd,
+                        agent.format_runtime()
+                    );
+                    if !agent.status_message.is_empty() {
+                        println!("    {}", agent.status_message);
+                    }
+                }
+            }
+        }
+
+        SwarmCommands::Stats => {
+            let stats = manager.stats();
+
+            println!();
+            println!("Agent Swarm Statistics");
+            println!();
+            println!("Agents:");
+            println!("  Total:     {}", stats.total_agents);
+            println!("  Active:    {}", stats.active_agents);
+            println!("  Completed: {}", stats.completed_agents);
+            println!("  Errored:   {}", stats.errored_agents);
+            println!();
+            println!("Cost:");
+            println!("  Total:     ${:.2}", stats.total_cost);
+            if stats.total_budget > 0.0 {
+                println!("  Budget:    ${:.2}", stats.total_budget);
+                let percent = (stats.total_cost / stats.total_budget) * 100.0;
+                println!("  Used:      {:.1}%", percent);
+            }
+        }
+
+        SwarmCommands::Budget { context, limit } => {
+            manager.set_budget(context, *limit);
+            println!("Set budget for context '{}' to ${:.2}", context, limit);
+        }
+
+        SwarmCommands::SpawnDemo { name, context, persona } => {
+            let agent_persona = match persona.to_lowercase().as_str() {
+                "general" => AgentPersona::General,
+                "refactor-bot" | "refactorbot" => AgentPersona::RefactorBot,
+                "test-writer" | "testwriter" => AgentPersona::TestWriter,
+                "security-specialist" | "securityspecialist" => AgentPersona::SecuritySpecialist,
+                "frontend-expert" | "frontendexpert" => AgentPersona::FrontendExpert,
+                "backend-developer" | "backenddeveloper" => AgentPersona::BackendDeveloper,
+                "devops" => AgentPersona::DevOps,
+                "tech-writer" | "techwriter" => AgentPersona::TechWriter,
+                _ => AgentPersona::Custom(persona.clone()),
+            };
+
+            let request = SpawnRequest::new(name, context, "Demo task - exploring codebase")
+                .with_persona(agent_persona);
+
+            match manager.spawn(request) {
+                Ok(agent_id) => {
+                    println!("Spawned demo agent:");
+                    println!("  ID:      {}", agent_id);
+                    println!("  Name:    {}", name);
+                    println!("  Context: {}", context);
+                    println!("  Persona: {}", persona);
+                    println!();
+                    println!("Note: This is a demo agent - it will not actually perform any work.");
+                    println!("In a full implementation, agents would be connected to AI providers.");
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        SwarmCommands::Kill { id } => {
+            match manager.kill(id) {
+                Ok(()) => println!("Killed agent '{}'", id),
+                Err(e) => return Err(e),
+            }
+        }
+
+        SwarmCommands::Pause { id } => {
+            match manager.pause(id) {
+                Ok(()) => println!("Paused agent '{}'", id),
+                Err(e) => return Err(e),
+            }
+        }
+
+        SwarmCommands::Resume { id } => {
+            match manager.resume(id) {
+                Ok(()) => println!("Resumed agent '{}'", id),
+                Err(e) => return Err(e),
+            }
         }
     }
 
