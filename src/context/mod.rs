@@ -7,6 +7,6 @@ mod folder;
 mod status;
 mod tracked;
 
-pub use folder::{FolderConfig, TrackedFolder};
+pub use folder::{BeadsMode, FolderConfig, TrackedFolder};
 pub use status::FolderStatus;
-pub use tracked::{Context, ContextDefaults, DetectedInfo};
+pub use tracked::{Context, ContextDefaults, DetectedInfo, Framework, Language};

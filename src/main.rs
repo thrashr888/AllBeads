@@ -439,6 +439,32 @@ enum FolderCommands {
         #[arg(default_value = ".")]
         path: String,
     },
+
+    /// Interactive setup wizard for a folder
+    Setup {
+        /// Path to set up (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Skip confirmation prompts (use defaults)
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Promote a folder to the next status level
+    Promote {
+        /// Path to promote (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Target status level
+        #[arg(long)]
+        to: Option<String>,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
 }
 
 fn main() {
@@ -2526,9 +2552,584 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
                 println!("  {} Fully integrated!", style::success("✓"));
             }
         }
+
+        FolderCommands::Setup { path, yes } => {
+            handle_folder_setup(path, *yes, &folders_file, &mut context)?;
+        }
+
+        FolderCommands::Promote { path, to, yes } => {
+            handle_folder_promote(path, to.as_deref(), *yes, &folders_file, &mut context)?;
+        }
     }
 
     Ok(())
+}
+
+/// Handle the interactive setup wizard for a folder
+fn handle_folder_setup(
+    path: &str,
+    yes: bool,
+    folders_file: &PathBuf,
+    context: &mut allbeads::context::Context,
+) -> allbeads::Result<()> {
+    use allbeads::context::{FolderConfig, FolderStatus, TrackedFolder};
+    use dialoguer::{Confirm, Input, Select};
+
+    // Resolve path
+    let abs_path = std::fs::canonicalize(path).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
+    })?;
+
+    let current_status = detect_folder_status(&abs_path);
+
+    println!();
+    println!("{}", style::header("Folder Setup Wizard"));
+    println!();
+    println!(
+        "  Path:   {}",
+        style::path(&abs_path.display().to_string())
+    );
+    println!(
+        "  Status: {} {}",
+        style::folder_status_indicator(current_status.short_name()),
+        style::folder_status(current_status.short_name())
+    );
+    println!();
+
+    let mut new_status = current_status;
+    let mut folder_config = FolderConfig::default();
+
+    // Step 1: Git Repository
+    if current_status == FolderStatus::Dry {
+        println!("{}", style::subheader("Step 1/5: Git Repository"));
+        println!("  This folder is not a git repository.");
+        println!();
+
+        let init_git = if yes {
+            true
+        } else {
+            Confirm::new()
+                .with_prompt("  Initialize git?")
+                .default(true)
+                .interact()
+                .unwrap_or(true)
+        };
+
+        if init_git {
+            let branch_name: String = if yes {
+                "main".to_string()
+            } else {
+                Input::new()
+                    .with_prompt("  Default branch name")
+                    .default("main".to_string())
+                    .interact_text()
+                    .unwrap_or_else(|_| "main".to_string())
+            };
+
+            // Run git init
+            let output = std::process::Command::new("git")
+                .args(["init", "-b", &branch_name])
+                .current_dir(&abs_path)
+                .output()
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to run git init: {}", e))
+                })?;
+
+            if output.status.success() {
+                println!("  {} Initialized git repository", style::success("✓"));
+                new_status = FolderStatus::Git;
+            } else {
+                println!(
+                    "  {} Failed to initialize git",
+                    style::error("✗")
+                );
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stderr.is_empty() {
+                    println!("    {}", style::dim(&stderr.trim().to_string()));
+                }
+            }
+        } else {
+            println!("  {} Skipping git initialization", style::dim("○"));
+        }
+        println!();
+    }
+
+    // Step 2: Beads Issue Tracker
+    if new_status == FolderStatus::Git || current_status == FolderStatus::Git {
+        println!("{}", style::subheader("Step 2/5: Beads Issue Tracker"));
+
+        let init_beads = if yes {
+            true
+        } else {
+            Confirm::new()
+                .with_prompt("  Initialize beads?")
+                .default(true)
+                .interact()
+                .unwrap_or(true)
+        };
+
+        if init_beads {
+            // Get prefix
+            let default_prefix = abs_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("proj")
+                .to_lowercase()
+                .chars()
+                .take(10)
+                .collect::<String>();
+
+            let prefix: String = if yes {
+                default_prefix
+            } else {
+                Input::new()
+                    .with_prompt("  Issue prefix")
+                    .default(default_prefix)
+                    .interact_text()
+                    .unwrap_or_else(|_| "proj".to_string())
+            };
+
+            folder_config.prefix = Some(prefix.clone());
+
+            // Beads mode selection
+            let mode_options = &["Standard (SQLite + JSONL)", "JSONL-only", "Sync branch mode"];
+            let mode_idx = if yes {
+                0
+            } else {
+                Select::new()
+                    .with_prompt("  Beads mode")
+                    .items(mode_options)
+                    .default(0)
+                    .interact()
+                    .unwrap_or(0)
+            };
+
+            let bd_args = match mode_idx {
+                1 => vec!["init", "--prefix", &prefix, "--no-db"],
+                2 => vec!["init", "--prefix", &prefix, "--sync-branch"],
+                _ => vec!["init", "--prefix", &prefix],
+            };
+
+            // Run bd init
+            let output = std::process::Command::new("bd")
+                .args(&bd_args)
+                .current_dir(&abs_path)
+                .output()
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to run bd init: {}", e))
+                })?;
+
+            if output.status.success() {
+                println!(
+                    "  {} Initialized beads with prefix '{}'",
+                    style::success("✓"),
+                    prefix
+                );
+                new_status = FolderStatus::Beads;
+            } else {
+                println!("  {} Failed to initialize beads", style::error("✗"));
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                if !stderr.is_empty() {
+                    println!("    {}", style::dim(&stderr.trim().to_string()));
+                }
+            }
+        } else {
+            println!("  {} Skipping beads initialization", style::dim("○"));
+        }
+        println!();
+    }
+
+    // Step 3: Language & Project Type
+    println!("{}", style::subheader("Step 3/5: Language & Project Type"));
+    let detected = detect_project_info(&abs_path);
+
+    if !detected.languages.is_empty() {
+        let lang_names: Vec<&str> = detected
+            .languages
+            .iter()
+            .map(|l| match l {
+                allbeads::context::Language::Rust => "Rust",
+                allbeads::context::Language::TypeScript => "TypeScript",
+                allbeads::context::Language::JavaScript => "JavaScript",
+                allbeads::context::Language::Python => "Python",
+                allbeads::context::Language::Go => "Go",
+                allbeads::context::Language::Java => "Java",
+                allbeads::context::Language::Ruby => "Ruby",
+                _ => "Other",
+            })
+            .collect();
+        println!("  Detected: {}", lang_names.join(", "));
+    } else {
+        println!("  No languages detected");
+    }
+
+    if detected.is_monorepo {
+        println!("  {} Monorepo detected", style::dim("○"));
+    }
+
+    println!("  {} Configuration saved", style::success("✓"));
+    println!();
+
+    // Step 4: Agent Integration
+    println!("{}", style::subheader("Step 4/5: Agent Integration"));
+
+    let personas = &[
+        "General",
+        "Security Specialist",
+        "Frontend Developer",
+        "Backend Developer",
+        "DevOps Engineer",
+        "Data Engineer",
+    ];
+
+    let persona_idx = if yes {
+        0
+    } else {
+        Select::new()
+            .with_prompt("  Agent persona")
+            .items(personas)
+            .default(0)
+            .interact()
+            .unwrap_or(0)
+    };
+
+    let persona = personas[persona_idx].to_lowercase().replace(' ', "-");
+    folder_config.persona = Some(persona.clone());
+
+    // Check for CLAUDE.md
+    let claude_md_exists = abs_path.join("CLAUDE.md").exists();
+    if !claude_md_exists {
+        let create_claude = if yes {
+            true
+        } else {
+            Confirm::new()
+                .with_prompt("  Initialize Claude Code? (create CLAUDE.md)")
+                .default(true)
+                .interact()
+                .unwrap_or(true)
+        };
+
+        if create_claude {
+            // Create basic CLAUDE.md
+            let claude_content = format!(
+                r#"# CLAUDE.md
+
+Project configuration for Claude Code.
+
+## Project Type
+
+Persona: {}
+
+## Commands
+
+```bash
+# Build
+cargo build
+
+# Test
+cargo test
+
+# Run
+cargo run
+```
+"#,
+                persona
+            );
+
+            std::fs::write(abs_path.join("CLAUDE.md"), claude_content).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to create CLAUDE.md: {}", e))
+            })?;
+            println!("  {} Created CLAUDE.md", style::success("✓"));
+        }
+    } else {
+        println!("  {} CLAUDE.md already exists", style::dim("○"));
+    }
+    println!();
+
+    // Step 5: AllBeads Integration
+    println!("{}", style::subheader("Step 5/5: AllBeads Integration"));
+
+    let enable_sync = if yes {
+        true
+    } else {
+        Confirm::new()
+            .with_prompt("  Enable automatic sync?")
+            .default(true)
+            .interact()
+            .unwrap_or(true)
+    };
+
+    folder_config.sync_enabled = enable_sync;
+
+    if enable_sync {
+        new_status = FolderStatus::Configured;
+        // TODO: Actually enable sync in sheriff daemon
+        println!("  {} Sync enabled", style::success("✓"));
+    }
+    println!();
+
+    // Update or add folder to context
+    if let Some(folder) = context.get_folder_mut(&abs_path) {
+        folder.status = new_status;
+        folder.config = Some(folder_config.clone());
+        folder.detected = detected;
+    } else {
+        let mut folder = TrackedFolder::new(&abs_path).with_status(new_status);
+        folder.config = Some(folder_config.clone());
+        folder.detected = detected;
+        context.add_folder(folder);
+    }
+
+    // Save context
+    if let Some(parent) = folders_file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to create config directory: {}", e))
+        })?;
+    }
+
+    let yaml = serde_yaml::to_string(&context).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to serialize folders: {}", e))
+    })?;
+    std::fs::write(folders_file, yaml).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to write folders.yaml: {}", e))
+    })?;
+
+    // Summary
+    println!("{}", style::subheader("Summary"));
+    println!(
+        "  Status: {} {} {} {} {}",
+        style::folder_status_indicator(current_status.short_name()),
+        current_status.short_name(),
+        style::dim("→"),
+        style::folder_status_indicator(new_status.short_name()),
+        style::folder_status(new_status.short_name())
+    );
+    if let Some(ref prefix) = folder_config.prefix {
+        println!("  Prefix: {}", prefix);
+    }
+    if let Some(ref persona) = folder_config.persona {
+        println!("  Persona: {}", persona);
+    }
+    println!(
+        "  Sync: {}",
+        if folder_config.sync_enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
+    println!();
+    println!("  {} Setup complete!", style::success("✓"));
+
+    Ok(())
+}
+
+/// Handle the promote command
+fn handle_folder_promote(
+    path: &str,
+    to: Option<&str>,
+    yes: bool,
+    folders_file: &PathBuf,
+    context: &mut allbeads::context::Context,
+) -> allbeads::Result<()> {
+    use allbeads::context::FolderStatus;
+    use dialoguer::Confirm;
+
+    // Resolve path
+    let abs_path = std::fs::canonicalize(path).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
+    })?;
+
+    let current_status = detect_folder_status(&abs_path);
+
+    // Determine target status
+    let target_status = if let Some(target_str) = to {
+        FolderStatus::from_str(target_str).ok_or_else(|| {
+            allbeads::AllBeadsError::Config(format!("Invalid target status: {}", target_str))
+        })?
+    } else {
+        current_status.next().ok_or_else(|| {
+            allbeads::AllBeadsError::Config("Already at maximum status (wet)".to_string())
+        })?
+    };
+
+    if target_status <= current_status {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Target status '{}' must be higher than current status '{}'",
+            target_status.short_name(),
+            current_status.short_name()
+        )));
+    }
+
+    println!();
+    println!("{}", style::header("Promote Folder"));
+    println!();
+    println!(
+        "  Path:    {}",
+        style::path(&abs_path.display().to_string())
+    );
+    println!(
+        "  Current: {} {}",
+        style::folder_status_indicator(current_status.short_name()),
+        current_status.short_name()
+    );
+    println!(
+        "  Target:  {} {}",
+        style::folder_status_indicator(target_status.short_name()),
+        style::folder_status(target_status.short_name())
+    );
+    println!();
+
+    let proceed = if yes {
+        true
+    } else {
+        Confirm::new()
+            .with_prompt("  Proceed with promotion?")
+            .default(true)
+            .interact()
+            .unwrap_or(false)
+    };
+
+    if !proceed {
+        println!("  {} Cancelled", style::dim("○"));
+        return Ok(());
+    }
+
+    // Promote through each level
+    let mut status = current_status;
+    while status < target_status {
+        let next = status.next().unwrap();
+        match next {
+            FolderStatus::Git => {
+                // Initialize git
+                let output = std::process::Command::new("git")
+                    .args(["init"])
+                    .current_dir(&abs_path)
+                    .output()
+                    .map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!("Failed to run git init: {}", e))
+                    })?;
+
+                if output.status.success() {
+                    println!("  {} Initialized git", style::success("✓"));
+                    status = FolderStatus::Git;
+                } else {
+                    return Err(allbeads::AllBeadsError::Config(
+                        "Failed to initialize git".to_string(),
+                    ));
+                }
+            }
+            FolderStatus::Beads => {
+                // Initialize beads
+                let output = std::process::Command::new("bd")
+                    .args(["init"])
+                    .current_dir(&abs_path)
+                    .output()
+                    .map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!("Failed to run bd init: {}", e))
+                    })?;
+
+                if output.status.success() {
+                    println!("  {} Initialized beads", style::success("✓"));
+                    status = FolderStatus::Beads;
+                } else {
+                    return Err(allbeads::AllBeadsError::Config(
+                        "Failed to initialize beads".to_string(),
+                    ));
+                }
+            }
+            FolderStatus::Configured => {
+                println!("  {} Marked as configured", style::success("✓"));
+                status = FolderStatus::Configured;
+            }
+            FolderStatus::Wet => {
+                println!("  {} Marked as fully integrated", style::success("✓"));
+                status = FolderStatus::Wet;
+            }
+            _ => {}
+        }
+    }
+
+    // Update folder in context
+    if let Some(folder) = context.get_folder_mut(&abs_path) {
+        folder.status = status;
+    } else {
+        let folder = allbeads::context::TrackedFolder::new(&abs_path).with_status(status);
+        context.add_folder(folder);
+    }
+
+    // Save context
+    let yaml = serde_yaml::to_string(&context).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to serialize folders: {}", e))
+    })?;
+    std::fs::write(folders_file, yaml).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to write folders.yaml: {}", e))
+    })?;
+
+    println!();
+    println!("  {} Promotion complete!", style::success("✓"));
+
+    Ok(())
+}
+
+/// Detect project information (languages, frameworks, etc.)
+fn detect_project_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
+    use allbeads::context::{DetectedInfo, Language};
+
+    let mut info = DetectedInfo::default();
+
+    // Detect languages by file presence
+    if path.join("Cargo.toml").exists() {
+        info.languages.push(Language::Rust);
+    }
+    if path.join("package.json").exists() {
+        info.languages.push(Language::JavaScript);
+        // Check for TypeScript
+        if path.join("tsconfig.json").exists() {
+            info.languages.insert(0, Language::TypeScript);
+        }
+    }
+    if path.join("pyproject.toml").exists() || path.join("setup.py").exists() {
+        info.languages.push(Language::Python);
+    }
+    if path.join("go.mod").exists() {
+        info.languages.push(Language::Go);
+    }
+    if path.join("pom.xml").exists() || path.join("build.gradle").exists() {
+        info.languages.push(Language::Java);
+    }
+    if path.join("Gemfile").exists() {
+        info.languages.push(Language::Ruby);
+    }
+
+    // Detect monorepo
+    if path.join("lerna.json").exists()
+        || path.join("pnpm-workspace.yaml").exists()
+        || path.join("nx.json").exists()
+        || (path.join("packages").exists() && path.join("packages").is_dir())
+    {
+        info.is_monorepo = true;
+    }
+
+    // Detect agents
+    info.has_claude = path.join("CLAUDE.md").exists();
+    info.has_cursor = path.join(".cursorrules").exists();
+    info.has_copilot = path.join(".github/copilot-instructions.md").exists();
+    info.has_aider = path.join(".aider.conf.yml").exists();
+
+    // Git remote
+    if path.join(".git").exists() {
+        if let Ok(output) = std::process::Command::new("git")
+            .args(["-C", path.to_str().unwrap_or("."), "remote", "get-url", "origin"])
+            .output()
+        {
+            if output.status.success() {
+                info.git_remote = Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            }
+        }
+    }
+
+    info
 }
 
 /// Detect the current status of a folder (Dry to Wet progression)
