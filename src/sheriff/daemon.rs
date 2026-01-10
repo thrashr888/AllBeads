@@ -253,15 +253,13 @@ impl Sheriff {
 
     /// Initialize rigs from manifest
     fn init_rigs_from_manifest(&mut self) -> Result<()> {
-        let manifest = self.manifest.as_ref().ok_or_else(|| {
-            crate::AllBeadsError::Config("No manifest loaded".to_string())
-        })?;
+        let manifest = self
+            .manifest
+            .as_ref()
+            .ok_or_else(|| crate::AllBeadsError::Config("No manifest loaded".to_string()))?;
 
         for project in &manifest.projects {
-            let rig_id = project
-                .prefix()
-                .unwrap_or(&project.path)
-                .to_string();
+            let rig_id = project.prefix().unwrap_or(&project.path).to_string();
 
             let path = self.config.boss_repo_path.join(&project.path);
 
@@ -280,7 +278,12 @@ impl Sheriff {
     }
 
     /// Add a rig manually (without manifest)
-    pub fn add_rig(&mut self, id: impl Into<String>, path: impl Into<PathBuf>, context: impl Into<String>) {
+    pub fn add_rig(
+        &mut self,
+        id: impl Into<String>,
+        path: impl Into<PathBuf>,
+        context: impl Into<String>,
+    ) {
         let id = id.into();
         let state = RigState {
             id: RigId::new(&id),
@@ -298,9 +301,10 @@ impl Sheriff {
         let _ = self.event_tx.send(SheriffEvent::Started);
 
         let mut interval = tokio::time::interval(self.config.poll_interval);
-        let mut command_rx = self.command_rx.take().ok_or_else(|| {
-            crate::AllBeadsError::Config("Daemon already running".to_string())
-        })?;
+        let mut command_rx = self
+            .command_rx
+            .take()
+            .ok_or_else(|| crate::AllBeadsError::Config("Daemon already running".to_string()))?;
 
         loop {
             tokio::select! {
@@ -384,9 +388,10 @@ impl Sheriff {
 
     /// Sync a single rig
     fn sync_rig(&mut self, rig_id: &str) -> Result<SyncResult> {
-        let state = self.rigs.get(rig_id).ok_or_else(|| {
-            crate::AllBeadsError::Config(format!("Rig not found: {}", rig_id))
-        })?;
+        let state = self
+            .rigs
+            .get(rig_id)
+            .ok_or_else(|| crate::AllBeadsError::Config(format!("Rig not found: {}", rig_id)))?;
 
         // Check if rig path exists
         if !state.path.exists() {
@@ -400,12 +405,8 @@ impl Sheriff {
         let existing_shadows = state.shadows.clone();
 
         // Sync rig to shadows
-        let (result, new_shadows) = sync_rig_to_shadows(
-            &state.path,
-            rig_id,
-            &state.context,
-            existing_shadows,
-        )?;
+        let (result, new_shadows) =
+            sync_rig_to_shadows(&state.path, rig_id, &state.context, existing_shadows)?;
 
         // Update state
         if let Some(state) = self.rigs.get_mut(rig_id) {
@@ -427,9 +428,8 @@ impl Sheriff {
     /// Update global shadows list after a rig sync
     fn update_shadows(&mut self, rig_id: &str, new_shadows: Vec<ShadowBead>) {
         // Remove old shadows for this rig
-        self.shadows.retain(|s| {
-            !s.pointer.as_str().contains(&format!("bead://{}/", rig_id))
-        });
+        self.shadows
+            .retain(|s| !s.pointer.as_str().contains(&format!("bead://{}/", rig_id)));
 
         // Add new shadows
         self.shadows.extend(new_shadows);

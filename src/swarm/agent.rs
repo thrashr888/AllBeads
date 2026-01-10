@@ -50,7 +50,10 @@ impl AgentStatus {
 
     /// Check if agent is actively running
     pub fn is_active(&self) -> bool {
-        matches!(self, Self::Starting | Self::Running | Self::Waiting | Self::Paused)
+        matches!(
+            self,
+            Self::Starting | Self::Running | Self::Waiting | Self::Paused
+        )
     }
 
     /// Check if agent has finished (successfully or not)
@@ -60,10 +63,11 @@ impl AgentStatus {
 }
 
 /// Agent type/persona
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentPersona {
     /// General-purpose agent
+    #[default]
     General,
 
     /// Security specialist
@@ -89,12 +93,6 @@ pub enum AgentPersona {
 
     /// Custom persona with name
     Custom(String),
-}
-
-impl Default for AgentPersona {
-    fn default() -> Self {
-        Self::General
-    }
 }
 
 impl std::fmt::Display for AgentPersona {
@@ -357,7 +355,11 @@ pub struct SpawnRequest {
 
 impl SpawnRequest {
     /// Create a new spawn request
-    pub fn new(name: impl Into<String>, context: impl Into<String>, task: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        context: impl Into<String>,
+        task: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             persona: AgentPersona::default(),

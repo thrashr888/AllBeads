@@ -226,7 +226,10 @@ fn create_message_list_item(msg: &StoredMessage) -> ListItem<'static> {
         MessageType::Request(r) => r.message.clone(),
         MessageType::Broadcast(b) => b.message.clone(),
         MessageType::Heartbeat(h) => format!("Status: {:?}", h.status),
-        MessageType::Response(r) => r.message.clone().unwrap_or_else(|| format!("{:?}", r.status)),
+        MessageType::Response(r) => r
+            .message
+            .clone()
+            .unwrap_or_else(|| format!("{:?}", r.status)),
     };
 
     let from = msg.message.from.to_string();

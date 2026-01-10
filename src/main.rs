@@ -35,7 +35,6 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     // === Setup & Configuration ===
-
     /// Initialize AllBeads configuration or clone a remote repo
     Init {
         /// Remote repository URL to clone and initialize
@@ -65,7 +64,6 @@ enum Commands {
     ClearCache,
 
     // === Viewing Beads ===
-
     /// List beads with optional filters
     List {
         /// Filter by status (open, in_progress, blocked, closed)
@@ -101,7 +99,6 @@ enum Commands {
     Stats,
 
     // === Analysis & Search ===
-
     /// Search beads by text (title, description, notes)
     Search {
         /// Search query (optional with filters)
@@ -171,12 +168,10 @@ enum Commands {
     },
 
     // === TUI & Interface ===
-
     /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
     Tui,
 
     // === Agent Integration ===
-
     /// Show project info and status for AI agents
     Info,
 
@@ -205,7 +200,6 @@ enum Commands {
     Swarm(SwarmCommands),
 
     // === Daemons & Sync ===
-
     /// Run the Sheriff daemon (background sync)
     Sheriff {
         /// Path to manifest file (manifests/default.xml)
@@ -222,7 +216,6 @@ enum Commands {
     },
 
     // === Enterprise Integration ===
-
     /// JIRA integration commands
     #[command(subcommand)]
     Jira(JiraCommands),
@@ -406,7 +399,12 @@ fn main() {
 
 fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle init command first (creates config)
-    if let Commands::Init { remote, target, janitor } = &cli.command {
+    if let Commands::Init {
+        remote,
+        target,
+        janitor,
+    } = &cli.command
+    {
         return handle_init_command(&cli.config, remote.as_deref(), target.as_deref(), *janitor);
     }
 
@@ -718,7 +716,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                         .as_ref()
                         .map(|s| {
                             let matches = b.status == *s;
-                            if status_negated { !matches } else { matches }
+                            if status_negated {
+                                !matches
+                            } else {
+                                matches
+                            }
                         })
                         .unwrap_or(true);
 
@@ -740,7 +742,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                         .as_ref()
                         .map(|t| {
                             let matches = b.issue_type == *t;
-                            if type_negated { !matches } else { matches }
+                            if type_negated {
+                                !matches
+                            } else {
+                                matches
+                            }
                         })
                         .unwrap_or(true);
 
@@ -778,7 +784,9 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                 "updated" => results.sort_by(|a, b| a.updated_at.cmp(&b.updated_at)),
                 "status" => results.sort_by_key(|b| status_to_sort_key(b.status)),
                 "id" => results.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str())),
-                "title" => results.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())),
+                "title" => {
+                    results.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()))
+                }
                 "type" => results.sort_by_key(|b| format!("{:?}", b.issue_type)),
                 _ => results.sort_by_key(|b| (b.priority, status_to_sort_key(b.status))),
             }
@@ -1062,7 +1070,15 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             handle_onboard_command(full, &graph)?;
         }
 
-        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) | Commands::Jira(_) | Commands::GitHub(_) | Commands::Swarm(_) | Commands::Quickstart | Commands::Setup | Commands::Human { .. } => {
+        Commands::Context(_)
+        | Commands::Init { .. }
+        | Commands::Mail(_)
+        | Commands::Jira(_)
+        | Commands::GitHub(_)
+        | Commands::Swarm(_)
+        | Commands::Quickstart
+        | Commands::Setup
+        | Commands::Human { .. } => {
             // Handled earlier in the function
             unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Quickstart, Setup, and Human commands should be handled before aggregation")
         }
@@ -1161,9 +1177,8 @@ fn handle_remote_init(
     println!("Cloning {} to {}...", remote_url, target_dir.display());
 
     // Clone the repository
-    let _repo = git2::Repository::clone(remote_url, &target_dir).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to clone repository: {}", e))
-    })?;
+    let _repo = git2::Repository::clone(remote_url, &target_dir)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to clone repository: {}", e)))?;
 
     println!("✓ Repository cloned");
 
@@ -1257,7 +1272,10 @@ fn run_janitor_analysis(repo_path: &PathBuf) -> allbeads::Result<()> {
     }
 
     if todo_patterns.len() > 10 {
-        println!("  ... and {} more TODOs found (limited to 10)", todo_patterns.len() - 10);
+        println!(
+            "  ... and {} more TODOs found (limited to 10)",
+            todo_patterns.len() - 10
+        );
     }
 
     // Commit janitor findings if we created any
@@ -1265,7 +1283,10 @@ fn run_janitor_analysis(repo_path: &PathBuf) -> allbeads::Result<()> {
         let boss_repo = BossRepo::from_local(repo_path)?;
         boss_repo.add_beads()?;
         boss_repo.commit(
-            &format!("Janitor: Created {} issues from codebase analysis", created_count),
+            &format!(
+                "Janitor: Created {} issues from codebase analysis",
+                created_count
+            ),
             "AllBeads Janitor",
             "janitor@allbeads.dev",
         )?;
@@ -1279,7 +1300,7 @@ fn run_janitor_analysis(repo_path: &PathBuf) -> allbeads::Result<()> {
 }
 
 /// Scan repository for TODO/FIXME comments
-fn scan_for_todos(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, String)>> {
+fn scan_for_todos(repo_path: &std::path::Path) -> allbeads::Result<Vec<(String, usize, String)>> {
     let mut results = Vec::new();
 
     // Walk directory looking for source files
@@ -1318,8 +1339,22 @@ fn scan_for_todos(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, S
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
         matches!(
             ext,
-            "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "go" | "java" | "c" | "cpp" | "h" | "hpp"
-                | "rb" | "php" | "swift" | "kt" | "scala"
+            "rs" | "py"
+                | "js"
+                | "ts"
+                | "tsx"
+                | "jsx"
+                | "go"
+                | "java"
+                | "c"
+                | "cpp"
+                | "h"
+                | "hpp"
+                | "rb"
+                | "php"
+                | "swift"
+                | "kt"
+                | "scala"
         )
     }
 
@@ -1337,7 +1372,10 @@ fn scan_for_todos(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, S
 
         for (line_num, line) in content.lines().enumerate() {
             let line_upper = line.to_uppercase();
-            if line_upper.contains("TODO") || line_upper.contains("FIXME") || line_upper.contains("HACK") {
+            if line_upper.contains("TODO")
+                || line_upper.contains("FIXME")
+                || line_upper.contains("HACK")
+            {
                 // Extract the comment text
                 let text = line.trim().to_string();
                 if !text.is_empty() && results.len() < 100 {
@@ -1348,15 +1386,17 @@ fn scan_for_todos(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, S
         Ok(())
     }
 
-    walk_dir(repo_path, repo_path, &mut results).map_err(|e| {
-        allbeads::AllBeadsError::Io(e)
-    })?;
+    walk_dir(repo_path, repo_path, &mut results).map_err(allbeads::AllBeadsError::Io)?;
 
     Ok(results)
 }
 
 /// Run comprehensive janitor analysis on a repository
-fn run_full_janitor_analysis(repo_path: &PathBuf, verbose: bool, dry_run: bool) -> allbeads::Result<()> {
+fn run_full_janitor_analysis(
+    repo_path: &PathBuf,
+    verbose: bool,
+    dry_run: bool,
+) -> allbeads::Result<()> {
     use allbeads::git::BossRepo;
     use allbeads::storage::BeadsRepo;
 
@@ -1413,7 +1453,8 @@ fn run_full_janitor_analysis(repo_path: &PathBuf, verbose: bool, dry_run: bool) 
         findings.push(JanitorFinding {
             category: "Security",
             title: "Add SECURITY.md policy".to_string(),
-            description: "Repository is missing a security vulnerability reporting policy.".to_string(),
+            description: "Repository is missing a security vulnerability reporting policy."
+                .to_string(),
             issue_type: "chore",
             priority: 3,
         });
@@ -1456,7 +1497,13 @@ fn run_full_janitor_analysis(repo_path: &PathBuf, verbose: bool, dry_run: bool) 
         let is_hack = text.to_uppercase().contains("HACK");
 
         findings.push(JanitorFinding {
-            category: if is_fixme { "Bug" } else if is_hack { "Tech Debt" } else { "Task" },
+            category: if is_fixme {
+                "Bug"
+            } else if is_hack {
+                "Tech Debt"
+            } else {
+                "Task"
+            },
             title,
             description: format!("Found at {}:{}\n{}", file, line, text),
             issue_type: if is_fixme { "bug" } else { "task" },
@@ -1465,7 +1512,10 @@ fn run_full_janitor_analysis(repo_path: &PathBuf, verbose: bool, dry_run: bool) 
     }
 
     if todos.len() > 20 {
-        println!("  Found {} more code comments (showing first 20)", todos.len() - 20);
+        println!(
+            "  Found {} more code comments (showing first 20)",
+            todos.len() - 20
+        );
     }
 
     // Check for potential security issues (basic patterns)
@@ -1486,7 +1536,8 @@ fn run_full_janitor_analysis(repo_path: &PathBuf, verbose: bool, dry_run: bool) 
     println!("=== Janitor Analysis Summary ===");
     println!();
 
-    let mut by_category: std::collections::HashMap<&str, Vec<&JanitorFinding>> = std::collections::HashMap::new();
+    let mut by_category: std::collections::HashMap<&str, Vec<&JanitorFinding>> =
+        std::collections::HashMap::new();
     for finding in &findings {
         by_category
             .entry(finding.category)
@@ -1557,7 +1608,7 @@ struct JanitorFinding {
 }
 
 /// Detect programming languages used in the project
-fn detect_project_languages(repo_path: &PathBuf) -> Vec<&'static str> {
+fn detect_project_languages(repo_path: &std::path::Path) -> Vec<&'static str> {
     let mut langs = Vec::new();
 
     // Rust
@@ -1603,10 +1654,10 @@ fn detect_project_languages(repo_path: &PathBuf) -> Vec<&'static str> {
 /// Get expected test directories for a language
 fn get_test_directories(lang: &str) -> Vec<&'static str> {
     match lang {
-        "Rust" => vec!["tests", "src"],  // Rust uses tests/ or inline tests
+        "Rust" => vec!["tests", "src"], // Rust uses tests/ or inline tests
         "Python" => vec!["tests", "test"],
         "JavaScript" | "TypeScript" => vec!["tests", "test", "__tests__", "spec"],
-        "Go" => vec!["."],  // Go tests are alongside code
+        "Go" => vec!["."], // Go tests are alongside code
         "Java" => vec!["src/test"],
         "Ruby" => vec!["test", "spec"],
         _ => vec!["tests", "test"],
@@ -1614,13 +1665,21 @@ fn get_test_directories(lang: &str) -> Vec<&'static str> {
 }
 
 /// Scan for potential security patterns
-fn scan_for_security_patterns(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, String, String)>> {
+fn scan_for_security_patterns(
+    repo_path: &std::path::Path,
+) -> allbeads::Result<Vec<(String, usize, String, String)>> {
     let mut results = Vec::new();
 
     // Patterns that might indicate security issues
     let patterns = [
-        ("hardcoded secret", r#"(?i)(password|secret|api_key|apikey|token)\s*=\s*["'][^"']+["']"#),
-        ("SQL injection risk", r#"(?i)execute\s*\(\s*["'].*\+|format!\s*\([^)]*\{[^}]*\}[^)]*sql"#),
+        (
+            "hardcoded secret",
+            r#"(?i)(password|secret|api_key|apikey|token)\s*=\s*["'][^"']+["']"#,
+        ),
+        (
+            "SQL injection risk",
+            r#"(?i)execute\s*\(\s*["'].*\+|format!\s*\([^)]*\{[^}]*\}[^)]*sql"#,
+        ),
         ("unsafe eval", r#"(?i)\beval\s*\("#),
     ];
 
@@ -1649,15 +1708,22 @@ fn scan_for_security_patterns(repo_path: &PathBuf) -> allbeads::Result<Vec<(Stri
                     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                     if matches!(ext, "rs" | "py" | "js" | "ts" | "go" | "java" | "rb") {
                         if let Ok(content) = std::fs::read_to_string(&path) {
-                            let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+                            let relative = path
+                                .strip_prefix(base)
+                                .unwrap_or(&path)
+                                .to_string_lossy()
+                                .to_string();
                             for (line_num, line) in content.lines().enumerate() {
                                 for (name, _pattern) in patterns {
                                     // Simple substring check (regex would be better but adds dependency)
                                     let line_lower = line.to_lowercase();
-                                    if (name == &"hardcoded secret" &&
-                                        (line_lower.contains("password") || line_lower.contains("secret") || line_lower.contains("api_key"))
-                                        && line.contains("=") && (line.contains("\"") || line.contains("'")))
-                                    || (name == &"unsafe eval" && line_lower.contains("eval("))
+                                    if (name == &"hardcoded secret"
+                                        && (line_lower.contains("password")
+                                            || line_lower.contains("secret")
+                                            || line_lower.contains("api_key"))
+                                        && line.contains("=")
+                                        && (line.contains("\"") || line.contains("'")))
+                                        || (name == &"unsafe eval" && line_lower.contains("eval("))
                                     {
                                         results.push((
                                             relative.clone(),
@@ -1679,7 +1745,8 @@ fn scan_for_security_patterns(repo_path: &PathBuf) -> allbeads::Result<Vec<(Stri
         Ok(())
     }
 
-    walk_for_security(repo_path, repo_path, &patterns, &mut results).map_err(allbeads::AllBeadsError::Io)?;
+    walk_for_security(repo_path, repo_path, &patterns, &mut results)
+        .map_err(allbeads::AllBeadsError::Io)?;
 
     Ok(results)
 }
@@ -2070,12 +2137,11 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                 Address::new("build-bot", &project_id)?,
                 human.clone(),
                 MessageType::Request(
-                    RequestPayload::new("Approve deployment to production?")
-                        .with_options(vec![
-                            "Approve".to_string(),
-                            "Deny".to_string(),
-                            "Defer".to_string(),
-                        ]),
+                    RequestPayload::new("Approve deployment to production?").with_options(vec![
+                        "Approve".to_string(),
+                        "Deny".to_string(),
+                        "Defer".to_string(),
+                    ]),
                 ),
             );
             postmaster.send(msg2)?;
@@ -2119,8 +2185,7 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                 println!("Inbox ({} messages):", messages.len());
                 println!();
                 for msg in messages {
-                    let is_unread =
-                        msg.status == allbeads::mail::DeliveryStatus::Delivered;
+                    let is_unread = msg.status == allbeads::mail::DeliveryStatus::Delivered;
                     let marker = if is_unread { "*" } else { " " };
                     let type_str = match &msg.message.message_type {
                         MessageType::Notify(_) => "[NOTIFY]",
@@ -2138,9 +2203,10 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                         MessageType::Unlock(u) => format!("Unlock: {}", u.path),
                         MessageType::Broadcast(b) => b.message.clone(),
                         MessageType::Heartbeat(h) => format!("Status: {:?}", h.status),
-                        MessageType::Response(r) => {
-                            r.message.clone().unwrap_or_else(|| format!("{:?}", r.status))
-                        }
+                        MessageType::Response(r) => r
+                            .message
+                            .clone()
+                            .unwrap_or_else(|| format!("{:?}", r.status)),
                     };
                     let time = msg.message.timestamp.format("%H:%M");
                     println!(
@@ -2195,7 +2261,10 @@ fn handle_jira_command(cmd: &JiraCommands) -> allbeads::Result<()> {
                 adapter.set_auth_token(t);
             }
 
-            println!("Pulling issues from JIRA project {} with label '{}'...", project, label);
+            println!(
+                "Pulling issues from JIRA project {} with label '{}'...",
+                project, label
+            );
             println!();
 
             // Run async pull
@@ -2313,7 +2382,8 @@ fn handle_github_command(cmd: &GitHubCommands) -> allbeads::Result<()> {
                 println!();
                 for issue in &issues {
                     let state_icon = if issue.state == "OPEN" { "O" } else { "C" };
-                    let labels: Vec<_> = issue.labels.nodes.iter().map(|l| l.name.as_str()).collect();
+                    let labels: Vec<_> =
+                        issue.labels.nodes.iter().map(|l| l.name.as_str()).collect();
                     let labels_str = if labels.is_empty() {
                         String::new()
                     } else {
@@ -2448,7 +2518,11 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
             println!("Set budget for context '{}' to ${:.2}", context, limit);
         }
 
-        SwarmCommands::SpawnDemo { name, context, persona } => {
+        SwarmCommands::SpawnDemo {
+            name,
+            context,
+            persona,
+        } => {
             let agent_persona = match persona.to_lowercase().as_str() {
                 "general" => AgentPersona::General,
                 "refactor-bot" | "refactorbot" => AgentPersona::RefactorBot,
@@ -2473,7 +2547,9 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
                     println!("  Persona: {}", persona);
                     println!();
                     println!("Note: This is a demo agent - it will not actually perform any work.");
-                    println!("In a full implementation, agents would be connected to AI providers.");
+                    println!(
+                        "In a full implementation, agents would be connected to AI providers."
+                    );
                 }
                 Err(e) => {
                     return Err(e);
@@ -2481,26 +2557,20 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
             }
         }
 
-        SwarmCommands::Kill { id } => {
-            match manager.kill(id) {
-                Ok(()) => println!("Killed agent '{}'", id),
-                Err(e) => return Err(e),
-            }
-        }
+        SwarmCommands::Kill { id } => match manager.kill(id) {
+            Ok(()) => println!("Killed agent '{}'", id),
+            Err(e) => return Err(e),
+        },
 
-        SwarmCommands::Pause { id } => {
-            match manager.pause(id) {
-                Ok(()) => println!("Paused agent '{}'", id),
-                Err(e) => return Err(e),
-            }
-        }
+        SwarmCommands::Pause { id } => match manager.pause(id) {
+            Ok(()) => println!("Paused agent '{}'", id),
+            Err(e) => return Err(e),
+        },
 
-        SwarmCommands::Resume { id } => {
-            match manager.resume(id) {
-                Ok(()) => println!("Resumed agent '{}'", id),
-                Err(e) => return Err(e),
-            }
-        }
+        SwarmCommands::Resume { id } => match manager.resume(id) {
+            Ok(()) => println!("Resumed agent '{}'", id),
+            Err(e) => return Err(e),
+        },
     }
 
     Ok(())
@@ -2562,7 +2632,12 @@ fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Res
         println!("## Recent Activity");
         println!();
         for bead in recent {
-            println!("- [{}] {}: {}", format_status(bead.status), bead.id.as_str(), bead.title);
+            println!(
+                "- [{}] {}: {}",
+                format_status(bead.status),
+                bead.id.as_str(),
+                bead.title
+            );
         }
         println!();
     }
@@ -2588,11 +2663,17 @@ fn handle_prime_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Re
     let stats = graph.stats();
     println!("## Project Status");
     println!();
-    println!("AllBeads is aggregating {} beads across {} contexts.", stats.total_beads, graph.rigs.len());
+    println!(
+        "AllBeads is aggregating {} beads across {} contexts.",
+        stats.total_beads,
+        graph.rigs.len()
+    );
     println!();
 
     // Active work
-    let in_progress: Vec<_> = graph.beads.values()
+    let in_progress: Vec<_> = graph
+        .beads
+        .values()
         .filter(|b| b.status == Status::InProgress)
         .collect();
 
@@ -2602,7 +2683,11 @@ fn handle_prime_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Re
         for bead in &in_progress {
             println!("### {} - {}", bead.id.as_str(), bead.title);
             if let Some(ref desc) = bead.description {
-                let short = if desc.len() > 200 { format!("{}...", &desc[..200]) } else { desc.clone() };
+                let short = if desc.len() > 200 {
+                    format!("{}...", &desc[..200])
+                } else {
+                    desc.clone()
+                };
                 println!("{}", short);
             }
             println!();
@@ -2610,8 +2695,12 @@ fn handle_prime_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Re
     }
 
     // Blocked work needing attention
-    let blocked: Vec<_> = graph.beads.values()
-        .filter(|b| b.status == Status::Blocked || (!b.dependencies.is_empty() && b.status == Status::Open))
+    let blocked: Vec<_> = graph
+        .beads
+        .values()
+        .filter(|b| {
+            b.status == Status::Blocked || (!b.dependencies.is_empty() && b.status == Status::Open)
+        })
         .take(5)
         .collect();
 
@@ -2619,10 +2708,15 @@ fn handle_prime_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Re
         println!("## Blocked Work (top 5)");
         println!();
         for bead in &blocked {
-            println!("- {}: {} (blocked by: {})",
+            println!(
+                "- {}: {} (blocked by: {})",
                 bead.id.as_str(),
                 bead.title,
-                bead.dependencies.iter().map(|d| d.as_str()).collect::<Vec<_>>().join(", ")
+                bead.dependencies
+                    .iter()
+                    .map(|d| d.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
         println!();
@@ -2634,7 +2728,12 @@ fn handle_prime_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Re
         println!("## Ready Work (top 10)");
         println!();
         for bead in ready.iter().take(10) {
-            println!("- [{}] {}: {}", format_priority(bead.priority), bead.id.as_str(), bead.title);
+            println!(
+                "- [{}] {}: {}",
+                format_priority(bead.priority),
+                bead.id.as_str(),
+                bead.title
+            );
         }
         println!();
     }
@@ -2718,7 +2817,10 @@ fn handle_setup_command(config_path: &Option<String>) -> allbeads::Result<()> {
     // Check if already initialized
     if config_file.exists() {
         let config = AllBeadsConfig::load(&config_file)?;
-        println!("AllBeads is already configured at: {}", config_file.display());
+        println!(
+            "AllBeads is already configured at: {}",
+            config_file.display()
+        );
         println!();
         println!("Current configuration:");
         println!("  Contexts: {}", config.contexts.len());
@@ -2766,7 +2868,10 @@ fn handle_setup_command(config_path: &Option<String>) -> allbeads::Result<()> {
 }
 
 /// Handle the `onboard` command - onboarding guide for AI agents
-fn handle_onboard_command(full: bool, graph: &allbeads::graph::FederatedGraph) -> allbeads::Result<()> {
+fn handle_onboard_command(
+    full: bool,
+    graph: &allbeads::graph::FederatedGraph,
+) -> allbeads::Result<()> {
     println!("# AllBeads Agent Onboarding");
     println!();
 
@@ -2832,8 +2937,15 @@ fn handle_onboard_command(full: bool, graph: &allbeads::graph::FederatedGraph) -
 
         println!("## Project Overview");
         println!();
-        println!("- {} total beads across {} contexts", stats.total_beads, graph.rigs.len());
-        println!("- {} open, {} in progress, {} blocked", stats.open_beads, stats.in_progress_beads, stats.blocked_beads);
+        println!(
+            "- {} total beads across {} contexts",
+            stats.total_beads,
+            graph.rigs.len()
+        );
+        println!(
+            "- {} open, {} in progress, {} blocked",
+            stats.open_beads, stats.in_progress_beads, stats.blocked_beads
+        );
         println!("- {} beads ready to work on", ready_count);
         println!();
         println!("## Quick Commands");

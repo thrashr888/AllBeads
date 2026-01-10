@@ -251,24 +251,23 @@ impl GitHubAdapter {
             .expect("Failed to create HTTP client");
 
         let base_url = config.url.trim_end_matches('/');
-        let (rest_base_url, graphql_url) = if base_url.contains("github.com")
-            && !base_url.contains("api.github.com")
-        {
-            (
-                "https://api.github.com".to_string(),
-                "https://api.github.com/graphql".to_string(),
-            )
-        } else if base_url.contains("api.github.com") {
-            (
-                base_url.to_string(),
-                "https://api.github.com/graphql".to_string(),
-            )
-        } else {
-            (
-                format!("{}/api/v3", base_url),
-                format!("{}/api/graphql", base_url),
-            )
-        };
+        let (rest_base_url, graphql_url) =
+            if base_url.contains("github.com") && !base_url.contains("api.github.com") {
+                (
+                    "https://api.github.com".to_string(),
+                    "https://api.github.com/graphql".to_string(),
+                )
+            } else if base_url.contains("api.github.com") {
+                (
+                    base_url.to_string(),
+                    "https://api.github.com/graphql".to_string(),
+                )
+            } else {
+                (
+                    format!("{}/api/v3", base_url),
+                    format!("{}/api/graphql", base_url),
+                )
+            };
 
         let auth_token = std::env::var("GITHUB_TOKEN").ok();
 
@@ -451,7 +450,11 @@ impl GitHubAdapter {
     }
 
     /// Create a new issue (REST API)
-    pub async fn create_issue(&self, repo: &str, request: CreateIssueRequest) -> Result<GitHubIssue> {
+    pub async fn create_issue(
+        &self,
+        repo: &str,
+        request: CreateIssueRequest,
+    ) -> Result<GitHubIssue> {
         let url = format!(
             "{}/repos/{}/{}/issues",
             self.rest_base_url, self.config.owner, repo
@@ -523,12 +526,7 @@ impl GitHubAdapter {
     }
 
     /// Add a comment to an issue (REST API)
-    pub async fn add_comment(
-        &self,
-        repo: &str,
-        number: u64,
-        body: &str,
-    ) -> Result<GitHubComment> {
+    pub async fn add_comment(&self, repo: &str, number: u64, body: &str) -> Result<GitHubComment> {
         let url = format!(
             "{}/repos/{}/{}/issues/{}/comments",
             self.rest_base_url, self.config.owner, repo, number
@@ -561,10 +559,7 @@ impl GitHubAdapter {
 
     /// Pull issues from GitHub that have the specified label
     pub async fn pull_agent_issues(&self, label: &str) -> Result<Vec<IssueNode>> {
-        let query = format!(
-            "org:{} is:issue is:open label:{}",
-            self.config.owner, label
-        );
+        let query = format!("org:{} is:issue is:open label:{}", self.config.owner, label);
         self.search_issues(&query, 100).await
     }
 
@@ -616,10 +611,13 @@ impl GitHubAdapter {
             })
             .unwrap_or("task");
 
-        let external_ref = format!("github:{}#{}", issue.repository.name_with_owner, issue.number);
+        let external_ref = format!(
+            "github:{}#{}",
+            issue.repository.name_with_owner, issue.number
+        );
 
         ShadowBead::external(
-            BeadId::new(&format!("gh-{}", issue.number)),
+            BeadId::new(format!("gh-{}", issue.number)),
             issue.title.clone(),
             issue.url.clone(),
         )
@@ -704,7 +702,11 @@ impl GitHubAdapter {
     }
 
     /// Create a new GitHub issue from a Bead
-    pub async fn create_issue_from_bead(&self, bead: &Bead, repo: &str) -> Result<GitHubSyncResult> {
+    pub async fn create_issue_from_bead(
+        &self,
+        bead: &Bead,
+        repo: &str,
+    ) -> Result<GitHubSyncResult> {
         let mut labels = vec!["ai-agent".to_string()];
 
         let priority: u8 = bead.priority.into();

@@ -173,9 +173,7 @@ impl SwarmView {
 
     /// Get selected agent
     pub fn selected_agent(&self) -> Option<&AgentSnapshot> {
-        self.list_state
-            .selected()
-            .and_then(|i| self.agents.get(i))
+        self.list_state.selected().and_then(|i| self.agents.get(i))
     }
 
     /// Get selected agent ID
@@ -185,9 +183,10 @@ impl SwarmView {
 
     /// Kill selected agent
     pub fn kill_selected(&mut self) {
-        if let (Some(ref manager), Some(agent_id)) =
-            (&self.manager, self.selected_agent_id().map(|s| s.to_string()))
-        {
+        if let (Some(ref manager), Some(agent_id)) = (
+            &self.manager,
+            self.selected_agent_id().map(|s| s.to_string()),
+        ) {
             let _ = manager.kill(&agent_id);
             self.refresh();
         }
@@ -195,9 +194,10 @@ impl SwarmView {
 
     /// Pause selected agent
     pub fn pause_selected(&mut self) {
-        if let (Some(ref manager), Some(agent_id)) =
-            (&self.manager, self.selected_agent_id().map(|s| s.to_string()))
-        {
+        if let (Some(ref manager), Some(agent_id)) = (
+            &self.manager,
+            self.selected_agent_id().map(|s| s.to_string()),
+        ) {
             let _ = manager.pause(&agent_id);
             self.refresh();
         }
@@ -205,9 +205,10 @@ impl SwarmView {
 
     /// Resume selected agent
     pub fn resume_selected(&mut self) {
-        if let (Some(ref manager), Some(agent_id)) =
-            (&self.manager, self.selected_agent_id().map(|s| s.to_string()))
-        {
+        if let (Some(ref manager), Some(agent_id)) = (
+            &self.manager,
+            self.selected_agent_id().map(|s| s.to_string()),
+        ) {
             let _ = manager.resume(&agent_id);
             self.refresh();
         }

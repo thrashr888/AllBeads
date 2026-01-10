@@ -157,9 +157,7 @@ impl ShadowSync {
 
     /// Check if a shadow needs updating
     fn needs_update(&self, shadow: &ShadowBead, bead: &Bead) -> bool {
-        shadow.summary != bead.title
-            || shadow.status != bead.status
-            || shadow.labels != bead.labels
+        shadow.summary != bead.title || shadow.status != bead.status || shadow.labels != bead.labels
     }
 }
 
@@ -244,13 +242,7 @@ mod tests {
         let native_id = BeadId::new("auth-001");
 
         // Existing shadow with old title
-        let shadow = ShadowBead::new(
-            "shadow-auth-001",
-            &rig_id,
-            &native_id,
-            "Old Title",
-            "work",
-        );
+        let shadow = ShadowBead::new("shadow-auth-001", &rig_id, &native_id, "Old Title", "work");
 
         // Native bead with new title
         let beads = vec![make_bead(

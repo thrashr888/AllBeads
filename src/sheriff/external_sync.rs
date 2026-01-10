@@ -119,10 +119,7 @@ pub struct ExternalSyncer {
 impl ExternalSyncer {
     /// Create a new external syncer
     pub fn new(config: ExternalSyncConfig) -> Self {
-        let jira_adapter = config
-            .jira
-            .as_ref()
-            .map(|c| JiraAdapter::new(c.clone()));
+        let jira_adapter = config.jira.as_ref().map(|c| JiraAdapter::new(c.clone()));
 
         let github_adapter = config
             .github

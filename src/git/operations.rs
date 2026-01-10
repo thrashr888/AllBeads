@@ -183,8 +183,7 @@ impl BossRepo {
             .unwrap_or("local")
             .to_string();
 
-        let context = BossContext::new(&name, "", AuthStrategy::SshAgent)
-            .with_path(&path);
+        let context = BossContext::new(&name, "", AuthStrategy::SshAgent).with_path(&path);
 
         Ok(Self {
             path,
@@ -377,7 +376,12 @@ impl BossRepo {
     /// * `message` - Commit message
     /// * `author_name` - Author name
     /// * `author_email` - Author email
-    pub fn commit(&self, message: &str, author_name: &str, author_email: &str) -> Result<git2::Oid> {
+    pub fn commit(
+        &self,
+        message: &str,
+        author_name: &str,
+        author_email: &str,
+    ) -> Result<git2::Oid> {
         let repo = self
             .repo
             .as_ref()
@@ -426,7 +430,9 @@ impl BossRepo {
             // Get current branch
             let head = repo.head()?;
             head.shorthand()
-                .ok_or_else(|| AllBeadsError::Git("Could not determine current branch".to_string()))?
+                .ok_or_else(|| {
+                    AllBeadsError::Git("Could not determine current branch".to_string())
+                })?
                 .to_string()
         };
 

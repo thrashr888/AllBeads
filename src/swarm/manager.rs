@@ -8,6 +8,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 
+/// Type alias for event listener collection to reduce complexity
+type EventListeners = Arc<RwLock<Vec<Box<dyn Fn(ManagerEvent) + Send + Sync>>>>;
+
 /// Budget tracking for a context
 #[derive(Debug, Clone, Default)]
 pub struct ContextBudget {
@@ -73,10 +76,7 @@ pub enum ManagerEvent {
     },
 
     /// Agent completed
-    AgentCompleted {
-        agent_id: String,
-        cost: AgentCost,
-    },
+    AgentCompleted { agent_id: String, cost: AgentCost },
 
     /// Agent killed
     AgentKilled(String),
@@ -113,7 +113,7 @@ pub struct AgentManager {
     next_id: Arc<RwLock<u64>>,
 
     /// Event listeners (for TUI updates, etc.)
-    event_listeners: Arc<RwLock<Vec<Box<dyn Fn(ManagerEvent) + Send + Sync>>>>,
+    event_listeners: EventListeners,
 }
 
 impl Default for AgentManager {
@@ -190,8 +190,8 @@ impl AgentManager {
 
         let id = self.generate_id();
 
-        let mut agent = Agent::new(&id, &request.name, &request.context)
-            .with_persona(request.persona);
+        let mut agent =
+            Agent::new(&id, &request.name, &request.context).with_persona(request.persona);
 
         if let Some(ref rig) = request.rig {
             agent = agent.with_rig(rig);
@@ -283,7 +283,10 @@ impl AgentManager {
             }
         }
 
-        debug!("Agent {} status: {:?} -> {:?}", agent_id, old_status, status);
+        debug!(
+            "Agent {} status: {:?} -> {:?}",
+            agent_id, old_status, status
+        );
 
         self.emit(ManagerEvent::AgentStatusChanged {
             agent_id: agent_id.to_string(),
@@ -342,14 +345,20 @@ impl AgentManager {
         // Emit budget events
         if let Some((spent, limit, exceeded)) = budget_warning {
             if exceeded {
-                warn!("Budget exceeded for context '{}': ${:.2} / ${:.2}", context, spent, limit);
+                warn!(
+                    "Budget exceeded for context '{}': ${:.2} / ${:.2}",
+                    context, spent, limit
+                );
                 self.emit(ManagerEvent::BudgetExceeded {
                     context,
                     spent,
                     limit,
                 });
             } else {
-                warn!("Budget warning for context '{}': ${:.2} / ${:.2}", context, spent, limit);
+                warn!(
+                    "Budget warning for context '{}': ${:.2} / ${:.2}",
+                    context, spent, limit
+                );
                 self.emit(ManagerEvent::BudgetWarning {
                     context,
                     spent,
@@ -528,10 +537,7 @@ impl AgentManager {
 
         // Calculate total budget from all contexts
         let budgets = self.budgets.read().unwrap();
-        let total_budget: f64 = budgets
-            .values()
-            .filter_map(|b| b.limit)
-            .sum();
+        let total_budget: f64 = budgets.values().filter_map(|b| b.limit).sum();
 
         ManagerStats {
             total_agents,

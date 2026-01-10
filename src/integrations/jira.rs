@@ -251,7 +251,11 @@ impl JiraAdapter {
         match response.status() {
             StatusCode::OK => {
                 let search_result: JiraSearchResponse = response.json().await?;
-                info!(total = search_result.total, returned = search_result.issues.len(), "JIRA search complete");
+                info!(
+                    total = search_result.total,
+                    returned = search_result.issues.len(),
+                    "JIRA search complete"
+                );
                 Ok(search_result.issues)
             }
             StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(

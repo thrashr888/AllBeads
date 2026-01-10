@@ -104,7 +104,10 @@ impl Project {
 
     /// Get the full repository URL given a remote
     pub fn full_url(&self, remote: &Remote) -> String {
-        if self.name.starts_with("http://") || self.name.starts_with("https://") || self.name.starts_with("git@") {
+        if self.name.starts_with("http://")
+            || self.name.starts_with("https://")
+            || self.name.starts_with("git@")
+        {
             self.name.clone()
         } else {
             format!("{}/{}", remote.fetch.trim_end_matches('/'), &self.name)

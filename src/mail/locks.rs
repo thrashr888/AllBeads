@@ -283,7 +283,10 @@ impl LockManager {
 
     /// List all active (non-expired) locks
     pub fn active_locks(&self) -> Vec<&LockInfo> {
-        self.locks.values().filter(|info| !info.is_expired()).collect()
+        self.locks
+            .values()
+            .filter(|info| !info.is_expired())
+            .collect()
     }
 
     /// List all locks held by a specific agent
@@ -312,7 +315,10 @@ impl LockManager {
 
     /// Get the number of active locks
     pub fn lock_count(&self) -> usize {
-        self.locks.values().filter(|info| !info.is_expired()).count()
+        self.locks
+            .values()
+            .filter(|info| !info.is_expired())
+            .count()
     }
 }
 
@@ -386,7 +392,9 @@ mod tests {
             Duration::from_secs(3600),
             ConflictStrategy::Steal,
         );
-        assert!(matches!(result, LockResult::Stolen { previous_holder, .. } if previous_holder == holder1));
+        assert!(
+            matches!(result, LockResult::Stolen { previous_holder, .. } if previous_holder == holder1)
+        );
     }
 
     #[test]
@@ -475,8 +483,18 @@ mod tests {
         let mut manager = LockManager::new();
         let holder = test_address("worker");
 
-        manager.acquire("file1.rs", holder.clone(), Duration::from_secs(3600), ConflictStrategy::Abort);
-        manager.acquire("file2.rs", holder.clone(), Duration::from_secs(3600), ConflictStrategy::Abort);
+        manager.acquire(
+            "file1.rs",
+            holder.clone(),
+            Duration::from_secs(3600),
+            ConflictStrategy::Abort,
+        );
+        manager.acquire(
+            "file2.rs",
+            holder.clone(),
+            Duration::from_secs(3600),
+            ConflictStrategy::Abort,
+        );
 
         let locks = manager.locks_by_holder(&holder);
         assert_eq!(locks.len(), 2);
@@ -487,7 +505,12 @@ mod tests {
         let mut manager = LockManager::new();
         let holder = test_address("worker");
 
-        manager.acquire("src/main.rs", holder, Duration::from_secs(3600), ConflictStrategy::Abort);
+        manager.acquire(
+            "src/main.rs",
+            holder,
+            Duration::from_secs(3600),
+            ConflictStrategy::Abort,
+        );
 
         let result = manager.force_release("src/main.rs");
         assert!(matches!(result, LockResult::Released));

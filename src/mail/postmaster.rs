@@ -191,9 +191,7 @@ impl Postmaster {
         let target = RoutingTarget::from_address(&message.to);
 
         match target {
-            RoutingTarget::Broadcast { project_id } => {
-                self.handle_broadcast(&message, &project_id)
-            }
+            RoutingTarget::Broadcast { project_id } => self.handle_broadcast(&message, &project_id),
             _ => {
                 // Store message for recipient
                 self.store_message(&message, DeliveryStatus::Delivered)?;
@@ -441,8 +439,7 @@ impl Postmaster {
                 ORDER BY timestamp DESC
                 "#,
             )?;
-            let rows =
-                stmt.query_map(params![addr_str], |row| self.row_to_stored_message(row))?;
+            let rows = stmt.query_map(params![addr_str], |row| self.row_to_stored_message(row))?;
             for row in rows {
                 messages.push(row?);
             }
@@ -472,9 +469,7 @@ impl Postmaster {
         // Parse message type
         let message_type = self
             .parse_message_type(&msg_type, &payload)
-            .unwrap_or_else(|_| {
-                MessageType::Notify(super::NotifyPayload::new("Parse error"))
-            });
+            .unwrap_or_else(|_| MessageType::Notify(super::NotifyPayload::new("Parse error")));
 
         // Parse timestamps
         let timestamp = DateTime::parse_from_rfc3339(&timestamp_str)

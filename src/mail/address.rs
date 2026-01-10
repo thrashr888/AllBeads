@@ -300,7 +300,10 @@ mod tests {
     #[test]
     fn test_invalid_characters() {
         let result: Result<Address, _> = "name with spaces@domain".parse();
-        assert!(matches!(result, Err(AddressError::InvalidNameCharacters(_))));
+        assert!(matches!(
+            result,
+            Err(AddressError::InvalidNameCharacters(_))
+        ));
 
         let result: Result<Address, _> = "name@domain with spaces".parse();
         assert!(matches!(

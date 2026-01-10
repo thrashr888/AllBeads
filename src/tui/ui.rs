@@ -113,15 +113,20 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Swarm => swarm_index,
     };
 
-    let tabs = Tabs::new(tab_titles.iter().map(|s| Line::from(s.as_str())).collect::<Vec<_>>())
-        .block(Block::default().borders(Borders::ALL).title("AllBeads"))
-        .select(tab_index)
-        .style(Style::default().fg(Color::White))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        );
+    let tabs = Tabs::new(
+        tab_titles
+            .iter()
+            .map(|s| Line::from(s.as_str()))
+            .collect::<Vec<_>>(),
+    )
+    .block(Block::default().borders(Borders::ALL).title("AllBeads"))
+    .select(tab_index)
+    .style(Style::default().fg(Color::White))
+    .highlight_style(
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    );
     f.render_widget(tabs, area);
 }
 
@@ -173,12 +178,21 @@ fn draw_kanban_view(f: &mut Frame, app: &mut App) {
         Span::raw("View Details  "),
     ];
     if has_mail {
-        help_spans.push(Span::styled("Tab: ", Style::default().add_modifier(Modifier::BOLD)));
+        help_spans.push(Span::styled(
+            "Tab: ",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
         help_spans.push(Span::raw("Switch View  "));
     }
-    help_spans.push(Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)));
+    help_spans.push(Span::styled(
+        "q: ",
+        Style::default().add_modifier(Modifier::BOLD),
+    ));
     help_spans.push(Span::raw("Quit  "));
-    help_spans.push(Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)));
+    help_spans.push(Span::styled(
+        "[READ-ONLY]",
+        Style::default().fg(Color::Yellow),
+    ));
 
     let help_text = vec![Line::from(help_spans)];
     let help = Paragraph::new(help_text)

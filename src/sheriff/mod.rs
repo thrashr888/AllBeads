@@ -59,5 +59,7 @@ pub use daemon::{
     Sheriff, SheriffBuilder, SheriffCommand, SheriffConfig, SheriffEvent, SheriffStats,
     DEFAULT_POLL_INTERVAL,
 };
-pub use external_sync::{ExternalSyncConfig, ExternalSyncEvent, ExternalSyncResult, ExternalSyncer};
+pub use external_sync::{
+    ExternalSyncConfig, ExternalSyncEvent, ExternalSyncResult, ExternalSyncer,
+};
 pub use sync::{sync_rig_to_shadows, ShadowSync, SyncResult};

@@ -238,7 +238,11 @@ fn draw_list(f: &mut Frame, view: &mut GraphView, graph: &FederatedGraph, area: 
 
     // Stats bar
     let total_chains = view.chains.len();
-    let blocked_chains = view.chains.iter().filter(|c| !c.blockers.is_empty()).count();
+    let blocked_chains = view
+        .chains
+        .iter()
+        .filter(|c| !c.blockers.is_empty())
+        .count();
     let cross_context = view.chains.iter().filter(|c| c.is_cross_context).count();
     let cycles = view.chains.iter().filter(|c| c.has_cycle).count();
 
@@ -253,7 +257,11 @@ fn draw_list(f: &mut Frame, view: &mut GraphView, graph: &FederatedGraph, area: 
         total_chains, blocked_chains, cross_context, cycles, filter_str
     );
     let stats = Paragraph::new(stats_text)
-        .block(Block::default().borders(Borders::ALL).title("Dependency Graph"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Dependency Graph"),
+        )
         .style(Style::default().fg(Color::Cyan));
     f.render_widget(stats, chunks[0]);
 
@@ -311,8 +319,8 @@ fn draw_list(f: &mut Frame, view: &mut GraphView, graph: &FederatedGraph, area: 
         Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("Quit"),
     ])];
-    let help = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Help"));
+    let help =
+        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title("Help"));
     f.render_widget(help, chunks[2]);
 }
 
@@ -330,13 +338,13 @@ fn create_chain_item<'a>(
 
     // Build status indicator
     let status_icon = if chain.has_cycle {
-        "⟳ "  // Cycle detected
+        "⟳ " // Cycle detected
     } else if chain.is_cross_context {
-        "⬡ "  // Cross-context
+        "⬡ " // Cross-context
     } else if !chain.blockers.is_empty() {
-        "⊘ "  // Blocked
+        "⊘ " // Blocked
     } else {
-        "○ "  // Normal
+        "○ " // Normal
     };
 
     let status_color = if chain.has_cycle {
@@ -537,8 +545,8 @@ fn draw_detail(f: &mut Frame, view: &mut GraphView, graph: &FederatedGraph, area
         Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("Quit"),
     ])];
-    let help = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Help"));
+    let help =
+        Paragraph::new(help_text).block(Block::default().borders(Borders::ALL).title("Help"));
     f.render_widget(help, chunks[2]);
 }
 
@@ -561,12 +569,10 @@ fn render_ascii_graph<'a>(chain: &'a DependencyChain, graph: &'a FederatedGraph)
         root_title.to_string()
     };
 
-    lines.push(Line::from(vec![
-        Span::styled(
-            format!("┌─ {} ─────────────────────────┐", chain.root.as_str()),
-            Style::default().fg(Color::Cyan),
-        ),
-    ]));
+    lines.push(Line::from(vec![Span::styled(
+        format!("┌─ {} ─────────────────────────┐", chain.root.as_str()),
+        Style::default().fg(Color::Cyan),
+    )]));
     lines.push(Line::from(vec![
         Span::raw("│ "),
         Span::raw(truncated_root.clone()),

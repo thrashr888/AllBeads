@@ -164,11 +164,20 @@ pub enum SendResultDto {
 #[derive(Debug, Serialize)]
 #[serde(tag = "status")]
 pub enum LockResultDto {
-    Acquired { expires_at: String },
-    Denied { holder: String, expires_at: String, reason: Option<String> },
+    Acquired {
+        expires_at: String,
+    },
+    Denied {
+        holder: String,
+        expires_at: String,
+        reason: Option<String>,
+    },
     Released,
     NotLocked,
-    Stolen { previous_holder: String, expires_at: String },
+    Stolen {
+        previous_holder: String,
+        expires_at: String,
+    },
 }
 
 impl From<LockResult> for LockResultDto {
@@ -177,14 +186,21 @@ impl From<LockResult> for LockResultDto {
             LockResult::Acquired { expires_at } => LockResultDto::Acquired {
                 expires_at: expires_at.to_rfc3339(),
             },
-            LockResult::Denied { holder, expires_at, reason } => LockResultDto::Denied {
+            LockResult::Denied {
+                holder,
+                expires_at,
+                reason,
+            } => LockResultDto::Denied {
                 holder: holder.to_string(),
                 expires_at: expires_at.to_rfc3339(),
                 reason,
             },
             LockResult::Released => LockResultDto::Released,
             LockResult::NotLocked => LockResultDto::NotLocked,
-            LockResult::Stolen { previous_holder, expires_at } => LockResultDto::Stolen {
+            LockResult::Stolen {
+                previous_holder,
+                expires_at,
+            } => LockResultDto::Stolen {
                 previous_holder: previous_holder.to_string(),
                 expires_at: expires_at.to_rfc3339(),
             },
@@ -198,7 +214,10 @@ impl From<SendResult> for SendResultDto {
             SendResult::Delivered { message_id } => SendResultDto::Delivered {
                 message_id: message_id.as_str().to_string(),
             },
-            SendResult::Broadcast { message_id, recipient_count } => SendResultDto::Broadcast {
+            SendResult::Broadcast {
+                message_id,
+                recipient_count,
+            } => SendResultDto::Broadcast {
                 message_id: message_id.as_str().to_string(),
                 recipient_count,
             },
@@ -472,7 +491,12 @@ mod tests {
         let app = MailServer::router(state);
 
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
