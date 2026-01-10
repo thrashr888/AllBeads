@@ -17,9 +17,19 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
+use std::path::PathBuf;
 
-/// Run the TUI application
+/// Run the TUI application (without mail support)
 pub fn run(graph: FederatedGraph) -> Result<()> {
+    run_with_mail(graph, None, "default")
+}
+
+/// Run the TUI application with optional mail support
+pub fn run_with_mail(
+    graph: FederatedGraph,
+    mail_db_path: Option<PathBuf>,
+    project_id: &str,
+) -> Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -27,8 +37,13 @@ pub fn run(graph: FederatedGraph) -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create app
-    let mut app = App::new(graph);
+    // Create app with or without mail
+    let mut app = if let Some(db_path) = mail_db_path {
+        App::with_mail(graph, db_path, project_id)
+    } else {
+        App::new(graph)
+    };
+
     let res = run_app(&mut terminal, &mut app);
 
     // Restore terminal

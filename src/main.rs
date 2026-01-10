@@ -88,8 +88,8 @@ enum Commands {
     /// Show aggregated statistics
     Stats,
 
-    /// Launch Kanban board (Terminal UI)
-    Kanban,
+    /// Launch Terminal UI (Kanban + Mail)
+    Tui,
 
     /// Clear the local cache
     ClearCache,
@@ -196,6 +196,13 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         context_filter,
         skip_errors: true,
     };
+
+    // Extract project ID for TUI mail (before config is moved)
+    let tui_project_id = config
+        .contexts
+        .first()
+        .map(|c| c.name.clone())
+        .unwrap_or_else(|| "default".to_string());
 
     // Try to load from cache first
     let cache_config = CacheConfig::default();
@@ -483,8 +490,13 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             println!("For more details, use 'ab list' to see individual beads.");
         }
 
-        Commands::Kanban => {
-            allbeads::tui::run(graph)?;
+        Commands::Tui => {
+            // Determine mail database path (in config directory)
+            let mail_db_path = AllBeadsConfig::default_path()
+                .parent()
+                .map(|p| p.join("mail.db"));
+
+            allbeads::tui::run_with_mail(graph, mail_db_path, &tui_project_id)?;
         }
 
         Commands::ClearCache => {
@@ -541,7 +553,7 @@ fn handle_init_command(config_path: &Option<String>) -> allbeads::Result<()> {
     println!("  2. View aggregated beads:");
     println!("     ab stats");
     println!("     ab list");
-    println!("     ab kanban");
+    println!("     ab tui");
 
     Ok(())
 }

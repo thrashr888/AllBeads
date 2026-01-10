@@ -124,8 +124,8 @@ ab ready
 # Show bead details
 ab show ab-123
 
-# Launch Kanban TUI
-ab kanban
+# Launch TUI (Kanban + Mail)
+ab tui
 ```
 
 See [demo.md](demo.md) for more examples.

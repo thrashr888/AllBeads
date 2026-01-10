@@ -42,7 +42,7 @@ ab context list                   # List all contexts
 ab context remove <name>          # Remove a context
 
 # Viewing beads
-ab kanban                            # Launch Kanban board (Terminal UI)
+ab tui                               # Launch TUI (Kanban + Mail)
 ab stats                          # Show aggregated statistics
 ab list                           # List all beads
 ab list --status open             # Filter by status
@@ -139,7 +139,7 @@ ab context remove ethertext
 Launch the interactive Kanban dashboard:
 
 ```bash
-ab kanban
+ab tui
 ```
 
 **Features:**
@@ -169,7 +169,7 @@ The bottom of the screen shows available keybindings and indicates `[READ-ONLY]`
 
 **Tips:**
 
-- Use `ab kanban` (with `--cached`) for fastest startup
+- Use `ab tui` (with `--cached`) for fastest startup
 - Navigate between columns to see different workflow stages
 - Press Enter on any bead to see full details, dependencies, and description
 - Text selection now works - mouse capture disabled
@@ -465,7 +465,7 @@ ab list --priority P1 --status open
 ab ready
 
 # Launch Kanban board
-ab kanban
+ab tui
 ```
 
 ## Tips
