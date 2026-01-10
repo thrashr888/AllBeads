@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 /// Synchronization result for a single Rig
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SyncResult {
     /// Shadow beads created
     pub created: Vec<BeadId>,

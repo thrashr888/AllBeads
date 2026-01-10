@@ -22,7 +22,7 @@ pub enum RepoStatus {
 }
 
 /// Git credentials configuration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GitCredentials {
     /// SSH key path (for SSH agent)
     pub ssh_key_path: Option<PathBuf>,
@@ -158,6 +158,39 @@ impl BossRepo {
             repo,
             context,
             credentials,
+        })
+    }
+
+    /// Open a local repository without authentication (for local-only operations)
+    ///
+    /// This is useful for operations that don't require remote access like
+    /// staging files and committing changes.
+    pub fn from_local(path: impl Into<PathBuf>) -> Result<Self> {
+        let path = path.into();
+
+        let repo = Repository::open(&path).map_err(|e| {
+            AllBeadsError::Git(format!(
+                "Failed to open repository at {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
+
+        // Create a minimal context for the local repo
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("local")
+            .to_string();
+
+        let context = BossContext::new(&name, "", AuthStrategy::SshAgent)
+            .with_path(&path);
+
+        Ok(Self {
+            path,
+            repo: Some(repo),
+            context,
+            credentials: GitCredentials::default(),
         })
     }
 

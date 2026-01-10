@@ -34,8 +34,20 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// Initialize AllBeads configuration
-    Init,
+    /// Initialize AllBeads configuration or clone a remote repo with beads
+    Init {
+        /// Remote repository URL to clone and initialize
+        #[arg(short, long)]
+        remote: Option<String>,
+
+        /// Target directory for cloned repo (default: derived from URL)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Run janitor agent to scan codebase and create issues
+        #[arg(short, long)]
+        janitor: bool,
+    },
 
     /// List beads with optional filters
     List {
@@ -137,6 +149,36 @@ enum Commands {
     /// Agent Mail commands
     #[command(subcommand)]
     Mail(MailCommands),
+
+    /// Run janitor analysis on a repository
+    Janitor {
+        /// Path to repository (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Include verbose analysis details
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Only scan, don't create beads (dry run)
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Run the Sheriff daemon (background sync)
+    Sheriff {
+        /// Path to manifest file (manifests/default.xml)
+        #[arg(short, long)]
+        manifest: Option<String>,
+
+        /// Poll interval in seconds (default: 5)
+        #[arg(short, long, default_value = "5")]
+        poll_interval: u64,
+
+        /// Run in foreground (print events to stdout)
+        #[arg(short, long)]
+        foreground: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -204,8 +246,8 @@ fn main() {
 
 fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle init command first (creates config)
-    if let Commands::Init = cli.command {
-        return handle_init_command(&cli.config);
+    if let Commands::Init { remote, target, janitor } = &cli.command {
+        return handle_init_command(&cli.config, remote.as_deref(), target.as_deref(), *janitor);
     }
 
     // Handle context management commands (don't need graph)
@@ -716,7 +758,111 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             println!("Cache cleared successfully");
         }
 
-        Commands::Context(_) | Commands::Init | Commands::Mail(_) => {
+        Commands::Janitor {
+            path,
+            verbose,
+            dry_run,
+        } => {
+            let repo_path = PathBuf::from(&path);
+            if !repo_path.exists() {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Path does not exist: {}",
+                    repo_path.display()
+                )));
+            }
+
+            println!("Running janitor analysis on {}...", repo_path.display());
+            println!();
+
+            if dry_run {
+                println!("(Dry run mode - no beads will be created)");
+                println!();
+            }
+
+            run_full_janitor_analysis(&repo_path, verbose, dry_run)?;
+        }
+
+        Commands::Sheriff {
+            manifest,
+            poll_interval,
+            foreground,
+        } => {
+            use allbeads::sheriff::{Sheriff, SheriffConfig};
+            use std::time::Duration;
+
+            // Build sheriff config
+            let mut sheriff_config = SheriffConfig::new(".")
+                .with_poll_interval(Duration::from_secs(poll_interval))
+                .with_verbose(foreground)
+                .with_project_id(&tui_project_id);
+
+            if let Some(manifest_path) = manifest {
+                sheriff_config = sheriff_config.with_manifest(manifest_path);
+            }
+
+            // Create sheriff
+            let mut sheriff = Sheriff::new(sheriff_config)?;
+            sheriff.init()?;
+
+            if foreground {
+                println!("Sheriff daemon starting in foreground mode...");
+                println!("Press Ctrl+C to stop");
+                println!();
+
+                // Subscribe to events and print them
+                let mut events = sheriff.subscribe();
+                let event_handle = tokio::spawn(async move {
+                    while let Ok(event) = events.recv().await {
+                        match event {
+                            allbeads::sheriff::SheriffEvent::Started => {
+                                println!("[Sheriff] Daemon started");
+                            }
+                            allbeads::sheriff::SheriffEvent::Stopped => {
+                                println!("[Sheriff] Daemon stopped");
+                            }
+                            allbeads::sheriff::SheriffEvent::PollStarted => {
+                                println!("[Sheriff] Poll cycle started");
+                            }
+                            allbeads::sheriff::SheriffEvent::PollCompleted {
+                                rigs_polled,
+                                changes,
+                            } => {
+                                println!(
+                                    "[Sheriff] Poll completed: {} rigs, {} changes",
+                                    rigs_polled, changes
+                                );
+                            }
+                            allbeads::sheriff::SheriffEvent::RigSynced { rig_id, result } => {
+                                println!(
+                                    "[Sheriff] Rig {} synced: {} created, {} updated, {} deleted",
+                                    rig_id.as_str(),
+                                    result.created.len(),
+                                    result.updated.len(),
+                                    result.deleted.len()
+                                );
+                            }
+                            allbeads::sheriff::SheriffEvent::Error { message } => {
+                                eprintln!("[Sheriff] Error: {}", message);
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+
+                // Run the daemon
+                let rt = tokio::runtime::Runtime::new()?;
+                rt.block_on(async {
+                    sheriff.run().await?;
+                    event_handle.abort();
+                    Ok::<(), allbeads::AllBeadsError>(())
+                })?;
+            } else {
+                println!("Sheriff daemon background mode not yet implemented.");
+                println!("Use --foreground flag to run in foreground.");
+            }
+        }
+
+        Commands::Context(_) | Commands::Init { .. } | Commands::Mail(_) => {
             // Handled earlier in the function
             unreachable!("Context, Init, and Mail commands should be handled before aggregation")
         }
@@ -725,7 +871,18 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     Ok(())
 }
 
-fn handle_init_command(config_path: &Option<String>) -> allbeads::Result<()> {
+fn handle_init_command(
+    config_path: &Option<String>,
+    remote: Option<&str>,
+    target: Option<&str>,
+    janitor: bool,
+) -> allbeads::Result<()> {
+    // Handle remote repository initialization
+    if let Some(remote_url) = remote {
+        return handle_remote_init(remote_url, target, janitor);
+    }
+
+    // Standard local config initialization
     let config_file = if let Some(path) = config_path {
         PathBuf::from(path)
     } else {
@@ -768,6 +925,563 @@ fn handle_init_command(config_path: &Option<String>) -> allbeads::Result<()> {
     println!("     ab tui");
 
     Ok(())
+}
+
+/// Initialize a remote repository with beads
+fn handle_remote_init(
+    remote_url: &str,
+    target: Option<&str>,
+    janitor: bool,
+) -> allbeads::Result<()> {
+    use allbeads::git::BossRepo;
+    use allbeads::storage::BeadsRepo;
+
+    // Derive target directory from URL if not specified
+    let target_dir = if let Some(t) = target {
+        PathBuf::from(t)
+    } else {
+        // Extract repo name from URL
+        let repo_name = remote_url
+            .trim_end_matches('/')
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .next()
+            .unwrap_or("repo");
+        PathBuf::from(repo_name)
+    };
+
+    // Check if target already exists
+    if target_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Target directory already exists: {}",
+            target_dir.display()
+        )));
+    }
+
+    println!("Cloning {} to {}...", remote_url, target_dir.display());
+
+    // Clone the repository
+    let _repo = git2::Repository::clone(remote_url, &target_dir).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to clone repository: {}", e))
+    })?;
+
+    println!("✓ Repository cloned");
+
+    // Check if .beads/ already exists
+    let beads_dir = target_dir.join(".beads");
+    let already_has_beads = beads_dir.exists();
+
+    if !already_has_beads {
+        // Initialize beads using BeadsRepo
+        let beads_repo = BeadsRepo::with_workdir(&target_dir);
+        beads_repo.init()?;
+        println!("✓ Initialized .beads/ directory");
+
+        // Create an initial Analysis bead using the create API
+        beads_repo.create("Initial codebase analysis", "task", Some(1))?;
+        println!("✓ Created initial Analysis bead");
+
+        // Commit the .beads/ directory using BossRepo
+        let boss_repo = BossRepo::from_local(&target_dir)?;
+        boss_repo.add_beads()?;
+        boss_repo.commit(
+            "Initialize beads tracking\n\nAdded .beads/ directory with initial Analysis bead",
+            "AllBeads",
+            "noreply@allbeads.dev",
+        )?;
+        println!("✓ Committed .beads/ directory");
+    } else {
+        println!("✓ Repository already has .beads/ directory");
+    }
+
+    // Run janitor if requested
+    if janitor {
+        println!();
+        println!("Running janitor analysis...");
+        run_janitor_analysis(&target_dir)?;
+    }
+
+    println!();
+    println!("Repository initialized successfully!");
+    println!();
+    println!("Next steps:");
+    println!("  cd {} && ab context add", target_dir.display());
+    println!("  ab list");
+
+    Ok(())
+}
+
+/// Run janitor analysis to scan codebase and create issues
+fn run_janitor_analysis(repo_path: &PathBuf) -> allbeads::Result<()> {
+    use allbeads::git::BossRepo;
+    use allbeads::storage::BeadsRepo;
+
+    let beads_repo = BeadsRepo::with_workdir(repo_path);
+    let mut created_count = 0;
+
+    // Check for missing README
+    if !repo_path.join("README.md").exists() && !repo_path.join("README").exists() {
+        beads_repo.create("Add README documentation", "chore", Some(2))?;
+        println!("  Created: Add README documentation");
+        created_count += 1;
+    }
+
+    // Check for missing license
+    let license_files = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"];
+    let has_license = license_files.iter().any(|f| repo_path.join(f).exists());
+    if !has_license {
+        beads_repo.create("Add LICENSE file", "chore", Some(3))?;
+        println!("  Created: Add LICENSE file");
+        created_count += 1;
+    }
+
+    // Check for common config files
+    let has_gitignore = repo_path.join(".gitignore").exists();
+    if !has_gitignore {
+        beads_repo.create("Add .gitignore file", "chore", Some(3))?;
+        println!("  Created: Add .gitignore file");
+        created_count += 1;
+    }
+
+    // Look for TODO/FIXME comments in source files
+    let todo_patterns = scan_for_todos(repo_path)?;
+    for (_file, _line, text) in todo_patterns.iter().take(10) {
+        let title = if text.len() > 60 {
+            format!("TODO: {}...", &text[..57])
+        } else {
+            format!("TODO: {}", text)
+        };
+        beads_repo.create(&title, "task", Some(3))?;
+        println!("  Created: {}", title);
+        created_count += 1;
+    }
+
+    if todo_patterns.len() > 10 {
+        println!("  ... and {} more TODOs found (limited to 10)", todo_patterns.len() - 10);
+    }
+
+    // Commit janitor findings if we created any
+    if created_count > 0 {
+        let boss_repo = BossRepo::from_local(repo_path)?;
+        boss_repo.add_beads()?;
+        boss_repo.commit(
+            &format!("Janitor: Created {} issues from codebase analysis", created_count),
+            "AllBeads Janitor",
+            "janitor@allbeads.dev",
+        )?;
+        println!();
+        println!("✓ Created {} issues from janitor analysis", created_count);
+    } else {
+        println!("✓ No issues found - codebase looks clean!");
+    }
+
+    Ok(())
+}
+
+/// Scan repository for TODO/FIXME comments
+fn scan_for_todos(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, String)>> {
+    let mut results = Vec::new();
+
+    // Walk directory looking for source files
+    fn walk_dir(
+        dir: &std::path::Path,
+        base: &std::path::Path,
+        results: &mut Vec<(String, usize, String)>,
+    ) -> std::io::Result<()> {
+        if dir.is_dir() {
+            // Skip common ignored directories
+            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if dir_name.starts_with('.')
+                || dir_name == "node_modules"
+                || dir_name == "target"
+                || dir_name == "vendor"
+                || dir_name == "dist"
+                || dir_name == "build"
+            {
+                return Ok(());
+            }
+
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    walk_dir(&path, base, results)?;
+                } else if is_source_file(&path) {
+                    scan_file_for_todos(&path, base, results)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn is_source_file(path: &std::path::Path) -> bool {
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        matches!(
+            ext,
+            "rs" | "py" | "js" | "ts" | "tsx" | "jsx" | "go" | "java" | "c" | "cpp" | "h" | "hpp"
+                | "rb" | "php" | "swift" | "kt" | "scala"
+        )
+    }
+
+    fn scan_file_for_todos(
+        path: &std::path::Path,
+        base: &std::path::Path,
+        results: &mut Vec<(String, usize, String)>,
+    ) -> std::io::Result<()> {
+        let content = std::fs::read_to_string(path)?;
+        let relative_path = path
+            .strip_prefix(base)
+            .unwrap_or(path)
+            .to_string_lossy()
+            .to_string();
+
+        for (line_num, line) in content.lines().enumerate() {
+            let line_upper = line.to_uppercase();
+            if line_upper.contains("TODO") || line_upper.contains("FIXME") || line_upper.contains("HACK") {
+                // Extract the comment text
+                let text = line.trim().to_string();
+                if !text.is_empty() && results.len() < 100 {
+                    results.push((relative_path.clone(), line_num + 1, text));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    walk_dir(repo_path, repo_path, &mut results).map_err(|e| {
+        allbeads::AllBeadsError::Io(e)
+    })?;
+
+    Ok(results)
+}
+
+/// Run comprehensive janitor analysis on a repository
+fn run_full_janitor_analysis(repo_path: &PathBuf, verbose: bool, dry_run: bool) -> allbeads::Result<()> {
+    use allbeads::git::BossRepo;
+    use allbeads::storage::BeadsRepo;
+
+    let mut findings: Vec<JanitorFinding> = Vec::new();
+
+    // Check for missing documentation
+    println!("Checking documentation...");
+    if !repo_path.join("README.md").exists() && !repo_path.join("README").exists() {
+        findings.push(JanitorFinding {
+            category: "Documentation",
+            title: "Add README documentation".to_string(),
+            description: "Repository is missing a README file.".to_string(),
+            issue_type: "chore",
+            priority: 2,
+        });
+    }
+
+    let license_files = ["LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"];
+    if !license_files.iter().any(|f| repo_path.join(f).exists()) {
+        findings.push(JanitorFinding {
+            category: "Documentation",
+            title: "Add LICENSE file".to_string(),
+            description: "Repository is missing a LICENSE file.".to_string(),
+            issue_type: "chore",
+            priority: 3,
+        });
+    }
+
+    if !repo_path.join("CONTRIBUTING.md").exists() {
+        findings.push(JanitorFinding {
+            category: "Documentation",
+            title: "Add CONTRIBUTING guidelines".to_string(),
+            description: "Repository is missing contributing guidelines.".to_string(),
+            issue_type: "chore",
+            priority: 4,
+        });
+    }
+
+    // Check for configuration files
+    println!("Checking configuration...");
+    if !repo_path.join(".gitignore").exists() {
+        findings.push(JanitorFinding {
+            category: "Configuration",
+            title: "Add .gitignore file".to_string(),
+            description: "Repository is missing a .gitignore file.".to_string(),
+            issue_type: "chore",
+            priority: 3,
+        });
+    }
+
+    // Check for security files
+    println!("Checking security...");
+    if !repo_path.join("SECURITY.md").exists() {
+        findings.push(JanitorFinding {
+            category: "Security",
+            title: "Add SECURITY.md policy".to_string(),
+            description: "Repository is missing a security vulnerability reporting policy.".to_string(),
+            issue_type: "chore",
+            priority: 3,
+        });
+    }
+
+    // Detect language and check for test directories
+    println!("Checking test coverage...");
+    let detected_langs = detect_project_languages(repo_path);
+
+    for lang in &detected_langs {
+        if verbose {
+            println!("  Detected language: {}", lang);
+        }
+        let test_dirs = get_test_directories(lang);
+        let has_tests = test_dirs.iter().any(|d| repo_path.join(d).exists());
+
+        if !has_tests {
+            findings.push(JanitorFinding {
+                category: "Testing",
+                title: format!("Add {} tests", lang),
+                description: format!("No test directory found for {} code.", lang),
+                issue_type: "task",
+                priority: 2,
+            });
+        }
+    }
+
+    // Scan for TODO/FIXME comments
+    println!("Scanning for code comments...");
+    let todos = scan_for_todos(repo_path)?;
+
+    for (file, line, text) in todos.iter().take(20) {
+        let title = if text.len() > 50 {
+            format!("{}...", &text[..50])
+        } else {
+            text.clone()
+        };
+
+        let is_fixme = text.to_uppercase().contains("FIXME");
+        let is_hack = text.to_uppercase().contains("HACK");
+
+        findings.push(JanitorFinding {
+            category: if is_fixme { "Bug" } else if is_hack { "Tech Debt" } else { "Task" },
+            title,
+            description: format!("Found at {}:{}\n{}", file, line, text),
+            issue_type: if is_fixme { "bug" } else { "task" },
+            priority: if is_fixme { 2 } else { 3 },
+        });
+    }
+
+    if todos.len() > 20 {
+        println!("  Found {} more code comments (showing first 20)", todos.len() - 20);
+    }
+
+    // Check for potential security issues (basic patterns)
+    println!("Scanning for potential issues...");
+    let security_issues = scan_for_security_patterns(repo_path)?;
+    for (file, line, pattern, context) in security_issues.iter().take(10) {
+        findings.push(JanitorFinding {
+            category: "Security",
+            title: format!("Review potential {}", pattern),
+            description: format!("Found at {}:{}\n{}", file, line, context),
+            issue_type: "bug",
+            priority: 1,
+        });
+    }
+
+    // Print summary
+    println!();
+    println!("=== Janitor Analysis Summary ===");
+    println!();
+
+    let mut by_category: std::collections::HashMap<&str, Vec<&JanitorFinding>> = std::collections::HashMap::new();
+    for finding in &findings {
+        by_category
+            .entry(finding.category)
+            .or_default()
+            .push(finding);
+    }
+
+    for (category, items) in &by_category {
+        println!("{} ({} items):", category, items.len());
+        for item in items.iter().take(5) {
+            println!("  [P{}] {}", item.priority, item.title);
+            if verbose {
+                for line in item.description.lines().take(2) {
+                    println!("       {}", line);
+                }
+            }
+        }
+        if items.len() > 5 {
+            println!("  ... and {} more", items.len() - 5);
+        }
+        println!();
+    }
+
+    println!("Total findings: {}", findings.len());
+
+    // Create beads if not dry run
+    if !dry_run && !findings.is_empty() {
+        println!();
+        println!("Creating beads...");
+
+        let beads_repo = BeadsRepo::with_workdir(repo_path);
+
+        // Check if beads is initialized
+        if !repo_path.join(".beads").exists() {
+            beads_repo.init()?;
+            println!("  Initialized .beads/ directory");
+        }
+
+        let mut created = 0;
+        for finding in &findings {
+            beads_repo.create(&finding.title, finding.issue_type, Some(finding.priority))?;
+            created += 1;
+        }
+
+        // Commit findings
+        if created > 0 {
+            let boss_repo = BossRepo::from_local(repo_path)?;
+            boss_repo.add_beads()?;
+            boss_repo.commit(
+                &format!("Janitor: Created {} issues from codebase analysis", created),
+                "AllBeads Janitor",
+                "janitor@allbeads.dev",
+            )?;
+            println!("✓ Created {} beads", created);
+        }
+    }
+
+    Ok(())
+}
+
+/// A finding from janitor analysis
+struct JanitorFinding {
+    category: &'static str,
+    title: String,
+    description: String,
+    issue_type: &'static str,
+    priority: u8,
+}
+
+/// Detect programming languages used in the project
+fn detect_project_languages(repo_path: &PathBuf) -> Vec<&'static str> {
+    let mut langs = Vec::new();
+
+    // Rust
+    if repo_path.join("Cargo.toml").exists() {
+        langs.push("Rust");
+    }
+
+    // Python
+    if repo_path.join("pyproject.toml").exists()
+        || repo_path.join("setup.py").exists()
+        || repo_path.join("requirements.txt").exists()
+    {
+        langs.push("Python");
+    }
+
+    // JavaScript/TypeScript
+    if repo_path.join("package.json").exists() {
+        if repo_path.join("tsconfig.json").exists() {
+            langs.push("TypeScript");
+        } else {
+            langs.push("JavaScript");
+        }
+    }
+
+    // Go
+    if repo_path.join("go.mod").exists() {
+        langs.push("Go");
+    }
+
+    // Java
+    if repo_path.join("pom.xml").exists() || repo_path.join("build.gradle").exists() {
+        langs.push("Java");
+    }
+
+    // Ruby
+    if repo_path.join("Gemfile").exists() {
+        langs.push("Ruby");
+    }
+
+    langs
+}
+
+/// Get expected test directories for a language
+fn get_test_directories(lang: &str) -> Vec<&'static str> {
+    match lang {
+        "Rust" => vec!["tests", "src"],  // Rust uses tests/ or inline tests
+        "Python" => vec!["tests", "test"],
+        "JavaScript" | "TypeScript" => vec!["tests", "test", "__tests__", "spec"],
+        "Go" => vec!["."],  // Go tests are alongside code
+        "Java" => vec!["src/test"],
+        "Ruby" => vec!["test", "spec"],
+        _ => vec!["tests", "test"],
+    }
+}
+
+/// Scan for potential security patterns
+fn scan_for_security_patterns(repo_path: &PathBuf) -> allbeads::Result<Vec<(String, usize, String, String)>> {
+    let mut results = Vec::new();
+
+    // Patterns that might indicate security issues
+    let patterns = [
+        ("hardcoded secret", r#"(?i)(password|secret|api_key|apikey|token)\s*=\s*["'][^"']+["']"#),
+        ("SQL injection risk", r#"(?i)execute\s*\(\s*["'].*\+|format!\s*\([^)]*\{[^}]*\}[^)]*sql"#),
+        ("unsafe eval", r#"(?i)\beval\s*\("#),
+    ];
+
+    fn walk_for_security(
+        dir: &std::path::Path,
+        base: &std::path::Path,
+        patterns: &[(&str, &str)],
+        results: &mut Vec<(String, usize, String, String)>,
+    ) -> std::io::Result<()> {
+        if dir.is_dir() {
+            let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if dir_name.starts_with('.')
+                || dir_name == "node_modules"
+                || dir_name == "target"
+                || dir_name == "vendor"
+            {
+                return Ok(());
+            }
+
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    walk_for_security(&path, base, patterns, results)?;
+                } else {
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    if matches!(ext, "rs" | "py" | "js" | "ts" | "go" | "java" | "rb") {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            let relative = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+                            for (line_num, line) in content.lines().enumerate() {
+                                for (name, _pattern) in patterns {
+                                    // Simple substring check (regex would be better but adds dependency)
+                                    let line_lower = line.to_lowercase();
+                                    if (name == &"hardcoded secret" &&
+                                        (line_lower.contains("password") || line_lower.contains("secret") || line_lower.contains("api_key"))
+                                        && line.contains("=") && (line.contains("\"") || line.contains("'")))
+                                    || (name == &"unsafe eval" && line_lower.contains("eval("))
+                                    {
+                                        results.push((
+                                            relative.clone(),
+                                            line_num + 1,
+                                            name.to_string(),
+                                            line.trim().to_string(),
+                                        ));
+                                        if results.len() >= 20 {
+                                            return Ok(());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    walk_for_security(repo_path, repo_path, &patterns, &mut results).map_err(allbeads::AllBeadsError::Io)?;
+
+    Ok(results)
 }
 
 fn parse_status(s: &str) -> allbeads::Result<Status> {
