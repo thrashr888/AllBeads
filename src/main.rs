@@ -60,6 +60,10 @@ enum Commands {
     #[command(subcommand)]
     Context(ContextCommands),
 
+    /// Manage tracked folders (Dry→Wet progression)
+    #[command(subcommand)]
+    Folder(FolderCommands),
+
     /// Clear the local cache
     ClearCache,
 
@@ -383,6 +387,60 @@ enum ContextCommands {
     },
 }
 
+#[derive(Subcommand, Debug)]
+enum FolderCommands {
+    /// Add folders to tracking
+    Add {
+        /// Paths to track (supports globs like ~/Workspace/*)
+        #[arg(required = true)]
+        paths: Vec<String>,
+
+        /// Override prefix for beads
+        #[arg(short, long)]
+        prefix: Option<String>,
+
+        /// Agent persona for these folders
+        #[arg(long)]
+        persona: Option<String>,
+
+        /// Start interactive setup after adding
+        #[arg(long)]
+        setup: bool,
+    },
+
+    /// List tracked folders with Dry→Wet status
+    List {
+        /// Filter by status (dry, git, beads, configured, wet)
+        #[arg(short, long)]
+        status: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Show detailed info
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Remove a folder from tracking
+    Remove {
+        /// Path to remove
+        path: String,
+
+        /// Also clean up AllBeads config in the folder
+        #[arg(long)]
+        clean: bool,
+    },
+
+    /// Show folder status summary
+    Status {
+        /// Path to check (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+}
+
 fn main() {
     // Initialize logging
     if let Err(e) = allbeads::logging::init() {
@@ -411,6 +469,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle context management commands (don't need graph)
     if let Commands::Context(ref ctx_cmd) = cli.command {
         return handle_context_command(ctx_cmd, &cli.config);
+    }
+
+    // Handle folder tracking commands (don't need graph)
+    if let Commands::Folder(ref folder_cmd) = cli.command {
+        return handle_folder_command(folder_cmd);
     }
 
     // Handle mail commands (don't need graph)
@@ -1081,6 +1144,7 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         Commands::Context(_)
         | Commands::Init { .. }
         | Commands::Mail(_)
+        | Commands::Folder(_)
         | Commands::Jira(_)
         | Commands::GitHub(_)
         | Commands::Swarm(_)
@@ -2157,6 +2221,334 @@ fn handle_context_command(
     }
 
     Ok(())
+}
+
+// === Folder Tracking Commands (Phase 1 of PRD-01) ===
+
+fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
+    use allbeads::context::{Context, FolderConfig, FolderStatus, TrackedFolder};
+
+    // Get folder tracking file path
+    let folders_file = AllBeadsConfig::default_path()
+        .parent()
+        .map(|p| p.join("folders.yaml"))
+        .ok_or_else(|| {
+            allbeads::AllBeadsError::Config("Could not determine config directory".to_string())
+        })?;
+
+    // Load or create folder tracking context
+    let mut context = if folders_file.exists() {
+        let content = std::fs::read_to_string(&folders_file).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to read folders.yaml: {}", e))
+        })?;
+        serde_yaml::from_str(&content).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to parse folders.yaml: {}", e))
+        })?
+    } else {
+        Context::new("default")
+    };
+
+    match cmd {
+        FolderCommands::Add {
+            paths,
+            prefix,
+            persona,
+            setup: _,
+        } => {
+            let mut added = 0;
+            let mut skipped = 0;
+
+            for path_pattern in paths {
+                // Expand ~ to home directory
+                let expanded = if path_pattern.starts_with("~/") {
+                    if let Some(home) = dirs::home_dir() {
+                        home.join(&path_pattern[2..])
+                    } else {
+                        PathBuf::from(path_pattern)
+                    }
+                } else {
+                    PathBuf::from(path_pattern)
+                };
+
+                // Handle glob patterns
+                let paths_to_add: Vec<PathBuf> = if path_pattern.contains('*') {
+                    glob::glob(expanded.to_str().unwrap_or(""))
+                        .map_err(|e| {
+                            allbeads::AllBeadsError::Config(format!("Invalid glob pattern: {}", e))
+                        })?
+                        .filter_map(|r| r.ok())
+                        .filter(|p| p.is_dir())
+                        .collect()
+                } else {
+                    vec![expanded]
+                };
+
+                for path in paths_to_add {
+                    // Resolve to absolute path
+                    let abs_path = std::fs::canonicalize(&path).map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!(
+                            "Failed to resolve path '{}': {}",
+                            path.display(),
+                            e
+                        ))
+                    })?;
+
+                    // Check if already tracked
+                    if context.get_folder(&abs_path).is_some() {
+                        println!(
+                            "  {} {} (already tracked)",
+                            style::dim("○"),
+                            abs_path.display()
+                        );
+                        skipped += 1;
+                        continue;
+                    }
+
+                    // Detect status
+                    let status = detect_folder_status(&abs_path);
+
+                    // Create folder config if prefix/persona specified
+                    let config = if prefix.is_some() || persona.is_some() {
+                        let mut cfg = FolderConfig::default();
+                        cfg.prefix = prefix.clone();
+                        cfg.persona = persona.clone();
+                        Some(cfg)
+                    } else {
+                        None
+                    };
+
+                    // Create tracked folder
+                    let mut folder = TrackedFolder::new(&abs_path).with_status(status);
+                    folder.config = config;
+
+                    // Print status
+                    println!(
+                        "  {} {} {}",
+                        style::folder_status_indicator(status.short_name()),
+                        style::folder_status(status.short_name()),
+                        abs_path.display()
+                    );
+
+                    context.add_folder(folder);
+                    added += 1;
+                }
+            }
+
+            // Save context
+            if added > 0 {
+                // Ensure parent directory exists
+                if let Some(parent) = folders_file.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!(
+                            "Failed to create config directory: {}",
+                            e
+                        ))
+                    })?;
+                }
+
+                let yaml = serde_yaml::to_string(&context).map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to serialize folders: {}", e))
+                })?;
+                std::fs::write(&folders_file, yaml).map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to write folders.yaml: {}", e))
+                })?;
+            }
+
+            println!();
+            println!(
+                "{} Added {} folder(s), {} skipped",
+                style::success("✓"),
+                style::count_ready(added),
+                style::dim(&skipped.to_string())
+            );
+        }
+
+        FolderCommands::List {
+            status,
+            json,
+            verbose,
+        } => {
+            if context.folders.is_empty() {
+                println!("No folders tracked. Use 'ab folder add <path>' to start tracking.");
+                return Ok(());
+            }
+
+            // Filter by status if specified
+            let folders: Vec<&TrackedFolder> = if let Some(status_str) = status {
+                let filter_status = FolderStatus::from_str(status_str).ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Invalid status: {}", status_str))
+                })?;
+                context.folders.iter().filter(|f| f.status == filter_status).collect()
+            } else {
+                context.folders.iter().collect()
+            };
+
+            if *json {
+                let json_out = serde_json::to_string_pretty(&folders).map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to serialize to JSON: {}", e))
+                })?;
+                println!("{}", json_out);
+                return Ok(());
+            }
+
+            // Print header
+            println!();
+            println!(
+                "{} Tracked Folders ({} total):",
+                style::header("○"),
+                context.folder_count()
+            );
+            println!();
+
+            // Print status counts
+            let counts = context.status_counts();
+            print!("  ");
+            for status in &[
+                FolderStatus::Dry,
+                FolderStatus::Git,
+                FolderStatus::Beads,
+                FolderStatus::Configured,
+                FolderStatus::Wet,
+            ] {
+                let count = counts.get(status).unwrap_or(&0);
+                if *count > 0 {
+                    print!(
+                        "{} {} {}  ",
+                        style::folder_status_indicator(status.short_name()),
+                        status.short_name(),
+                        count
+                    );
+                }
+            }
+            println!();
+            println!();
+
+            // Print folders
+            for folder in folders {
+                let status_icon = style::folder_status_indicator(folder.status.short_name());
+                let status_text = style::folder_status(folder.status.short_name());
+                let path_display = folder.display_path();
+
+                print!(
+                    "  {} {:8} {}",
+                    status_icon, status_text, path_display
+                );
+
+                if let Some(ref config) = folder.config {
+                    if let Some(ref prefix) = config.prefix {
+                        print!("  {}", style::dim(&format!("[{}]", prefix)));
+                    }
+                }
+
+                println!();
+
+                if *verbose {
+                    if folder.bead_count > 0 {
+                        println!("      Beads: {}", folder.bead_count);
+                    }
+                    if let Some(ref added) = folder.added_at {
+                        println!("      Added: {}", &added[..19]);
+                    }
+                }
+            }
+
+            println!();
+            println!(
+                "{}",
+                style::dim("Legend: ○ dry → ◔ git → ◑ beads → ◕ configured → ● wet")
+            );
+        }
+
+        FolderCommands::Remove { path, clean: _ } => {
+            // Resolve path
+            let abs_path = std::fs::canonicalize(path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!(
+                    "Failed to resolve path '{}': {}",
+                    path, e
+                ))
+            })?;
+
+            if context.remove_folder(&abs_path).is_some() {
+                // Save context
+                let yaml = serde_yaml::to_string(&context).map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to serialize folders: {}", e))
+                })?;
+                std::fs::write(&folders_file, yaml).map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to write folders.yaml: {}", e))
+                })?;
+
+                println!("Removed folder '{}'", abs_path.display());
+            } else {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Folder '{}' not found in tracking",
+                    abs_path.display()
+                )));
+            }
+        }
+
+        FolderCommands::Status { path } => {
+            // Resolve path
+            let abs_path = std::fs::canonicalize(path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!(
+                    "Failed to resolve path '{}': {}",
+                    path, e
+                ))
+            })?;
+
+            let status = detect_folder_status(&abs_path);
+
+            println!();
+            println!("{}", style::header("Folder Status"));
+            println!();
+            println!(
+                "  Path:   {}",
+                style::path(&abs_path.display().to_string())
+            );
+            println!(
+                "  Status: {} {}",
+                style::folder_status_indicator(status.short_name()),
+                style::folder_status(status.short_name())
+            );
+
+            // Show what's missing to reach next level
+            if let Some(next) = status.next() {
+                println!();
+                println!("  {} To reach '{}' status:", style::dim("→"), next.short_name());
+                match next {
+                    FolderStatus::Git => println!("      Run: git init"),
+                    FolderStatus::Beads => println!("      Run: bd init"),
+                    FolderStatus::Configured => println!("      Run: ab folder add {} --prefix=<name>", path),
+                    FolderStatus::Wet => println!("      Enable sync in config"),
+                    _ => {}
+                }
+            } else {
+                println!();
+                println!("  {} Fully integrated!", style::success("✓"));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Detect the current status of a folder (Dry to Wet progression)
+fn detect_folder_status(path: &PathBuf) -> allbeads::context::FolderStatus {
+    use allbeads::context::FolderStatus;
+
+    // Check if .beads/ exists (implies git exists too)
+    if path.join(".beads").exists() {
+        // Check if configured in AllBeads
+        // For now, we'll consider beads = beads status
+        // TODO: Check for actual AllBeads config
+        return FolderStatus::Beads;
+    }
+
+    // Check if .git exists
+    if path.join(".git").exists() {
+        return FolderStatus::Git;
+    }
+
+    FolderStatus::Dry
 }
 
 fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
