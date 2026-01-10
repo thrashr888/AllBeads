@@ -54,7 +54,10 @@ ab show <id>                      # Show bead details
 
 # Searching and analysis
 ab search "query"                 # Full-text search
-ab search "query" --context work  # Search in specific context
+ab search --status open           # Filter by status
+ab search --type epic             # Filter by type
+ab search --priority-min P0       # Filter by priority
+ab search --sort updated -r       # Sort by updated, reverse
 ab duplicates                     # Find duplicate beads
 ab duplicates --threshold 0.6     # Adjust similarity threshold
 
@@ -310,17 +313,44 @@ Blocked beads: 47
 
 ### Search beads
 
-Full-text search across title, description, notes, and ID:
+Powerful search with filters across all contexts:
 
 ```bash
-# Search all beads
+# Basic text search
 ab search "TUI"
 
 # Search within a specific context
 ab search "agent" --context rookery
 
-# Search is case-insensitive
-ab search "authentication"
+# Filter by status
+ab search --status open
+ab search "bug" --status in_progress
+
+# Filter by priority range
+ab search --priority-min P0 --priority-max P2
+ab search "critical" --priority-min 0 --priority-max 1
+
+# Filter by type
+ab search --type epic
+ab search --type feature --status open
+
+# Filter by label
+ab search --label backend --label urgent
+
+# Filter by assignee
+ab search --assignee alice
+
+# Sort results
+ab search --status open --sort priority
+ab search --sort created --reverse
+ab search --sort title -n 20
+
+# Combine filters for powerful queries
+ab search "database" --context work --status open --priority-min P1 --sort updated
+
+# Available sort fields: priority, created, updated, status, id, title, type
+# Available statuses: open, in_progress, blocked, deferred, closed
+# Available types: bug, feature, task, epic, chore
 ```
 
 ### Find duplicate beads

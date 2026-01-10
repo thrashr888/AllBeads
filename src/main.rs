@@ -70,12 +70,48 @@ enum Commands {
 
     /// Search beads by text (title, description, notes)
     Search {
-        /// Search query
-        query: String,
+        /// Search query (optional with filters)
+        query: Option<String>,
 
         /// Filter by context
         #[arg(short = 'c', long)]
         context: Option<String>,
+
+        /// Filter by status (open, in_progress, blocked, deferred, closed)
+        #[arg(short = 's', long)]
+        status: Option<String>,
+
+        /// Filter by minimum priority (inclusive, 0-4 or P0-P4)
+        #[arg(long)]
+        priority_min: Option<String>,
+
+        /// Filter by maximum priority (inclusive, 0-4 or P0-P4)
+        #[arg(long)]
+        priority_max: Option<String>,
+
+        /// Filter by type (bug, feature, task, epic, chore)
+        #[arg(short = 't', long = "type")]
+        issue_type: Option<String>,
+
+        /// Filter by label
+        #[arg(short = 'l', long)]
+        label: Option<Vec<String>>,
+
+        /// Filter by assignee
+        #[arg(short = 'a', long)]
+        assignee: Option<String>,
+
+        /// Sort by field: priority, created, updated, status, id, title, type
+        #[arg(long, default_value = "priority")]
+        sort: String,
+
+        /// Reverse sort order
+        #[arg(short = 'r', long)]
+        reverse: bool,
+
+        /// Limit results (default: 50)
+        #[arg(short = 'n', long, default_value = "50")]
+        limit: usize,
     },
 
     /// Find potential duplicate beads
@@ -350,40 +386,163 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Search { query, context } => {
-            let query_lower = query.to_lowercase();
+        Commands::Search {
+            query,
+            context,
+            status,
+            priority_min,
+            priority_max,
+            issue_type,
+            label,
+            assignee,
+            sort,
+            reverse,
+            limit,
+        } => {
+            let query_lower = query.as_ref().map(|q| q.to_lowercase());
+
+            // Parse priority bounds
+            let min_priority = priority_min.as_ref().and_then(|p| parse_priority_arg(p));
+            let max_priority = priority_max.as_ref().and_then(|p| parse_priority_arg(p));
+
+            // Parse status filter
+            let status_filter = status.as_ref().and_then(|s| {
+                match s.to_lowercase().as_str() {
+                    "open" => Some(allbeads::graph::Status::Open),
+                    "in_progress" | "inprogress" => Some(allbeads::graph::Status::InProgress),
+                    "blocked" => Some(allbeads::graph::Status::Blocked),
+                    "deferred" => Some(allbeads::graph::Status::Deferred),
+                    "closed" => Some(allbeads::graph::Status::Closed),
+                    _ => None,
+                }
+            });
+
+            // Parse type filter
+            let type_filter = issue_type.as_ref().and_then(|t| {
+                match t.to_lowercase().as_str() {
+                    "bug" => Some(allbeads::graph::IssueType::Bug),
+                    "feature" => Some(allbeads::graph::IssueType::Feature),
+                    "task" => Some(allbeads::graph::IssueType::Task),
+                    "epic" => Some(allbeads::graph::IssueType::Epic),
+                    "chore" => Some(allbeads::graph::IssueType::Chore),
+                    _ => None,
+                }
+            });
+
             let mut results: Vec<_> = graph
                 .beads
                 .values()
                 .filter(|b| {
-                    // Search in title, description, notes, and ID
-                    let matches_text = b.title.to_lowercase().contains(&query_lower)
-                        || b.id.as_str().to_lowercase().contains(&query_lower)
-                        || b.description
-                            .as_ref()
-                            .map(|d| d.to_lowercase().contains(&query_lower))
-                            .unwrap_or(false)
-                        || b.notes
-                            .as_ref()
-                            .map(|n| n.to_lowercase().contains(&query_lower))
-                            .unwrap_or(false);
+                    // Text search (if query provided)
+                    let matches_text = if let Some(ref q) = query_lower {
+                        b.title.to_lowercase().contains(q)
+                            || b.id.as_str().to_lowercase().contains(q)
+                            || b.description
+                                .as_ref()
+                                .map(|d| d.to_lowercase().contains(q))
+                                .unwrap_or(false)
+                            || b.notes
+                                .as_ref()
+                                .map(|n| n.to_lowercase().contains(q))
+                                .unwrap_or(false)
+                    } else {
+                        true // No query = match all
+                    };
 
-                    if let Some(ref context_str) = context {
+                    // Context filter
+                    let matches_context = if let Some(ref context_str) = context {
                         let context_tag = if context_str.starts_with('@') {
                             context_str.clone()
                         } else {
                             format!("@{}", context_str)
                         };
-                        matches_text && b.labels.contains(&context_tag)
+                        b.labels.contains(&context_tag)
                     } else {
-                        matches_text
-                    }
+                        true
+                    };
+
+                    // Status filter
+                    let matches_status = status_filter
+                        .as_ref()
+                        .map(|s| b.status == *s)
+                        .unwrap_or(true);
+
+                    // Priority filter
+                    let matches_priority = {
+                        let min_ok = min_priority
+                            .as_ref()
+                            .map(|min| b.priority >= *min)
+                            .unwrap_or(true);
+                        let max_ok = max_priority
+                            .as_ref()
+                            .map(|max| b.priority <= *max)
+                            .unwrap_or(true);
+                        min_ok && max_ok
+                    };
+
+                    // Type filter
+                    let matches_type = type_filter
+                        .as_ref()
+                        .map(|t| b.issue_type == *t)
+                        .unwrap_or(true);
+
+                    // Label filter (must have ALL specified labels)
+                    let matches_labels = label
+                        .as_ref()
+                        .map(|labels| labels.iter().all(|l| b.labels.contains(l)))
+                        .unwrap_or(true);
+
+                    // Assignee filter
+                    let matches_assignee = assignee
+                        .as_ref()
+                        .map(|a| {
+                            b.assignee
+                                .as_ref()
+                                .map(|ba| ba.to_lowercase().contains(&a.to_lowercase()))
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(true);
+
+                    matches_text
+                        && matches_context
+                        && matches_status
+                        && matches_priority
+                        && matches_type
+                        && matches_labels
+                        && matches_assignee
                 })
                 .collect();
 
-            results.sort_by_key(|b| (b.priority, status_to_sort_key(b.status)));
+            // Sort results
+            match sort.to_lowercase().as_str() {
+                "priority" => results.sort_by_key(|b| b.priority),
+                "created" => results.sort_by(|a, b| a.created_at.cmp(&b.created_at)),
+                "updated" => results.sort_by(|a, b| a.updated_at.cmp(&b.updated_at)),
+                "status" => results.sort_by_key(|b| status_to_sort_key(b.status)),
+                "id" => results.sort_by(|a, b| a.id.as_str().cmp(b.id.as_str())),
+                "title" => results.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase())),
+                "type" => results.sort_by_key(|b| format!("{:?}", b.issue_type)),
+                _ => results.sort_by_key(|b| (b.priority, status_to_sort_key(b.status))),
+            }
 
-            println!("Search results for '{}': {} beads", query, results.len());
+            if reverse {
+                results.reverse();
+            }
+
+            // Apply limit
+            let total = results.len();
+            results.truncate(limit);
+
+            // Print results
+            let query_display = query.as_deref().unwrap_or("*");
+            if total > limit {
+                println!(
+                    "Search results for '{}': showing {} of {} beads",
+                    query_display, limit, total
+                );
+            } else {
+                println!("Search results for '{}': {} beads", query_display, total);
+            }
             println!();
             for bead in results {
                 print_bead_summary(bead);
@@ -610,6 +769,10 @@ fn parse_priority(s: &str) -> allbeads::Result<Priority> {
             s
         ))),
     }
+}
+
+fn parse_priority_arg(s: &str) -> Option<Priority> {
+    parse_priority(s).ok()
 }
 
 fn status_to_sort_key(status: Status) -> u8 {
