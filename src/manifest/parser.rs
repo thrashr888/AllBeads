@@ -24,7 +24,7 @@ pub struct Remote {
     /// Remote name (e.g., "origin")
     pub name: String,
 
-    /// Fetch URL base (e.g., "https://github.com/org")
+    /// Fetch URL base (e.g., `https://github.com/org`)
     pub fetch: String,
 
     /// Review URL for code review (optional)

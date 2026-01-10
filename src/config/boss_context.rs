@@ -39,7 +39,7 @@ pub struct JiraIntegration {
 /// GitHub integration configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubIntegration {
-    /// GitHub instance URL (e.g., "https://github.com" or "https://github.ibm.com")
+    /// GitHub instance URL (e.g., `https://github.com` or `https://github.ibm.com`)
     pub url: String,
 
     /// Organization or user

@@ -32,7 +32,7 @@ pub struct Rig {
     /// Local path to the repository
     pub path: PathBuf,
 
-    /// Remote URL (e.g., "https://github.com/org/repo" or "git@github.com:org/repo")
+    /// Remote URL (e.g., `https://github.com/org/repo` or `git@github.com:org/repo`)
     pub remote: String,
 
     /// Git branch to track
