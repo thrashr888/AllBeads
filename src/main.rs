@@ -77,7 +77,7 @@ enum Commands {
         #[arg(short = 'c', long)]
         context: Option<String>,
 
-        /// Filter by status (open, in_progress, blocked, deferred, closed). Prefix with ! to negate (e.g., !closed)
+        /// Filter by status (open, in_progress, blocked, deferred, closed). Prefix with ^ to negate (e.g., ^closed)
         #[arg(short = 's', long)]
         status: Option<String>,
 
@@ -89,7 +89,7 @@ enum Commands {
         #[arg(long)]
         priority_max: Option<String>,
 
-        /// Filter by type (bug, feature, task, epic, chore). Prefix with ! to negate (e.g., !epic)
+        /// Filter by type (bug, feature, task, epic, chore). Prefix with ^ to negate (e.g., ^epic)
         #[arg(short = 't', long = "type")]
         issue_type: Option<String>,
 
@@ -405,11 +405,13 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             let min_priority = priority_min.as_ref().and_then(|p| parse_priority_arg(p));
             let max_priority = priority_max.as_ref().and_then(|p| parse_priority_arg(p));
 
-            // Parse status filter (supports negation with ! prefix)
+            // Parse status filter (supports negation with ^ or ! prefix)
             let (status_filter, status_negated) = status
                 .as_ref()
                 .map(|s| {
-                    let (negated, val) = if let Some(stripped) = s.strip_prefix('!') {
+                    let (negated, val) = if let Some(stripped) = s.strip_prefix('^') {
+                        (true, stripped)
+                    } else if let Some(stripped) = s.strip_prefix('!') {
                         (true, stripped)
                     } else {
                         (false, s.as_str())
@@ -426,11 +428,13 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                 })
                 .unwrap_or((None, false));
 
-            // Parse type filter (supports negation with ! prefix)
+            // Parse type filter (supports negation with ^ or ! prefix)
             let (type_filter, type_negated) = issue_type
                 .as_ref()
                 .map(|t| {
-                    let (negated, val) = if let Some(stripped) = t.strip_prefix('!') {
+                    let (negated, val) = if let Some(stripped) = t.strip_prefix('^') {
+                        (true, stripped)
+                    } else if let Some(stripped) = t.strip_prefix('!') {
                         (true, stripped)
                     } else {
                         (false, t.as_str())

@@ -14,6 +14,7 @@
       "Bash(bd list:*)",
       "Bash(bd q:*)",
       "Bash(bd ready:*)",
+      "Bash(bd search:*)",
       "Bash(bd show:*)",
       "Bash(bd stats:*)",
       "Bash(bd update:*)",
