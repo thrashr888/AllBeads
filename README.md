@@ -51,16 +51,25 @@ XML-based configuration defining:
 
 **Phase 1 (The Reader) - Complete**
 
-AllBeads now provides read-only aggregation of multiple Boss repositories:
+AllBeads provides read-only aggregation of multiple Boss repositories:
 
-- ✅ Multi-repository aggregation from git remotes
+- ✅ Multi-repository aggregation from git remotes (SSH and HTTPS)
 - ✅ SQLite cache layer with automatic expiration
 - ✅ Context-aware filtering (@work, @personal, etc.)
 - ✅ Full CLI with filtering, search, and display commands
+- ✅ Kanban TUI with keyboard navigation
 - ✅ bd JSONL format compatibility
-- ⬜ Terminal UI (next up)
+- ✅ Integration tests covering core functionality
 
-See [demo.md](demo.md) for usage examples.
+**Phase 2 (The Mailroom) - In Progress**
+
+Agent-to-agent messaging protocol:
+
+- ✅ Message types defined (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
+- ⬜ Postmaster daemon
+- ⬜ Message persistence and routing
+
+See [demo.md](demo.md) for usage examples and [ARCHITECTURE.md](ARCHITECTURE.md) for technical details.
 
 ## Getting Started
 
@@ -80,36 +89,22 @@ cd AllBeads
 # Build the project
 cargo build --release
 
-# Create config directory
-mkdir -p ~/.config/allbeads
-
-# Create initial configuration
-cat > ~/.config/allbeads/config.yaml << 'EOF'
-contexts:
-  - name: allbeads
-    type: git
-    url: https://github.com/thrashr888/AllBeads.git
-    path: /path/to/AllBeads
-    auth_strategy: ssh_agent
-agent_mail:
-  port: 8085
-  storage: ~/.config/allbeads/mail.db
-visualization:
-  default_view: kanban
-  theme: dark
-  refresh_interval: 60
-EOF
+# Initialize AllBeads (creates config directory and file)
+./target/release/allbeads init
 ```
 
 ### Quick Start
 
 ```bash
 # Setup alias for convenience
-alias ab='cargo run --quiet -- --cached'
+alias ab='./target/release/allbeads'
 
-# Add Boss repositories
-ab context add work https://github.com/org/boss-work.git
-ab context add personal https://github.com/you/boss-personal.git
+# Add the current repository (auto-detects name, URL, and auth)
+cd /path/to/your-repo
+ab context add .
+
+# Or add with explicit URL (SSH or HTTPS)
+ab context add . --url git@github.com:org/repo.git
 
 # View aggregated statistics
 ab stats
@@ -123,22 +118,39 @@ ab list --status open
 # Filter by priority
 ab list --priority P1
 
-# Show ready-to-work beads
+# Show ready-to-work beads (no blockers)
 ab ready
 
 # Show bead details
 ab show ab-123
+
+# Launch Kanban TUI
+ab tui
 ```
 
 See [demo.md](demo.md) for more examples.
 
 ### CLI Reference
 
+#### Initialization
+
+```bash
+# Initialize AllBeads (creates ~/.config/allbeads/config.yaml)
+allbeads init
+```
+
 #### Context Management
 
 ```bash
-# Add a new Boss repository
-allbeads context add <name> <url> [--path <path>] [--auth <strategy>]
+# Add a repository (infers name from folder, URL from git remote)
+allbeads context add <path>
+
+# Add with explicit name and URL
+allbeads context add <path> --name <name> --url <url>
+
+# Specify authentication strategy
+allbeads context add <path> --auth ssh_agent
+allbeads context add <path> --auth personal_access_token
 
 # List all configured contexts
 allbeads context list
@@ -170,6 +182,20 @@ allbeads ready
 
 # Show detailed information about a bead
 allbeads show <bead-id>
+```
+
+#### TUI (Terminal User Interface)
+
+```bash
+# Launch Kanban board
+allbeads tui
+
+# TUI Keyboard shortcuts:
+#   j/k or ↑/↓    - Move up/down in current column
+#   h/l or ←/→    - Switch between columns
+#   Enter         - View bead details
+#   Esc           - Back to board
+#   q             - Quit
 ```
 
 #### Cache Management
@@ -219,10 +245,22 @@ AllBeads/
 ├── specs/
 │   └── PRD-00.md           # Complete architecture specification
 ├── src/
-│   └── main.rs             # CLI entry point
+│   ├── main.rs             # CLI entry point
+│   ├── lib.rs              # Library exports
+│   ├── aggregator/         # Multi-repo aggregation
+│   ├── cache/              # SQLite caching
+│   ├── config/             # Configuration management
+│   ├── git/                # Git operations
+│   ├── graph/              # Bead graph data structures
+│   ├── mail/               # Agent Mail protocol
+│   ├── storage/            # JSONL parsing
+│   └── tui/                # Kanban TUI
+├── tests/
+│   └── integration_test.rs # Integration tests
 ├── .beads/                 # Issue tracking database
 ├── Cargo.toml              # Rust dependencies
 ├── CLAUDE.md               # AI agent development guide
+├── ARCHITECTURE.md         # Technical architecture
 └── README.md               # This file
 ```
 
