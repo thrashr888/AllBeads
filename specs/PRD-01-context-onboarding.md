@@ -351,7 +351,175 @@ Plugins are discovered through:
 1. **Curated List**: Built-in list of known-good plugins
 2. **External Registries**: Query Claude/npm/crates.io when they support it
 3. **Direct URL**: Install any compatible plugin by repo URL
-4. **Project Detection**: Scan for existing `.claude-plugin/` directories
+4. **Project Detection**: Scan for existing plugin configurations
+
+### Claude Settings Detection
+
+Claude Code stores plugin state in settings files that AllBeads can read:
+
+```
+project/
+├── .claude/
+│   ├── settings.json        # Project-level settings (git-tracked)
+│   └── settings.local.json  # Local settings (gitignored)
+└── ...
+
+~/.claude/
+└── settings.json            # Global user settings
+```
+
+**Project settings.json:**
+```json
+{
+  "enabledPlugins": {
+    "open-prose@prose": true,
+    "beads@allbeads": true
+  }
+}
+```
+
+**Local settings.local.json:**
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(bd create:*)",
+      "Bash(cargo build:*)",
+      "..."
+    ]
+  }
+}
+```
+
+AllBeads uses these to:
+1. **Detect installed plugins**: Read `enabledPlugins` from settings.json
+2. **Infer plugin usage**: Parse allowed permissions for tool patterns
+3. **Avoid re-onboarding**: Skip plugins that are already enabled
+4. **Suggest related plugins**: Recommend plugins based on what's installed
+
+```bash
+ab plugin detect
+
+Scanning Claude settings...
+
+Found in .claude/settings.json:
+  ✓ open-prose@prose (enabled)
+  ✓ beads@allbeads (enabled)
+
+Inferred from permissions (.claude/settings.local.json):
+  • bd commands allowed → beads active
+  • cargo commands allowed → Rust project
+
+Suggested plugins based on context:
+  • rust-analyzer-config - You're using Cargo
+  • conventional-commits - You have git permissions
+```
+
+### Settings File Locations
+
+| File | Scope | Git-tracked | Contains |
+|------|-------|-------------|----------|
+| `.claude/settings.json` | Project | ✓ Yes | Enabled plugins, project config |
+| `.claude/settings.local.json` | Project | ✗ No | Permissions, local overrides |
+| `~/.claude/settings.json` | Global | N/A | User preferences, global plugins, hooks |
+
+### Claude Plugin Infrastructure
+
+Claude Code maintains a comprehensive plugin system that AllBeads can leverage:
+
+```
+~/.claude/plugins/
+├── config.json                  # Plugin system config
+├── installed_plugins.json       # All installed plugins with metadata
+├── known_marketplaces.json      # Registered marketplace sources
+├── install-counts-cache.json    # Download statistics
+├── cache/                       # Cached plugin files
+│   ├── beads-marketplace/
+│   │   └── beads/0.32.1/
+│   └── claude-plugins-official/
+│       ├── github/
+│       └── rust-analyzer-lsp/
+└── marketplaces/                # Cloned marketplace repos
+    ├── beads-marketplace/
+    ├── claude-plugins-official/
+    └── prose/
+```
+
+**installed_plugins.json:**
+```json
+{
+  "version": 2,
+  "plugins": {
+    "beads@beads-marketplace": [{
+      "scope": "user",           // "user" (global) or "project"
+      "installPath": "~/.claude/plugins/cache/beads-marketplace/beads/0.32.1",
+      "version": "0.32.1",
+      "installedAt": "2025-12-31T08:59:21.563Z",
+      "gitCommitSha": "88c1ad9fee43..."
+    }],
+    "open-prose@prose": [{
+      "scope": "project",        // Project-specific installation
+      "installPath": "~/.claude/plugins/cache/prose/open-prose/0.3.1",
+      "version": "0.3.1",
+      "projectPath": "/Users/user/Workspace/AllBeads"
+    }]
+  }
+}
+```
+
+**known_marketplaces.json:**
+```json
+{
+  "claude-plugins-official": {
+    "source": { "source": "github", "repo": "anthropics/claude-plugins-official" },
+    "installLocation": "~/.claude/plugins/marketplaces/claude-plugins-official",
+    "lastUpdated": "2026-01-10T17:49:20.317Z"
+  },
+  "prose": {
+    "source": { "source": "git", "url": "git@github.com:openprose/prose.git" },
+    "installLocation": "~/.claude/plugins/marketplaces/prose",
+    "lastUpdated": "2026-01-10T17:51:06.671Z"
+  }
+}
+```
+
+### AllBeads Integration Strategy
+
+Rather than duplicating Claude's plugin management, AllBeads should:
+
+1. **Read Claude's state**: Parse `installed_plugins.json` and `known_marketplaces.json`
+2. **Delegate installation**: Use `claude plugin install` for Claude plugins
+3. **Add onboarding layer**: Our `allbeads-onboarding.yaml` extends Claude plugins with project setup
+4. **Track additional state**: Our config tracks AllBeads-specific settings on top of Claude's
+
+```bash
+ab plugin detect
+
+Reading Claude plugin infrastructure...
+
+Installed Plugins (from ~/.claude/plugins/installed_plugins.json):
+  User scope (global):
+    ✓ beads@beads-marketplace (v0.32.1)
+    ✓ github@claude-plugins-official
+    ✓ rust-analyzer-lsp@claude-plugins-official (v1.0.0)
+    ✓ code-simplifier@claude-plugins-official (v1.0.0)
+
+  Project scope (/Users/user/Workspace/AllBeads):
+    ✓ open-prose@prose (v0.3.1)
+
+Known Marketplaces (8 registered):
+    claude-plugins-official (anthropics/claude-plugins-official)
+    beads-marketplace (steveyegge/beads)
+    prose (openprose/prose)
+    ...
+
+AllBeads-compatible plugins (have allbeads-onboarding.yaml):
+    ✓ beads - Full onboarding support
+    ✓ prose - Full onboarding support
+    ○ github - No onboarding protocol (Claude-native only)
+```
+
+AllBeads reads all available sources to build a complete picture of the user's setup.
 
 ```bash
 # Search for plugins
