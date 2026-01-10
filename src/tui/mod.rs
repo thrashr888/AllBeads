@@ -3,9 +3,10 @@
 //! Provides a Kanban-style dashboard for viewing beads across multiple contexts.
 
 mod app;
+pub mod mail_view;
 mod ui;
 
-pub use app::App;
+pub use app::{App, Tab};
 
 use crate::graph::FederatedGraph;
 use crate::Result;
@@ -51,18 +52,38 @@ fn run_app<B: ratatui::backend::Backend>(
 
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
+                // Global keys
                 match key.code {
                     KeyCode::Char('q') => return Ok(()),
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(())
                     }
-                    KeyCode::Char('j') | KeyCode::Down => app.next(),
-                    KeyCode::Char('k') | KeyCode::Up => app.previous(),
-                    KeyCode::Char('h') | KeyCode::Left => app.previous_column(),
-                    KeyCode::Char('l') | KeyCode::Right => app.next_column(),
-                    KeyCode::Enter => app.toggle_detail(),
-                    KeyCode::Esc => app.close_detail(),
+                    KeyCode::Tab => {
+                        app.next_tab();
+                        continue;
+                    }
                     _ => {}
+                }
+
+                // Tab-specific keys
+                match app.current_tab {
+                    Tab::Kanban => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.previous(),
+                        KeyCode::Char('h') | KeyCode::Left => app.previous_column(),
+                        KeyCode::Char('l') | KeyCode::Right => app.next_column(),
+                        KeyCode::Enter => app.toggle_detail(),
+                        KeyCode::Esc => app.close_detail(),
+                        _ => {}
+                    },
+                    Tab::Mail => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.mail_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.mail_view.previous(),
+                        KeyCode::Enter => app.mail_view.toggle_detail(),
+                        KeyCode::Esc => app.mail_view.close_detail(),
+                        KeyCode::Char('r') => app.mark_message_read(),
+                        _ => {}
+                    },
                 }
             }
         }

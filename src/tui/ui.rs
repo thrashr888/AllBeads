@@ -1,42 +1,97 @@
 //! TUI rendering
 
-use super::app::{App, Column};
+use super::app::{App, Column, Tab};
+use super::mail_view;
 use crate::graph::{Bead, Priority};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs, Wrap},
     Frame,
 };
 
 pub fn draw(f: &mut Frame, app: &mut App) {
-    if app.show_detail {
-        draw_detail_view(f, app);
-    } else {
-        draw_kanban_view(f, app);
+    match app.current_tab {
+        Tab::Kanban => {
+            if app.show_detail {
+                draw_detail_view(f, app);
+            } else {
+                draw_kanban_view(f, app);
+            }
+        }
+        Tab::Mail => {
+            draw_mail_tab(f, app);
+        }
     }
 }
 
-fn draw_kanban_view(f: &mut Frame, app: &mut App) {
+fn draw_mail_tab(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3), // Title
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    mail_view::draw(f, &mut app.mail_view, chunks[1]);
+}
+
+fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
+    // Create owned strings for tab titles
+    let tab_titles: Vec<String> = if app.has_mail() {
+        let unread = app.unread_mail_count();
+        if unread > 0 {
+            vec!["Kanban".to_string(), format!("Mail ({})", unread)]
+        } else {
+            vec!["Kanban".to_string(), "Mail".to_string()]
+        }
+    } else {
+        vec!["Kanban".to_string()]
+    };
+
+    let tabs = Tabs::new(tab_titles.iter().map(|s| Line::from(s.as_str())).collect::<Vec<_>>())
+        .block(Block::default().borders(Borders::ALL).title("AllBeads"))
+        .select(match app.current_tab {
+            Tab::Kanban => 0,
+            Tab::Mail => 1,
+        })
+        .style(Style::default().fg(Color::White))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        );
+    f.render_widget(tabs, area);
+}
+
+fn draw_kanban_view(f: &mut Frame, app: &mut App) {
+    // If mail is available, show tab bar; otherwise show title
+    let has_mail = app.has_mail();
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Title or Tab bar
             Constraint::Min(0),    // Kanban board
             Constraint::Length(3), // Help (needs 3 for borders + 1 line of text)
         ])
         .split(f.area());
 
-    // Title
-    let title = Paragraph::new("AllBeads - Multi-Context Task Aggregator")
-        .style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-        .block(Block::default().borders(Borders::ALL));
-    f.render_widget(title, chunks[0]);
+    // Title or Tab bar
+    if has_mail {
+        draw_tab_bar(f, app, chunks[0]);
+    } else {
+        let title = Paragraph::new("AllBeads - Multi-Context Task Aggregator")
+            .style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .block(Block::default().borders(Borders::ALL));
+        f.render_widget(title, chunks[0]);
+    }
 
     // Kanban board
     let board_chunks = Layout::default()
@@ -54,14 +109,20 @@ fn draw_kanban_view(f: &mut Frame, app: &mut App) {
     draw_column(f, app, columns[2], board_chunks[2]);
 
     // Help
-    let help_text = vec![Line::from(vec![
+    let mut help_spans = vec![
         Span::raw("j/k or ↑/↓ (up/down)  h/l or ←/→ (switch column)  "),
         Span::styled("Enter: ", Style::default().add_modifier(Modifier::BOLD)),
         Span::raw("View Details  "),
-        Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
-        Span::raw("Quit  "),
-        Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)),
-    ])];
+    ];
+    if has_mail {
+        help_spans.push(Span::styled("Tab: ", Style::default().add_modifier(Modifier::BOLD)));
+        help_spans.push(Span::raw("Switch View  "));
+    }
+    help_spans.push(Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)));
+    help_spans.push(Span::raw("Quit  "));
+    help_spans.push(Span::styled("[READ-ONLY]", Style::default().fg(Color::Yellow)));
+
+    let help_text = vec![Line::from(help_spans)];
     let help = Paragraph::new(help_text)
         .style(Style::default().fg(Color::White))
         .block(Block::default().borders(Borders::ALL).title("Help"));

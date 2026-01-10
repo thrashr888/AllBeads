@@ -1,7 +1,19 @@
 //! TUI application state
 
+use super::mail_view::MailView;
 use crate::graph::{Bead, FederatedGraph, Status};
+use crate::mail::{Address, Postmaster};
 use ratatui::widgets::ListState;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+/// Active tab in the TUI
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Tab {
+    #[default]
+    Kanban,
+    Mail,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Column {
@@ -37,6 +49,10 @@ pub struct App {
     pub current_column: Column,
     pub list_state: ListState,
     pub show_detail: bool,
+    pub current_tab: Tab,
+    pub mail_view: MailView,
+    pub postmaster: Option<Arc<Mutex<Postmaster>>>,
+    pub inbox_address: Address,
 }
 
 impl App {
@@ -48,6 +64,65 @@ impl App {
             current_column: Column::Open,
             list_state,
             show_detail: false,
+            current_tab: Tab::Kanban,
+            mail_view: MailView::new(),
+            postmaster: None,
+            inbox_address: Address::human(),
+        }
+    }
+
+    /// Create app with mail support
+    pub fn with_mail(graph: FederatedGraph, mail_db_path: PathBuf, project_id: &str) -> Self {
+        let mut app = Self::new(graph);
+        if let Ok(postmaster) = Postmaster::with_project_id(mail_db_path, project_id) {
+            app.postmaster = Some(Arc::new(Mutex::new(postmaster)));
+            app.refresh_mail();
+        }
+        app
+    }
+
+    /// Refresh mail inbox
+    pub fn refresh_mail(&mut self) {
+        if let Some(ref postmaster) = self.postmaster {
+            if let Ok(pm) = postmaster.lock() {
+                self.mail_view.refresh(&pm, &self.inbox_address);
+            }
+        }
+    }
+
+    /// Check if mail is available
+    pub fn has_mail(&self) -> bool {
+        self.postmaster.is_some()
+    }
+
+    /// Get unread mail count
+    pub fn unread_mail_count(&self) -> usize {
+        self.mail_view.unread_count()
+    }
+
+    /// Switch to next tab
+    pub fn next_tab(&mut self) {
+        if self.has_mail() {
+            self.current_tab = match self.current_tab {
+                Tab::Kanban => Tab::Mail,
+                Tab::Mail => Tab::Kanban,
+            };
+            // Refresh mail when switching to mail tab
+            if self.current_tab == Tab::Mail {
+                self.refresh_mail();
+            }
+        }
+    }
+
+    /// Mark selected message as read
+    pub fn mark_message_read(&mut self) {
+        if let Some(ref postmaster) = self.postmaster {
+            if let Some(msg_id) = self.mail_view.selected_message_id() {
+                if let Ok(pm) = postmaster.lock() {
+                    let _ = pm.mark_read(msg_id);
+                }
+            }
+            self.refresh_mail();
         }
     }
 
