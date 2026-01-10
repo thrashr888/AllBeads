@@ -5,7 +5,8 @@
 use allbeads::aggregator::{Aggregator, AggregatorConfig, SyncMode};
 use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
-use allbeads::graph::{BeadId, Priority, Status};
+use allbeads::graph::{BeadId, IssueType, Priority, Status};
+use allbeads::style;
 use clap::{Parser, Subcommand};
 use crossterm::style::Stylize;
 use std::path::PathBuf;
@@ -1796,26 +1797,31 @@ fn status_to_sort_key(status: Status) -> u8 {
 }
 
 fn print_bead_summary(bead: &allbeads::graph::Bead) {
-    let status_str = format_status(bead.status);
-    let priority_str = format_priority(bead.priority);
+    let priority_num = priority_to_num(bead.priority);
+    let type_str = format_issue_type(bead.issue_type);
     let context_tags: Vec<_> = bead.labels.iter().filter(|l| l.starts_with('@')).collect();
 
+    // Format: [P1] [task] id: title
     print!(
-        "[{}] [{}] {}: {}",
-        priority_str,
-        status_str,
-        bead.id.as_str(),
+        "{} {} {} {} - {}",
+        style::status_indicator(format_status(bead.status)),
+        style::priority_style(priority_num),
+        style::type_style(type_str),
+        style::issue_id(bead.id.as_str()),
         bead.title
     );
 
     if !context_tags.is_empty() {
         print!(
-            " ({})",
-            context_tags
-                .iter()
-                .map(|s| s.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            " {}",
+            style::dim(&format!(
+                "({})",
+                context_tags
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
         );
     }
 
@@ -1823,20 +1829,48 @@ fn print_bead_summary(bead: &allbeads::graph::Bead) {
 }
 
 fn print_bead_detailed(bead: &allbeads::graph::Bead) {
-    println!("{}: {}", bead.id.as_str(), bead.title);
-    println!("Status:       {}", format_status(bead.status));
-    println!("Priority:     {}", format_priority(bead.priority));
-    println!("Type:         {:?}", bead.issue_type);
-    println!("Created:      {} by {}", bead.created_at, bead.created_by);
-    println!("Updated:      {}", bead.updated_at);
+    let priority_num = priority_to_num(bead.priority);
+    let type_str = format_issue_type(bead.issue_type);
+    let status_str = format_status(bead.status);
+
+    // Header with ID and title
+    println!(
+        "{} {} - {}",
+        style::issue_id(bead.id.as_str()),
+        style::header(&bead.title),
+        style::dim(&format!("({})", type_str))
+    );
+    println!();
+
+    // Metadata
+    println!(
+        "  {} {}  {} {}",
+        style::dim("Status:"),
+        style::status_style(status_str),
+        style::dim("Priority:"),
+        style::priority_style(priority_num)
+    );
+    println!(
+        "  {} {}  {} {}",
+        style::dim("Created:"),
+        &bead.created_at[..19], // Trim to date + time
+        style::dim("by"),
+        bead.created_by
+    );
+    println!(
+        "  {} {}",
+        style::dim("Updated:"),
+        &bead.updated_at[..19]
+    );
 
     if let Some(ref assignee) = bead.assignee {
-        println!("Assignee:     {}", assignee);
+        println!("  {} {}", style::dim("Assignee:"), assignee);
     }
 
     if !bead.labels.is_empty() {
         println!(
-            "Labels:       {}",
+            "  {} {}",
+            style::dim("Labels:"),
             bead.labels
                 .iter()
                 .map(|s| s.as_str())
@@ -1847,10 +1881,11 @@ fn print_bead_detailed(bead: &allbeads::graph::Bead) {
 
     if !bead.dependencies.is_empty() {
         println!(
-            "Depends on:   {}",
+            "  {} {}",
+            style::dim("Depends on:"),
             bead.dependencies
                 .iter()
-                .map(|id| id.as_str())
+                .map(|id| style::issue_id(id.as_str()).to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -1858,10 +1893,11 @@ fn print_bead_detailed(bead: &allbeads::graph::Bead) {
 
     if !bead.blocks.is_empty() {
         println!(
-            "Blocks:       {}",
+            "  {} {}",
+            style::dim("Blocks:"),
             bead.blocks
                 .iter()
-                .map(|id| id.as_str())
+                .map(|id| style::issue_id(id.as_str()).to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         );
@@ -1869,13 +1905,13 @@ fn print_bead_detailed(bead: &allbeads::graph::Bead) {
 
     if let Some(ref description) = bead.description {
         println!();
-        println!("Description:");
+        println!("{}", style::subheader("Description:"));
         println!("{}", description);
     }
 
     if let Some(ref notes) = bead.notes {
         println!();
-        println!("Notes:");
+        println!("{}", style::subheader("Notes:"));
         println!("{}", notes);
     }
 }
@@ -1898,6 +1934,29 @@ fn format_priority(priority: Priority) -> &'static str {
         Priority::P2 => "P2",
         Priority::P3 => "P3",
         Priority::P4 => "P4",
+    }
+}
+
+fn priority_to_num(priority: Priority) -> u8 {
+    match priority {
+        Priority::P0 => 0,
+        Priority::P1 => 1,
+        Priority::P2 => 2,
+        Priority::P3 => 3,
+        Priority::P4 => 4,
+    }
+}
+
+fn format_issue_type(issue_type: IssueType) -> &'static str {
+    match issue_type {
+        IssueType::Bug => "bug",
+        IssueType::Feature => "feature",
+        IssueType::Task => "task",
+        IssueType::Epic => "epic",
+        IssueType::Chore => "chore",
+        IssueType::MergeRequest => "merge-request",
+        IssueType::Molecule => "molecule",
+        IssueType::Gate => "gate",
     }
 }
 

@@ -25,6 +25,7 @@ pub mod git;
 pub mod graph;
 pub mod logging;
 pub mod storage;
+pub mod style;
 pub mod tui;
 
 // Components (will be implemented in phases)
