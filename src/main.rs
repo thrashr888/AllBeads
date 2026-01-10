@@ -116,9 +116,10 @@ enum ContextCommands {
         #[arg(short, long)]
         url: Option<String>,
 
-        /// Authentication strategy (ssh_agent, personal_access_token, gh_enterprise_token)
-        #[arg(short, long, default_value = "ssh_agent")]
-        auth: String,
+        /// Authentication strategy (auto-detected from URL if not specified)
+        /// Options: ssh_agent, personal_access_token, gh_enterprise_token
+        #[arg(short, long)]
+        auth: Option<String>,
     },
 
     /// List all contexts
@@ -733,23 +734,27 @@ fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -
                 String::from_utf8_lossy(&output.stdout).trim().to_string()
             };
 
-            // Parse auth strategy
-            let auth_strategy = match auth.to_lowercase().as_str() {
-                "ssh_agent" => AuthStrategy::SshAgent,
-                "personal_access_token" | "pat" => AuthStrategy::PersonalAccessToken,
-                "gh_enterprise_token" => AuthStrategy::GhEnterpriseToken,
-                _ => return Err(allbeads::AllBeadsError::Parse(format!(
-                    "Invalid auth strategy: {}. Must be one of: ssh_agent, personal_access_token, gh_enterprise_token",
-                    auth
-                ))),
+            // Parse or auto-detect auth strategy
+            let auth_strategy = if let Some(ref auth_str) = auth {
+                match auth_str.to_lowercase().as_str() {
+                    "ssh_agent" => AuthStrategy::SshAgent,
+                    "personal_access_token" | "pat" => AuthStrategy::PersonalAccessToken,
+                    "gh_enterprise_token" => AuthStrategy::GhEnterpriseToken,
+                    _ => return Err(allbeads::AllBeadsError::Parse(format!(
+                        "Invalid auth strategy: {}. Must be one of: ssh_agent, personal_access_token, gh_enterprise_token",
+                        auth_str
+                    ))),
+                }
+            } else {
+                // Auto-detect from URL
+                if remote_url.starts_with("https://") {
+                    eprintln!("ℹ️  HTTPS URL detected, using personal_access_token auth");
+                    AuthStrategy::PersonalAccessToken
+                } else {
+                    // SSH URL (git@... or ssh://...)
+                    AuthStrategy::SshAgent
+                }
             };
-
-            // Warn about HTTPS + ssh_agent mismatch
-            if auth_strategy == AuthStrategy::SshAgent && remote_url.starts_with("https://") {
-                eprintln!("⚠️  Warning: Using HTTPS URL with ssh_agent authentication may fail.");
-                eprintln!("   Consider using SSH URL or --auth personal_access_token");
-                eprintln!();
-            }
 
             // Print before moving auth_strategy
             println!("✓ Added context '{}' from {}", context_name, repo_path.display());

@@ -47,8 +47,8 @@ impl GitCredentials {
                 })
             }
             AuthStrategy::GhEnterpriseToken | AuthStrategy::PersonalAccessToken => {
-                // Look for token in env_vars
-                let token = context
+                // Look for token in env_vars first
+                let mut token = context
                     .env_vars
                     .values()
                     .find(|v| v.starts_with('$'))
@@ -57,10 +57,33 @@ impl GitCredentials {
                         std::env::var(env_var).ok()
                     });
 
+                // Try GITHUB_TOKEN env var as fallback
+                if token.is_none() {
+                    token = std::env::var("GITHUB_TOKEN").ok();
+                }
+
+                // Try `gh auth token` as final fallback
+                if token.is_none() {
+                    if let Ok(output) = std::process::Command::new("gh")
+                        .args(["auth", "token"])
+                        .output()
+                    {
+                        if output.status.success() {
+                            let gh_token = String::from_utf8_lossy(&output.stdout)
+                                .trim()
+                                .to_string();
+                            if !gh_token.is_empty() {
+                                tracing::debug!("Using token from `gh auth token`");
+                                token = Some(gh_token);
+                            }
+                        }
+                    }
+                }
+
                 if token.is_none() {
                     tracing::warn!(
                         context = %context.name,
-                        "No token found in environment for token-based authentication"
+                        "No token found for HTTPS auth. Try: gh auth login, or set GITHUB_TOKEN"
                     );
                 }
 
