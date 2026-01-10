@@ -24,6 +24,7 @@ ab context list                   # List all contexts
 ab context remove <name>          # Remove a context
 
 # Viewing beads
+ab kanban                         # Launch Kanban board (Terminal UI)
 ab stats                          # Show aggregated statistics
 ab list                           # List all beads
 ab list --status open             # Filter by status
@@ -106,6 +107,43 @@ Configured contexts (3):
 ```bash
 ab context remove ethertext
 ```
+
+## Kanban Board
+
+Launch the interactive Kanban dashboard:
+
+```bash
+ab kanban
+```
+
+**Features:**
+- **Kanban Board**: Three columns (Open, In Progress, Closed)
+- **Color-Coded Priorities**: P0 (red) through P4 (gray)
+- **Context Tags**: Shows which repo each bead is from (@allbeads, @qdos, etc.)
+- **Vim Navigation**: j/k for up/down, h/l for column switching
+- **Detail View**: Press Enter to see full bead information
+- **Read-Only**: View and navigate beads (editing requires Phase 2)
+
+**Keybindings:**
+```
+j / ↓      Move down
+k / ↑      Move up
+h / ←      Previous column
+l / →      Next column
+Enter      Toggle detail view
+Esc        Close detail view
+q          Quit
+Ctrl+C     Quit
+```
+
+**Help Footer:**
+The bottom of the screen shows available keybindings and indicates `[READ-ONLY]` mode.
+
+**Tips:**
+- Use `ab kanban` (with `--cached`) for fastest startup
+- Navigate between columns to see different workflow stages
+- Press Enter on any bead to see full details, dependencies, and description
+- Text selection now works - mouse capture disabled
 
 ## Viewing Beads
 

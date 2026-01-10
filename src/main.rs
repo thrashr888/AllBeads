@@ -84,6 +84,9 @@ enum Commands {
     /// Show aggregated statistics
     Stats,
 
+    /// Launch Kanban board (Terminal UI)
+    Kanban,
+
     /// Clear the local cache
     ClearCache,
 
@@ -391,6 +394,10 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                 println!("  Cache age:        {:.1}s", age.as_secs_f64());
             }
             println!("  Expired:          {}", cache_stats.is_expired);
+        }
+
+        Commands::Kanban => {
+            allbeads::tui::run(graph)?;
         }
 
         Commands::ClearCache => {
