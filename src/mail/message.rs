@@ -39,8 +39,8 @@ impl Default for MessageId {
 
 /// Generate a simple UUID v4-like string
 fn uuid_v4() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
     use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
     let nanos = SystemTime::now()

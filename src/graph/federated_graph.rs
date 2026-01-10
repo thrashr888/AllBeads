@@ -48,14 +48,14 @@ impl FederatedGraph {
         for dep_id in &bead.dependencies {
             self.dependents_index
                 .entry(dep_id.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.clone());
         }
 
         for label in &bead.labels {
             self.label_index
                 .entry(label.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.clone());
         }
 
@@ -71,14 +71,14 @@ impl FederatedGraph {
         // Index by context
         self.context_index
             .entry(shadow.context.clone())
-            .or_insert_with(HashSet::new)
+            .or_default()
             .insert(id.clone());
 
         // Index by labels
         for label in &shadow.labels {
             self.label_index
                 .entry(label.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(id.clone());
         }
 
@@ -107,10 +107,7 @@ impl FederatedGraph {
 
     /// Query beads by status
     pub fn beads_by_status(&self, status: Status) -> Vec<&Bead> {
-        self.beads
-            .values()
-            .filter(|b| b.status == status)
-            .collect()
+        self.beads.values().filter(|b| b.status == status).collect()
     }
 
     /// Query shadow beads by status
@@ -141,10 +138,7 @@ impl FederatedGraph {
         }
 
         let ids = ids.unwrap();
-        let beads = ids
-            .iter()
-            .filter_map(|id| self.beads.get(id))
-            .collect();
+        let beads = ids.iter().filter_map(|id| self.beads.get(id)).collect();
         let shadows = ids
             .iter()
             .filter_map(|id| self.shadow_beads.get(id))
@@ -157,7 +151,11 @@ impl FederatedGraph {
     pub fn get_dependents(&self, id: &BeadId) -> Vec<&Bead> {
         self.dependents_index
             .get(id)
-            .map(|deps| deps.iter().filter_map(|dep_id| self.beads.get(dep_id)).collect())
+            .map(|deps| {
+                deps.iter()
+                    .filter_map(|dep_id| self.beads.get(dep_id))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -201,14 +199,26 @@ impl FederatedGraph {
         let total_shadows = self.shadow_beads.len();
         let total_rigs = self.rigs.len();
 
-        let open_beads = self.beads.values().filter(|b| b.status == Status::Open).count();
+        let open_beads = self
+            .beads
+            .values()
+            .filter(|b| b.status == Status::Open)
+            .count();
         let in_progress_beads = self
             .beads
             .values()
             .filter(|b| b.status == Status::InProgress)
             .count();
-        let blocked_beads = self.beads.values().filter(|b| b.status == Status::Blocked).count();
-        let closed_beads = self.beads.values().filter(|b| b.status == Status::Closed).count();
+        let blocked_beads = self
+            .beads
+            .values()
+            .filter(|b| b.status == Status::Blocked)
+            .count();
+        let closed_beads = self
+            .beads
+            .values()
+            .filter(|b| b.status == Status::Closed)
+            .count();
 
         GraphStats {
             total_beads,

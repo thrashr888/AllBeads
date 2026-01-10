@@ -9,9 +9,10 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::HashSet;
 
 /// Issue status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
+    #[default]
     Open,
     InProgress,
     Blocked,
@@ -20,27 +21,18 @@ pub enum Status {
     Tombstone, // Deleted issues (used by bd)
 }
 
-impl Default for Status {
-    fn default() -> Self {
-        Self::Open
-    }
-}
-
 /// Issue priority (0 = critical, 4 = backlog)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize_repr, Deserialize_repr)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize_repr, Deserialize_repr,
+)]
 #[repr(u8)]
 pub enum Priority {
     P0 = 0, // Critical
     P1 = 1, // High
+    #[default]
     P2 = 2, // Medium
     P3 = 3, // Low
     P4 = 4, // Backlog
-}
-
-impl Default for Priority {
-    fn default() -> Self {
-        Self::P2
-    }
 }
 
 impl From<u8> for Priority {
@@ -56,23 +48,18 @@ impl From<u8> for Priority {
 }
 
 /// Issue type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IssueType {
     Bug,
     Feature,
+    #[default]
     Task,
     Epic,
     Chore,
     MergeRequest,
     Molecule,
     Gate,
-}
-
-impl Default for IssueType {
-    fn default() -> Self {
-        Self::Task
-    }
 }
 
 /// Core bead structure representing an issue/task/epic
@@ -115,11 +102,19 @@ pub struct Bead {
     pub assignee: Option<String>,
 
     /// Dependencies (beads this one depends on)
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_dep_ids")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_dep_ids"
+    )]
     pub dependencies: Vec<BeadId>,
 
     /// Beads that depend on this one (blocked by this)
-    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_dep_ids")]
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "deserialize_dep_ids"
+    )]
     pub blocks: Vec<BeadId>,
 
     /// Labels/tags
@@ -216,7 +211,11 @@ where
                     Value::String(id) => {
                         ids.push(BeadId::new(id));
                     }
-                    _ => return Err(D::Error::custom("Expected string or object in dependency array")),
+                    _ => {
+                        return Err(D::Error::custom(
+                            "Expected string or object in dependency array",
+                        ))
+                    }
                 }
             }
             Ok(ids)

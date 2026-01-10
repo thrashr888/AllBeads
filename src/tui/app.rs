@@ -11,7 +11,7 @@ pub enum Column {
 }
 
 impl Column {
-    pub fn to_status(&self) -> Status {
+    pub fn to_status(self) -> Status {
         match self {
             Column::Open => Status::Open,
             Column::InProgress => Status::InProgress,
@@ -19,7 +19,7 @@ impl Column {
         }
     }
 
-    pub fn title(&self) -> &'static str {
+    pub fn title(self) -> &'static str {
         match self {
             Column::Open => "Open",
             Column::InProgress => "In Progress",
@@ -67,7 +67,11 @@ impl App {
             .collect();
 
         // Sort by priority then title
-        beads.sort_by(|a, b| a.priority.cmp(&b.priority).then_with(|| a.title.cmp(&b.title)));
+        beads.sort_by(|a, b| {
+            a.priority
+                .cmp(&b.priority)
+                .then_with(|| a.title.cmp(&b.title))
+        });
 
         beads
     }

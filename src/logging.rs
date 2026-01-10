@@ -21,8 +21,7 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 /// Returns an error if the subscriber has already been initialized
 pub fn init() -> crate::Result<()> {
     // Create an EnvFilter that respects RUST_LOG, defaulting to "warn" for quiet CLI output
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("warn"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
 
     // Configure the tracing subscriber with:
     // - Environment-based filtering
@@ -36,7 +35,7 @@ pub fn init() -> crate::Result<()> {
                 .with_target(true)
                 .with_thread_ids(true)
                 .with_line_number(true)
-                .pretty()
+                .pretty(),
         )
         .try_init()
         .map_err(|e| crate::AllBeadsError::Other(format!("Failed to initialize tracing: {}", e)))?;

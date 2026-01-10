@@ -57,7 +57,8 @@ fn main() -> Result<()> {
     println!("\n=== Recent Issues ===");
     let issues = bd.list_open()?;
     for issue in issues.iter().take(5) {
-        let priority = issue.priority
+        let priority = issue
+            .priority
             .map(|p| format!("P{}", p))
             .unwrap_or_else(|| "P?".to_string());
         println!(

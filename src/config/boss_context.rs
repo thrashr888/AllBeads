@@ -105,7 +105,11 @@ fn is_default_integrations(integrations: &Integrations) -> bool {
 
 impl BossContext {
     /// Create a new Boss context
-    pub fn new(name: impl Into<String>, url: impl Into<String>, auth_strategy: AuthStrategy) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        url: impl Into<String>,
+        auth_strategy: AuthStrategy,
+    ) -> Self {
         Self {
             name: name.into(),
             repo_type: "git".to_string(),
@@ -161,8 +165,7 @@ impl BossContext {
             path.clone()
         } else {
             // Default to ~/.config/allbeads/{context_name}
-            let mut path = dirs::config_dir()
-                .unwrap_or_else(|| PathBuf::from("."));
+            let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
             path.push("allbeads");
             path.push(&self.name);
             path

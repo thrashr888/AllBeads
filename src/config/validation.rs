@@ -132,11 +132,8 @@ fn validate_context(context: &BossContext) -> ValidationResult {
     // Validate URL format
     if !is_valid_git_url(&context.url) {
         errors.push(
-            ValidationError::new(
-                "url",
-                format!("Invalid Git URL format: {}", context.url),
-            )
-            .with_context(&context.name),
+            ValidationError::new("url", format!("Invalid Git URL format: {}", context.url))
+                .with_context(&context.name),
         );
     }
 
@@ -146,7 +143,7 @@ fn validate_context(context: &BossContext) -> ValidationResult {
     }
 
     // Validate environment variables
-    for (_key, value) in &context.env_vars {
+    for value in context.env_vars.values() {
         if value.starts_with('$') {
             // It's an environment variable reference
             let env_var = value.trim_start_matches('$');
@@ -196,11 +193,8 @@ fn validate_context(context: &BossContext) -> ValidationResult {
 
         if github.owner.is_empty() {
             errors.push(
-                ValidationError::new(
-                    "integrations.github.owner",
-                    "GitHub owner cannot be empty",
-                )
-                .with_context(&context.name),
+                ValidationError::new("integrations.github.owner", "GitHub owner cannot be empty")
+                    .with_context(&context.name),
             );
         }
     }
@@ -217,9 +211,10 @@ fn validate_auth_strategy(context: &BossContext) -> std::result::Result<(), Vali
     match context.auth_strategy {
         AuthStrategy::GhEnterpriseToken => {
             // Check if there's an env var defined
-            let has_token_env = context.env_vars.values().any(|v| {
-                v.contains("TOKEN") || v.contains("GITHUB") || v.starts_with('$')
-            });
+            let has_token_env = context
+                .env_vars
+                .values()
+                .any(|v| v.contains("TOKEN") || v.contains("GITHUB") || v.starts_with('$'));
 
             if !has_token_env {
                 return Err(ValidationError::new(
@@ -345,11 +340,7 @@ mod tests {
     #[test]
     fn test_invalid_git_url() {
         let mut config = AllBeadsConfig::new();
-        let context = BossContext::new(
-            "test",
-            "not-a-valid-url",
-            AuthStrategy::SshAgent,
-        );
+        let context = BossContext::new("test", "not-a-valid-url", AuthStrategy::SshAgent);
         config.add_context(context);
 
         let result = validate_config(&config);

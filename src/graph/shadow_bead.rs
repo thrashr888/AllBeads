@@ -174,10 +174,7 @@ mod tests {
         assert_eq!(shadow.id.as_str(), "boss-mig-1");
         assert_eq!(shadow.summary, "Refactor JWT Logic");
         assert_eq!(shadow.context, "work");
-        assert_eq!(
-            shadow.pointer.as_str(),
-            "bead://auth-service/auth-5fm"
-        );
+        assert_eq!(shadow.pointer.as_str(), "bead://auth-service/auth-5fm");
     }
 
     #[test]

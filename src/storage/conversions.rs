@@ -76,7 +76,10 @@ pub fn parse_status(s: &str) -> Result<Status> {
         "blocked" => Ok(Status::Blocked),
         "deferred" => Ok(Status::Deferred),
         "closed" => Ok(Status::Closed),
-        _ => Err(crate::AllBeadsError::Parse(format!("Invalid status: {}", s))),
+        _ => Err(crate::AllBeadsError::Parse(format!(
+            "Invalid status: {}",
+            s
+        ))),
     }
 }
 
@@ -91,7 +94,10 @@ pub fn parse_issue_type(s: &str) -> Result<IssueType> {
         "merge_request" => Ok(IssueType::MergeRequest),
         "molecule" => Ok(IssueType::Molecule),
         "gate" => Ok(IssueType::Gate),
-        _ => Err(crate::AllBeadsError::Parse(format!("Invalid issue type: {}", s))),
+        _ => Err(crate::AllBeadsError::Parse(format!(
+            "Invalid issue type: {}",
+            s
+        ))),
     }
 }
 
@@ -100,7 +106,8 @@ pub fn issue_to_bead(issue: beads::Issue) -> Result<Bead> {
     let status = parse_status(&issue.status)?;
     let issue_type = parse_issue_type(&issue.issue_type)?;
 
-    let priority = issue.priority
+    let priority = issue
+        .priority
         .and_then(|p| match p {
             0 => Some(Priority::P0),
             1 => Some(Priority::P1),
@@ -118,8 +125,12 @@ pub fn issue_to_bead(issue: beads::Issue) -> Result<Bead> {
         status,
         priority,
         issue_type,
-        created_at: issue.created_at.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
-        updated_at: issue.updated_at.unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+        created_at: issue
+            .created_at
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
+        updated_at: issue
+            .updated_at
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339()),
         created_by: "unknown".to_string(), // beads::Issue doesn't track creator
         assignee: issue.assignee,
         dependencies: issue.depends_on.into_iter().map(BeadId::new).collect(),

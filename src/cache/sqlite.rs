@@ -55,7 +55,7 @@ impl Cache {
 
         // Enable WAL mode for better concurrency
         if config.wal_mode {
-            conn.pragma_update(None, "journal_mode", &"WAL")?;
+            conn.pragma_update(None, "journal_mode", "WAL")?;
         }
 
         // Create cache instance
@@ -180,7 +180,12 @@ impl Cache {
             .unwrap_or("unknown");
 
         // Serialize labels as comma-separated
-        let labels_str = bead.labels.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(",");
+        let labels_str = bead
+            .labels
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join(",");
 
         // Insert bead
         tx.execute(
@@ -302,19 +307,20 @@ impl Cache {
             let mut bead = bead_result?;
 
             // Load dependencies
-            let mut dep_stmt = self.conn.prepare(
-                "SELECT depends_on FROM dependencies WHERE bead_id = ?",
-            )?;
+            let mut dep_stmt = self
+                .conn
+                .prepare("SELECT depends_on FROM dependencies WHERE bead_id = ?")?;
             let deps = dep_stmt.query_map([bead.id.as_str()], |row| row.get::<_, String>(0))?;
             for dep in deps {
                 bead.dependencies.push(BeadId::new(dep?));
             }
 
             // Load blocks
-            let mut blocks_stmt = self.conn.prepare(
-                "SELECT blocks_id FROM blocks WHERE bead_id = ?",
-            )?;
-            let blocks = blocks_stmt.query_map([bead.id.as_str()], |row| row.get::<_, String>(0))?;
+            let mut blocks_stmt = self
+                .conn
+                .prepare("SELECT blocks_id FROM blocks WHERE bead_id = ?")?;
+            let blocks =
+                blocks_stmt.query_map([bead.id.as_str()], |row| row.get::<_, String>(0))?;
             for block_id in blocks {
                 bead.blocks.push(BeadId::new(block_id?));
             }
@@ -366,8 +372,12 @@ impl Cache {
 
     /// Get cache statistics
     pub fn stats(&self) -> Result<CacheStats> {
-        let bead_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM beads", [], |row| row.get(0))?;
-        let rig_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM rigs", [], |row| row.get(0))?;
+        let bead_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM beads", [], |row| row.get(0))?;
+        let rig_count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM rigs", [], |row| row.get(0))?;
 
         let last_update: Option<i64> = self
             .conn

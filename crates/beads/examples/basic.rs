@@ -58,10 +58,7 @@ fn main() -> Result<()> {
                 println!("No open issues found.");
             } else {
                 for issue in issues.iter().take(5) {
-                    println!(
-                        "{}: {} [{}]",
-                        issue.id, issue.title, issue.status
-                    );
+                    println!("{}: {} [{}]", issue.id, issue.title, issue.status);
                 }
                 if issues.len() > 5 {
                     println!("... and {} more", issues.len() - 5);
@@ -79,7 +76,8 @@ fn main() -> Result<()> {
                 println!("No issues ready to work on.");
             } else {
                 for issue in ready.iter().take(3) {
-                    let priority = issue.priority
+                    let priority = issue
+                        .priority
                         .map(|p| format!("P{}", p))
                         .unwrap_or_else(|| "P?".to_string());
                     println!(
@@ -128,7 +126,8 @@ fn main() -> Result<()> {
                 println!("No open epics.");
             } else {
                 for epic in epics {
-                    let priority = epic.priority
+                    let priority = epic
+                        .priority
                         .map(|p| format!("P{}", p))
                         .unwrap_or_else(|| "P?".to_string());
                     println!("{}: {} [{}]", epic.id, epic.title, priority);

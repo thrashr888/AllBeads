@@ -29,10 +29,7 @@ fn default_version() -> u32 {
 impl BeadEntry {
     /// Create a new entry with the current version
     pub fn new(bead: Bead) -> Self {
-        Self {
-            version: 1,
-            bead,
-        }
+        Self { version: 1, bead }
     }
 
     /// Create an entry from a bead (current version)
@@ -75,7 +72,10 @@ impl JsonlReader {
             match entry.version {
                 1 => beads.push(entry.bead),
                 _ => {
-                    tracing::warn!(version = entry.version, "Unknown bead version, attempting to parse anyway");
+                    tracing::warn!(
+                        version = entry.version,
+                        "Unknown bead version, attempting to parse anyway"
+                    );
                     beads.push(entry.bead);
                 }
             }
@@ -114,7 +114,12 @@ impl<'a> Iterator for JsonlIterator<'a> {
                     // Parse the JSON line
                     match serde_json::from_str::<BeadEntry>(&line) {
                         Ok(entry) => return Some(Ok(entry.bead)),
-                        Err(e) => return Some(Err(crate::AllBeadsError::Parse(format!("Invalid JSONL: {}", e)))),
+                        Err(e) => {
+                            return Some(Err(crate::AllBeadsError::Parse(format!(
+                                "Invalid JSONL: {}",
+                                e
+                            ))))
+                        }
                     }
                 }
                 Err(e) => return Some(Err(e.into())),

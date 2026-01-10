@@ -4,7 +4,7 @@
 
 use allbeads::aggregator::{Aggregator, AggregatorConfig, SyncMode};
 use allbeads::cache::{Cache, CacheConfig};
-use allbeads::config::{AllBeadsConfig, BossContext, AuthStrategy};
+use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, Priority, Status};
 use clap::{Parser, Subcommand};
 use crossterm::style::Stylize;
@@ -164,11 +164,12 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         match AllBeadsConfig::load_default() {
             Ok(config) => config,
             Err(allbeads::AllBeadsError::Config(msg)) if msg.contains("Config file not found") => {
-                return Err(allbeads::AllBeadsError::Config(format!(
+                return Err(allbeads::AllBeadsError::Config(
                     "No configuration found. Run 'ab init' first to create one.\n\n\
                      Then add contexts with:\n  \
                      ab context add <name> <repo-path>"
-                )));
+                        .to_string(),
+                ));
             }
             Err(e) => return Err(e),
         }
@@ -288,35 +289,52 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         }
 
         Commands::Blocked => {
-            let mut blocked: Vec<_> = graph.beads.values()
-                .filter(|b| b.status == Status::Blocked || (!b.dependencies.is_empty() && b.status != Status::Closed))
+            let mut blocked: Vec<_> = graph
+                .beads
+                .values()
+                .filter(|b| {
+                    b.status == Status::Blocked
+                        || (!b.dependencies.is_empty() && b.status != Status::Closed)
+                })
                 .collect();
 
             blocked.sort_by_key(|b| (b.priority, status_to_sort_key(b.status)));
 
             println!();
-            println!(
-                "🚫 Blocked beads ({}):",
-                blocked.len().to_string().red()
-            );
+            println!("🚫 Blocked beads ({}):", blocked.len().to_string().red());
             println!();
             for bead in blocked {
                 print_bead_summary(bead);
                 if !bead.dependencies.is_empty() {
-                    println!("  → Blocked by: {}", bead.dependencies.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", "));
+                    println!(
+                        "  → Blocked by: {}",
+                        bead.dependencies
+                            .iter()
+                            .map(|id| id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
                 }
             }
         }
 
         Commands::Search { query, context } => {
             let query_lower = query.to_lowercase();
-            let mut results: Vec<_> = graph.beads.values()
+            let mut results: Vec<_> = graph
+                .beads
+                .values()
                 .filter(|b| {
                     // Search in title, description, notes, and ID
                     let matches_text = b.title.to_lowercase().contains(&query_lower)
                         || b.id.as_str().to_lowercase().contains(&query_lower)
-                        || b.description.as_ref().map(|d| d.to_lowercase().contains(&query_lower)).unwrap_or(false)
-                        || b.notes.as_ref().map(|n| n.to_lowercase().contains(&query_lower)).unwrap_or(false);
+                        || b.description
+                            .as_ref()
+                            .map(|d| d.to_lowercase().contains(&query_lower))
+                            .unwrap_or(false)
+                        || b.notes
+                            .as_ref()
+                            .map(|n| n.to_lowercase().contains(&query_lower))
+                            .unwrap_or(false);
 
                     if let Some(ref context_str) = context {
                         let context_tag = if context_str.starts_with('@') {
@@ -343,7 +361,8 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         Commands::Duplicates { threshold } => {
             // Group beads by similarity
             let beads: Vec<_> = graph.beads.values().collect();
-            let mut duplicates: Vec<(f64, &allbeads::graph::Bead, &allbeads::graph::Bead)> = Vec::new();
+            let mut duplicates: Vec<(f64, &allbeads::graph::Bead, &allbeads::graph::Bead)> =
+                Vec::new();
 
             for i in 0..beads.len() {
                 for j in (i + 1)..beads.len() {
@@ -357,9 +376,16 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             duplicates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
 
             if duplicates.is_empty() {
-                println!("No potential duplicates found (threshold: {:.0}%)", threshold * 100.0);
+                println!(
+                    "No potential duplicates found (threshold: {:.0}%)",
+                    threshold * 100.0
+                );
             } else {
-                println!("Potential duplicates (threshold: {:.0}%): {} pairs", threshold * 100.0, duplicates.len());
+                println!(
+                    "Potential duplicates (threshold: {:.0}%): {} pairs",
+                    threshold * 100.0,
+                    duplicates.len()
+                );
                 println!();
                 for (similarity, bead1, bead2) in duplicates {
                     println!("Similarity: {:.0}%", similarity * 100.0);
@@ -379,11 +405,23 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             println!();
             println!("Summary:");
             println!("  Total Beads:          {}", stats.total_beads);
-            println!("  Open:                 {}", stats.open_beads.to_string().green());
-            println!("  In Progress:          {}", stats.in_progress_beads.to_string().yellow());
-            println!("  Blocked:              {}", stats.blocked_beads.to_string().red());
+            println!(
+                "  Open:                 {}",
+                stats.open_beads.to_string().green()
+            );
+            println!(
+                "  In Progress:          {}",
+                stats.in_progress_beads.to_string().yellow()
+            );
+            println!(
+                "  Blocked:              {}",
+                stats.blocked_beads.to_string().red()
+            );
             println!("  Closed:               {}", stats.closed_beads);
-            println!("  Ready to Work:        {}", ready_count.to_string().green());
+            println!(
+                "  Ready to Work:        {}",
+                ready_count.to_string().green()
+            );
             println!();
             println!("Extended:");
             println!("  Shadows:              {}", stats.total_shadows);
@@ -551,16 +589,25 @@ fn status_to_sort_key(status: Status) -> u8 {
 fn print_bead_summary(bead: &allbeads::graph::Bead) {
     let status_str = format_status(bead.status);
     let priority_str = format_priority(bead.priority);
-    let context_tags: Vec<_> = bead
-        .labels
-        .iter()
-        .filter(|l| l.starts_with('@'))
-        .collect();
+    let context_tags: Vec<_> = bead.labels.iter().filter(|l| l.starts_with('@')).collect();
 
-    print!("[{}] [{}] {}: {}", priority_str, status_str, bead.id.as_str(), bead.title);
+    print!(
+        "[{}] [{}] {}: {}",
+        priority_str,
+        status_str,
+        bead.id.as_str(),
+        bead.title
+    );
 
     if !context_tags.is_empty() {
-        print!(" ({})", context_tags.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+        print!(
+            " ({})",
+            context_tags
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     println!();
@@ -579,15 +626,36 @@ fn print_bead_detailed(bead: &allbeads::graph::Bead) {
     }
 
     if !bead.labels.is_empty() {
-        println!("Labels:       {}", bead.labels.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "Labels:       {}",
+            bead.labels
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     if !bead.dependencies.is_empty() {
-        println!("Depends on:   {}", bead.dependencies.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "Depends on:   {}",
+            bead.dependencies
+                .iter()
+                .map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     if !bead.blocks.is_empty() {
-        println!("Blocks:       {}", bead.blocks.iter().map(|id| id.as_str()).collect::<Vec<_>>().join(", "));
+        println!(
+            "Blocks:       {}",
+            bead.blocks
+                .iter()
+                .map(|id| id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     if let Some(ref description) = bead.description {
@@ -651,7 +719,10 @@ fn calculate_similarity(s1: &str, s2: &str) -> f64 {
     intersection as f64 / union as f64
 }
 
-fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -> allbeads::Result<()> {
+fn handle_context_command(
+    cmd: &ContextCommands,
+    config_path: &Option<String>,
+) -> allbeads::Result<()> {
     let config_file = if let Some(path) = config_path {
         PathBuf::from(path)
     } else {
@@ -665,13 +736,15 @@ fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -
     };
 
     match cmd {
-        ContextCommands::Add { path, name, url, auth } => {
+        ContextCommands::Add {
+            path,
+            name,
+            url,
+            auth,
+        } => {
             // Resolve path to absolute
             let repo_path = std::fs::canonicalize(path).map_err(|e| {
-                allbeads::AllBeadsError::Config(format!(
-                    "Failed to resolve path '{}': {}",
-                    path, e
-                ))
+                allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
             })?;
 
             // Check if it's a git repository
@@ -712,13 +785,16 @@ fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -
             } else {
                 // Run: git -C <path> remote get-url origin
                 let output = std::process::Command::new("git")
-                    .args(["-C", repo_path.to_str().unwrap(), "remote", "get-url", "origin"])
+                    .args([
+                        "-C",
+                        repo_path.to_str().unwrap(),
+                        "remote",
+                        "get-url",
+                        "origin",
+                    ])
                     .output()
                     .map_err(|e| {
-                        allbeads::AllBeadsError::Config(format!(
-                            "Failed to run git: {}",
-                            e
-                        ))
+                        allbeads::AllBeadsError::Config(format!("Failed to run git: {}", e))
                     })?;
 
                 if !output.status.success() {
@@ -757,7 +833,11 @@ fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -
             };
 
             // Print before moving auth_strategy
-            println!("✓ Added context '{}' from {}", context_name, repo_path.display());
+            println!(
+                "✓ Added context '{}' from {}",
+                context_name,
+                repo_path.display()
+            );
             println!("  URL:  {}", remote_url);
             println!("  Auth: {:?}", auth_strategy);
 

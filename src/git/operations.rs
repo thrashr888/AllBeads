@@ -69,9 +69,8 @@ impl GitCredentials {
                         .output()
                     {
                         if output.status.success() {
-                            let gh_token = String::from_utf8_lossy(&output.stdout)
-                                .trim()
-                                .to_string();
+                            let gh_token =
+                                String::from_utf8_lossy(&output.stdout).trim().to_string();
                             if !gh_token.is_empty() {
                                 tracing::debug!("Using token from `gh auth token`");
                                 token = Some(gh_token);
@@ -216,9 +215,10 @@ impl BossRepo {
 
     /// Fetch updates from remote
     pub fn fetch(&mut self) -> Result<()> {
-        let repo = self.repo.as_ref().ok_or_else(|| {
-            AllBeadsError::Git("Repository not cloned yet".to_string())
-        })?;
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
 
         tracing::debug!(context = %self.context.name, "Fetching updates from remote");
 
@@ -237,15 +237,16 @@ impl BossRepo {
     pub fn pull(&mut self) -> Result<()> {
         self.fetch()?;
 
-        let repo = self.repo.as_ref().ok_or_else(|| {
-            AllBeadsError::Git("Repository not cloned yet".to_string())
-        })?;
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
 
         // Find the current branch
         let head = repo.head()?;
-        let branch_name = head.shorthand().ok_or_else(|| {
-            AllBeadsError::Git("Could not determine current branch".to_string())
-        })?;
+        let branch_name = head
+            .shorthand()
+            .ok_or_else(|| AllBeadsError::Git("Could not determine current branch".to_string()))?;
 
         // Find the upstream branch
         let upstream_name = format!("origin/{}", branch_name);

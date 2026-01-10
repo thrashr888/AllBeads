@@ -2,13 +2,13 @@
 //!
 //! These tests verify the full workflow from config loading through aggregation.
 
-use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
-use allbeads::graph::{Bead, BeadId, FederatedGraph, Priority, Status, IssueType};
 use allbeads::cache::{Cache, CacheConfig};
+use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
+use allbeads::graph::{Bead, BeadId, FederatedGraph, IssueType, Priority, Status};
+use chrono::Utc;
 use std::collections::HashSet;
 use std::time::Duration;
 use tempfile::TempDir;
-use chrono::Utc;
 
 /// Helper to create a test bead
 fn create_test_bead(id: &str, title: &str, status: Status, priority: Priority) -> Bead {
@@ -32,7 +32,6 @@ fn create_test_bead(id: &str, title: &str, status: Status, priority: Priority) -
         notes: None,
     }
 }
-
 
 mod config_tests {
     use super::*;
@@ -67,9 +66,21 @@ mod config_tests {
 
         let mut config = AllBeadsConfig::new();
 
-        config.add_context(BossContext::new("work", "git@github.com:org/work.git", AuthStrategy::SshAgent));
-        config.add_context(BossContext::new("personal", "git@github.com:user/personal.git", AuthStrategy::SshAgent));
-        config.add_context(BossContext::new("oss", "https://github.com/oss/project.git", AuthStrategy::PersonalAccessToken));
+        config.add_context(BossContext::new(
+            "work",
+            "git@github.com:org/work.git",
+            AuthStrategy::SshAgent,
+        ));
+        config.add_context(BossContext::new(
+            "personal",
+            "git@github.com:user/personal.git",
+            AuthStrategy::SshAgent,
+        ));
+        config.add_context(BossContext::new(
+            "oss",
+            "https://github.com/oss/project.git",
+            AuthStrategy::PersonalAccessToken,
+        ));
 
         config.save(&config_path).unwrap();
 
@@ -158,8 +169,18 @@ mod cache_tests {
 
         // Create a graph with some beads
         let mut graph = FederatedGraph::new();
-        graph.add_bead(create_test_bead("cache-1", "Cached Task", Status::Open, Priority::P1));
-        graph.add_bead(create_test_bead("cache-2", "Another Task", Status::Closed, Priority::P2));
+        graph.add_bead(create_test_bead(
+            "cache-1",
+            "Cached Task",
+            Status::Open,
+            Priority::P1,
+        ));
+        graph.add_bead(create_test_bead(
+            "cache-2",
+            "Another Task",
+            Status::Closed,
+            Priority::P2,
+        ));
 
         // Store in cache
         cache.store_graph(&graph).unwrap();
@@ -184,7 +205,12 @@ mod cache_tests {
         let cache = Cache::new(cache_config).unwrap();
 
         let mut graph = FederatedGraph::new();
-        graph.add_bead(create_test_bead("clear-1", "Task to Clear", Status::Open, Priority::P1));
+        graph.add_bead(create_test_bead(
+            "clear-1",
+            "Task to Clear",
+            Status::Open,
+            Priority::P1,
+        ));
 
         cache.store_graph(&graph).unwrap();
         assert!(cache.load_graph().unwrap().is_some());
@@ -205,8 +231,18 @@ mod cache_tests {
         let cache = Cache::new(cache_config).unwrap();
 
         let mut graph = FederatedGraph::new();
-        graph.add_bead(create_test_bead("stats-1", "Task 1", Status::Open, Priority::P1));
-        graph.add_bead(create_test_bead("stats-2", "Task 2", Status::Closed, Priority::P2));
+        graph.add_bead(create_test_bead(
+            "stats-1",
+            "Task 1",
+            Status::Open,
+            Priority::P1,
+        ));
+        graph.add_bead(create_test_bead(
+            "stats-2",
+            "Task 2",
+            Status::Closed,
+            Priority::P2,
+        ));
 
         cache.store_graph(&graph).unwrap();
 
@@ -224,7 +260,12 @@ mod graph_tests {
         let mut graph = FederatedGraph::new();
 
         // Open bead with no dependencies - should be ready
-        graph.add_bead(create_test_bead("ready-1", "Ready Task", Status::Open, Priority::P1));
+        graph.add_bead(create_test_bead(
+            "ready-1",
+            "Ready Task",
+            Status::Open,
+            Priority::P1,
+        ));
 
         // Open bead with dependencies - not ready (dependency doesn't exist, treated as blocked)
         let mut blocked = create_test_bead("blocked-1", "Blocked Task", Status::Open, Priority::P2);
@@ -232,7 +273,12 @@ mod graph_tests {
         graph.add_bead(blocked);
 
         // Closed bead - not ready
-        graph.add_bead(create_test_bead("closed-1", "Closed Task", Status::Closed, Priority::P3));
+        graph.add_bead(create_test_bead(
+            "closed-1",
+            "Closed Task",
+            Status::Closed,
+            Priority::P3,
+        ));
 
         let ready = graph.ready_beads();
         assert_eq!(ready.len(), 1);
@@ -243,11 +289,36 @@ mod graph_tests {
     fn test_graph_stats() {
         let mut graph = FederatedGraph::new();
 
-        graph.add_bead(create_test_bead("open-1", "Open 1", Status::Open, Priority::P1));
-        graph.add_bead(create_test_bead("open-2", "Open 2", Status::Open, Priority::P2));
-        graph.add_bead(create_test_bead("progress-1", "In Progress", Status::InProgress, Priority::P1));
-        graph.add_bead(create_test_bead("closed-1", "Closed", Status::Closed, Priority::P3));
-        graph.add_bead(create_test_bead("closed-2", "Closed 2", Status::Closed, Priority::P4));
+        graph.add_bead(create_test_bead(
+            "open-1",
+            "Open 1",
+            Status::Open,
+            Priority::P1,
+        ));
+        graph.add_bead(create_test_bead(
+            "open-2",
+            "Open 2",
+            Status::Open,
+            Priority::P2,
+        ));
+        graph.add_bead(create_test_bead(
+            "progress-1",
+            "In Progress",
+            Status::InProgress,
+            Priority::P1,
+        ));
+        graph.add_bead(create_test_bead(
+            "closed-1",
+            "Closed",
+            Status::Closed,
+            Priority::P3,
+        ));
+        graph.add_bead(create_test_bead(
+            "closed-2",
+            "Closed 2",
+            Status::Closed,
+            Priority::P4,
+        ));
 
         let stats = graph.stats();
         assert_eq!(stats.total_beads, 5);
@@ -260,8 +331,18 @@ mod graph_tests {
     fn test_bead_lookup() {
         let mut graph = FederatedGraph::new();
 
-        graph.add_bead(create_test_bead("lookup-1", "Task to Find", Status::Open, Priority::P1));
-        graph.add_bead(create_test_bead("lookup-2", "Another Task", Status::Open, Priority::P2));
+        graph.add_bead(create_test_bead(
+            "lookup-1",
+            "Task to Find",
+            Status::Open,
+            Priority::P1,
+        ));
+        graph.add_bead(create_test_bead(
+            "lookup-2",
+            "Another Task",
+            Status::Open,
+            Priority::P2,
+        ));
 
         let found = graph.get_bead(&BeadId::new("lookup-1"));
         assert!(found.is_some());
@@ -281,8 +362,10 @@ mod mail_tests {
         let msg = Message::new(
             "worker@project",
             "postmaster@project",
-            MessageType::Lock(LockRequest::new("src/main.rs", Duration::from_secs(3600))
-                .with_reason("Refactoring main entry point")),
+            MessageType::Lock(
+                LockRequest::new("src/main.rs", Duration::from_secs(3600))
+                    .with_reason("Refactoring main entry point"),
+            ),
         );
 
         let json = serde_json::to_string(&msg).unwrap();
@@ -309,8 +392,10 @@ mod mail_tests {
         let msg = Message::new(
             "monitor@project",
             "all@project",
-            MessageType::Broadcast(BroadcastPayload::new("API rate limit reached")
-                .with_category(BroadcastCategory::RateLimit)),
+            MessageType::Broadcast(
+                BroadcastPayload::new("API rate limit reached")
+                    .with_category(BroadcastCategory::RateLimit),
+            ),
         );
 
         assert!(msg.is_broadcast());

@@ -88,10 +88,7 @@ impl Aggregator {
             }
         }
 
-        Ok(Self {
-            repos,
-            agg_config,
-        })
+        Ok(Self { repos, agg_config })
     }
 
     /// Sync all Boss repositories
