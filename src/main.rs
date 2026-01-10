@@ -33,6 +33,9 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    /// Initialize AllBeads configuration
+    Init,
+
     /// List beads with optional filters
     List {
         /// Filter by status (open, in_progress, blocked, closed)
@@ -139,16 +142,31 @@ fn main() {
 }
 
 fn run(cli: Cli) -> allbeads::Result<()> {
-    // Handle context management commands first (don't need graph)
+    // Handle init command first (creates config)
+    if let Commands::Init = cli.command {
+        return handle_init_command(&cli.config);
+    }
+
+    // Handle context management commands (don't need graph)
     if let Commands::Context(ref ctx_cmd) = cli.command {
         return handle_context_command(ctx_cmd, &cli.config);
     }
 
     // Load configuration
-    let config = if let Some(config_path) = cli.config {
+    let config = if let Some(config_path) = cli.config.clone() {
         AllBeadsConfig::load(config_path)?
     } else {
-        AllBeadsConfig::load_default()?
+        match AllBeadsConfig::load_default() {
+            Ok(config) => config,
+            Err(allbeads::AllBeadsError::Config(msg)) if msg.contains("Config file not found") => {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "No configuration found. Run 'ab init' first to create one.\n\n\
+                     Then add contexts with:\n  \
+                     ab context add <name> <repo-path>"
+                )));
+            }
+            Err(e) => return Err(e),
+        }
     };
 
     tracing::info!(contexts = config.contexts.len(), "Configuration loaded");
@@ -405,11 +423,56 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             println!("Cache cleared successfully");
         }
 
-        Commands::Context(_) => {
+        Commands::Context(_) | Commands::Init => {
             // Handled earlier in the function
-            unreachable!("Context commands should be handled before aggregation")
+            unreachable!("Context and Init commands should be handled before aggregation")
         }
     }
+
+    Ok(())
+}
+
+fn handle_init_command(config_path: &Option<String>) -> allbeads::Result<()> {
+    let config_file = if let Some(path) = config_path {
+        PathBuf::from(path)
+    } else {
+        AllBeadsConfig::default_path()
+    };
+
+    // Check if already initialized
+    if config_file.exists() {
+        println!("Configuration already exists at {}", config_file.display());
+        println!();
+        println!("To add contexts, run:");
+        println!("  ab context add <name> <repo-path>");
+        return Ok(());
+    }
+
+    // Create parent directory if needed
+    if let Some(parent) = config_file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!(
+                "Failed to create config directory {}: {}",
+                parent.display(),
+                e
+            ))
+        })?;
+    }
+
+    // Create empty config
+    let config = AllBeadsConfig::new();
+    config.save(&config_file)?;
+
+    println!("✓ Created configuration at {}", config_file.display());
+    println!();
+    println!("Next steps:");
+    println!("  1. Add a context (repository with beads):");
+    println!("     ab context add myproject /path/to/repo");
+    println!();
+    println!("  2. View aggregated beads:");
+    println!("     ab stats");
+    println!("     ab list");
+    println!("     ab kanban");
 
     Ok(())
 }

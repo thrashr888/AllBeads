@@ -308,9 +308,9 @@ mod tests {
         // Write with empty lines
         std::fs::write(
             path,
-            r#"{"version":1,"id":"test-1","title":"First","status":"open","priority":"P2","issue_type":"task","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","created_by":"test","dependencies":[],"blocks":[],"labels":[]}
+            r#"{"version":1,"id":"test-1","title":"First","status":"open","priority":2,"issue_type":"task","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","created_by":"test","dependencies":[],"blocks":[],"labels":[]}
 
-{"version":1,"id":"test-2","title":"Second","status":"open","priority":"P2","issue_type":"task","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","created_by":"test","dependencies":[],"blocks":[],"labels":[]}
+{"version":1,"id":"test-2","title":"Second","status":"open","priority":2,"issue_type":"task","created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z","created_by":"test","dependencies":[],"blocks":[],"labels":[]}
 "#,
         )
         .unwrap();
