@@ -46,6 +46,7 @@
 mod address;
 mod locks;
 mod message;
+mod postmaster;
 
 pub use address::{Address, AddressError, RoutingTarget};
 pub use locks::{ConflictStrategy, LockInfo, LockManager, LockResult};
@@ -54,3 +55,4 @@ pub use message::{
     MessageId, MessageType, NotifyPayload, RequestPayload, ResponsePayload, ResponseStatus,
     Severity, UnlockRequest,
 };
+pub use postmaster::{DeliveryStatus, Postmaster, PostmasterError, SendResult, StoredMessage};

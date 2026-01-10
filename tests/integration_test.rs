@@ -487,4 +487,58 @@ mod mail_tests {
         );
         assert!(matches!(result, LockResult::Denied { holder, .. } if holder == holder1));
     }
+
+    #[test]
+    fn test_postmaster_send_receive() {
+        use allbeads::mail::{Postmaster, SendResult};
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("mail.db");
+        let mut postmaster = Postmaster::new(db_path).unwrap();
+
+        // Send a message
+        let msg = Message::from_strings(
+            "worker@project",
+            "human@localhost",
+            MessageType::Notify(NotifyPayload::new("Task completed")),
+        );
+        let result = postmaster.send(msg).unwrap();
+        assert!(matches!(result, SendResult::Delivered { .. }));
+
+        // Check inbox
+        let human = Address::human();
+        let inbox = postmaster.inbox(&human).unwrap();
+        assert_eq!(inbox.len(), 1);
+    }
+
+    #[test]
+    fn test_postmaster_lock_via_message() {
+        use allbeads::mail::{Postmaster, SendResult};
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("mail.db");
+        let mut postmaster = Postmaster::with_project_id(db_path, "test").unwrap();
+
+        // Send lock request
+        let msg = Message::from_strings(
+            "worker@test",
+            "postmaster@test",
+            MessageType::Lock(LockRequest::new("src/main.rs", Duration::from_secs(3600))),
+        );
+        let result = postmaster.send(msg).unwrap();
+
+        // Should get lock
+        assert!(matches!(
+            result,
+            SendResult::LockResult {
+                result: LockResult::Acquired { .. },
+                ..
+            }
+        ));
+
+        // Verify lock exists
+        assert!(postmaster.lock_manager().status("src/main.rs").is_some());
+    }
 }
