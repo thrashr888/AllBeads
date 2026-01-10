@@ -3,11 +3,13 @@
 //! Provides a Kanban-style dashboard for viewing beads across multiple contexts.
 
 mod app;
+pub mod graph_view;
 pub mod mail_view;
 pub mod swarm_view;
 mod ui;
 
 pub use app::{App, Tab};
+pub use graph_view::GraphView;
 pub use swarm_view::SwarmView;
 
 use crate::graph::FederatedGraph;
@@ -99,6 +101,14 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Enter => app.mail_view.toggle_detail(),
                         KeyCode::Esc => app.mail_view.close_detail(),
                         KeyCode::Char('r') => app.mark_message_read(),
+                        _ => {}
+                    },
+                    Tab::Graph => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.graph_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.graph_view.previous(),
+                        KeyCode::Enter => app.graph_view.toggle_detail(),
+                        KeyCode::Esc => app.graph_view.close_detail(),
+                        KeyCode::Char('f') => app.graph_view.cycle_filter(),
                         _ => {}
                     },
                     Tab::Swarm => match key.code {

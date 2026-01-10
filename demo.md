@@ -162,7 +162,7 @@ ab context remove ethertext
 
 ## TUI Dashboard
 
-Launch the interactive dashboard with Kanban and Mail views:
+Launch the interactive dashboard with Kanban, Mail, Graph, and Swarm views:
 
 ```bash
 ab tui
@@ -172,6 +172,8 @@ ab tui
 
 - **Kanban Board**: Three columns (Open, In Progress, Closed)
 - **Mail View**: Agent message inbox
+- **Graph View**: Dependency chain visualization with cross-context analysis
+- **Swarm View**: Real-time agent status monitoring (when agents are active)
 - **Color-Coded Priorities**: P0 (red) through P4 (gray)
 - **Context Tags**: Shows which repo each bead is from (@allbeads, @qdos, etc.)
 - **Vim Navigation**: j/k for up/down, h/l for column switching
@@ -179,16 +181,34 @@ ab tui
 **Keybindings:**
 
 ```
-Tab        Switch between Kanban and Mail views
+Tab        Switch between views (Kanban -> Mail -> Graph -> Swarm)
 j / Down   Move down
 k / Up     Move up
-h / Left   Previous column (Kanban)
-l / Right  Next column (Kanban)
+h / Left   Previous column (Kanban only)
+l / Right  Next column (Kanban only)
 Enter      Toggle detail view
 Esc        Close detail view
+f          Cycle filter (Graph view: All -> Blocked -> Cross-Context)
+p          Pause agent (Swarm view)
+r          Resume agent (Swarm view) / Mark read (Mail view)
+x          Kill agent (Swarm view)
 q          Quit
 Ctrl+C     Quit
 ```
+
+### Graph View
+
+The Graph view visualizes dependency chains across all contexts:
+
+- **⟳ Cycle detected**: Red indicator for circular dependencies
+- **⬡ Cross-context**: Magenta indicator for dependencies spanning multiple repos
+- **⊘ Blocked**: Yellow indicator for beads with blockers
+- **○ Normal**: Green indicator for healthy dependency chains
+
+Use `f` to cycle through filter modes:
+- **All**: Show all dependency chains
+- **Blocked Only**: Show only chains with active blockers
+- **Cross-Context**: Show only chains that span multiple contexts
 
 ## Sheriff Daemon
 

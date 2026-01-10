@@ -1,5 +1,6 @@
 //! TUI application state
 
+use super::graph_view::GraphView;
 use super::mail_view::MailView;
 use super::swarm_view::SwarmView;
 use crate::graph::{Bead, FederatedGraph, Status};
@@ -15,6 +16,7 @@ pub enum Tab {
     #[default]
     Kanban,
     Mail,
+    Graph,
     Swarm,
 }
 
@@ -54,6 +56,7 @@ pub struct App {
     pub show_detail: bool,
     pub current_tab: Tab,
     pub mail_view: MailView,
+    pub graph_view: GraphView,
     pub swarm_view: SwarmView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
@@ -63,6 +66,8 @@ impl App {
     pub fn new(graph: FederatedGraph) -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
+        let mut graph_view = GraphView::new();
+        graph_view.analyze(&graph);
         Self {
             graph,
             current_column: Column::Open,
@@ -70,6 +75,7 @@ impl App {
             show_detail: false,
             current_tab: Tab::Kanban,
             mail_view: MailView::new(),
+            graph_view,
             swarm_view: SwarmView::new(),
             postmaster: None,
             inbox_address: Address::human(),
@@ -121,27 +127,34 @@ impl App {
     }
 
     /// Switch to next tab
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Swarm (if available) -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
 
-        self.current_tab = match (self.current_tab, has_mail, has_swarm) {
-            // With both mail and swarm
-            (Tab::Kanban, true, _) => Tab::Mail,
-            (Tab::Mail, _, true) => Tab::Swarm,
-            (Tab::Mail, _, false) => Tab::Kanban,
-            (Tab::Swarm, _, _) => Tab::Kanban,
-
-            // With only mail
-            (Tab::Kanban, false, true) => Tab::Swarm,
-
-            // With nothing extra
-            _ => Tab::Kanban,
+        self.current_tab = match self.current_tab {
+            Tab::Kanban => {
+                if has_mail {
+                    Tab::Mail
+                } else {
+                    Tab::Graph
+                }
+            }
+            Tab::Mail => Tab::Graph,
+            Tab::Graph => {
+                if has_swarm {
+                    Tab::Swarm
+                } else {
+                    Tab::Kanban
+                }
+            }
+            Tab::Swarm => Tab::Kanban,
         };
 
         // Refresh data when switching to specific tabs
         match self.current_tab {
             Tab::Mail => self.refresh_mail(),
+            Tab::Graph => self.graph_view.analyze(&self.graph),
             Tab::Swarm => self.swarm_view.refresh(),
             _ => {}
         }

@@ -1,6 +1,7 @@
 //! TUI rendering
 
 use super::app::{App, Column, Tab};
+use super::graph_view;
 use super::mail_view;
 use super::swarm_view;
 use crate::graph::{Bead, Priority};
@@ -24,6 +25,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Tab::Mail => {
             draw_mail_tab(f, app);
         }
+        Tab::Graph => {
+            draw_graph_tab(f, app);
+        }
         Tab::Swarm => {
             draw_swarm_tab(f, app);
         }
@@ -43,6 +47,19 @@ fn draw_mail_tab(f: &mut Frame, app: &mut App) {
     mail_view::draw(f, &mut app.mail_view, chunks[1]);
 }
 
+fn draw_graph_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    graph_view::draw(f, &mut app.graph_view, &app.graph, chunks[1]);
+}
+
 fn draw_swarm_tab(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -58,7 +75,10 @@ fn draw_swarm_tab(f: &mut Frame, app: &mut App) {
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
+    // Tab order: Kanban, Mail (if available), Graph, Swarm (if available)
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
+    let mut graph_index = 1;
+    let mut swarm_index = 2;
 
     // Add mail tab if available
     if app.has_mail() {
@@ -68,7 +88,12 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         } else {
             tab_titles.push("Mail".to_string());
         }
+        graph_index = 2;
+        swarm_index = 3;
     }
+
+    // Graph tab is always present
+    tab_titles.push("Graph".to_string());
 
     // Add swarm tab if available
     if app.has_swarm() {
@@ -84,9 +109,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     let tab_index = match app.current_tab {
         Tab::Kanban => 0,
         Tab::Mail => 1,
-        Tab::Swarm => {
-            if app.has_mail() { 2 } else { 1 }
-        }
+        Tab::Graph => graph_index,
+        Tab::Swarm => swarm_index,
     };
 
     let tabs = Tabs::new(tab_titles.iter().map(|s| Line::from(s.as_str())).collect::<Vec<_>>())

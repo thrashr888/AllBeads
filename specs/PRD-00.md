@@ -107,13 +107,15 @@ Gas Town operates on the "Propulsion Principle": the idea that the state of work
 ## 4. The AllBeads PRD: Distributed Orchestration with Agent Communication
 
 > **Implementation Status (as of January 2026):**
-> - ✅ **Core CLI**: 14+ commands implemented (`ab list`, `ab show`, `ab tui`, `ab mail`, `ab sheriff`, `ab janitor`, etc.)
+> - ✅ **Core CLI**: 20+ commands implemented (`ab list`, `ab show`, `ab tui`, `ab mail`, `ab sheriff`, `ab janitor`, `ab swarm`, etc.)
 > - ✅ **Multi-Context**: Work/personal Boss repo aggregation fully functional
-> - ✅ **TUI**: Kanban and Mail views complete; Graph and Swarm views not yet implemented
+> - ✅ **TUI**: All 4 views complete (Kanban, Mail, Graph, Swarm)
 > - ✅ **Agent Mail**: Postmaster server with all 7 message types, file locking, HTTP/IPC interfaces
 > - ✅ **Sheriff**: Foreground mode with manifest parsing and shadow sync; background daemon mode planned
 > - ✅ **Janitor**: Automated codebase analysis for legacy repo onboarding
-> - 🔄 **Enterprise**: JIRA/GitHub integration placeholders only (Phase 4)
+> - ✅ **Enterprise**: JIRA/GitHub integration with REST/GraphQL adapters
+> - ✅ **Swarm**: Agent lifecycle, cost tracking, budget management, TUI monitoring
+> - ✅ **Graph**: Dependency visualization with cross-context analysis and cycle detection
 
 We have established the limitations of Conductor (repo-bound) and the strengths of Beads (structured, git-backed). We now define the **AllBeads** product: an open-source CLI/TUI system that extends Beads from a single repository to a distributed, multi-context environment with inter-agent communication.
 
@@ -455,11 +457,11 @@ Unlike JIRA, where the description is static, GitHub Issues are often conversati
 
 ## 6. Visualizing the Swarm: The Unified TUI ("All-Seeing Eye")
 
-> **Implementation Status**: ✅ Partially implemented
+> **Implementation Status**: ✅ COMPLETE
 > - ✅ Kanban view with multi-context aggregation
 > - ✅ Mail view with inbox, compose, and reply
-> - ❌ Graph view (dependency visualization) - planned
-> - ❌ Swarm view (agent status monitor) - planned
+> - ✅ Graph view (dependency visualization with ASCII rendering)
+> - ✅ Swarm view (agent status monitor)
 > - ✅ ratatui + crossterm architecture
 > - ✅ Vim-style keyboard navigation
 
@@ -501,7 +503,7 @@ enum ViewMode {
 
 #### 6.2.2 The Four Primary Views
 
-> **Implementation Status**: Kanban ✅ | Mail ✅ | Graph ❌ | Swarm ❌
+> **Implementation Status**: Kanban ✅ | Mail ✅ | Graph ✅ | Swarm ✅
 
 **View 1: The Strategic Kanban** ✅ IMPLEMENTED
 
@@ -525,7 +527,7 @@ Key features:
 - **Lock Indicators**: 🔒 shows active file locks
 - **Blocking Relationships**: Clearly marked with bead IDs
 
-**View 2: The Dependency Graph** ❌ NOT YET IMPLEMENTED
+**View 2: The Dependency Graph** ✅ IMPLEMENTED
 
 Renders cross-repository dependencies using ASCII/Unicode:
 
@@ -571,7 +573,7 @@ The communication hub for agent-human interaction:
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**View 4: The Swarm Monitor** ❌ NOT YET IMPLEMENTED
+**View 4: The Swarm Monitor** ✅ IMPLEMENTED
 
 Real-time status of all active agents across all contexts:
 
@@ -726,11 +728,38 @@ To ensure broad adoption and community contribution, AllBeads will be developed 
 - ✅ CLI commands: `ab jira`, `ab github`
 - **Deliverable**: Enterprise-ready orchestration ✅
 
-**Phase 5: The Swarm (Advanced Agents)** - 2027 📋 PLANNED
-- ❌ Agent lifecycle management (spawn, monitor, kill)
-- ❌ Cost tracking and budget management
-- ❌ Advanced dependency resolution across contexts
-- **Deliverable**: Self-managing agent workforce
+**Phase 5: The Swarm (Advanced Agents)** - Q1 2027 ✅ COMPLETE
+- ✅ Agent lifecycle management (spawn, monitor, kill)
+- ✅ Cost tracking and budget management
+- ✅ Swarm TUI view with real-time status
+- ✅ CLI commands: `ab swarm list`, `ab swarm stats`, `ab swarm budget`, etc.
+- ✅ Context-based budget limits with warnings
+- **Deliverable**: Self-managing agent workforce ✅
+
+**Phase 6: Graph Visualization** - Q1 2027 ✅ COMPLETE
+- ✅ Dependency Graph TUI view with ASCII visualization
+- ✅ Cross-context dependency chain analysis
+- ✅ Cycle detection in dependency graphs
+- ✅ Filter modes (All, Blocked, Cross-Context)
+- ✅ Graph detail view with dependency trees
+- **Deliverable**: Visual understanding of work dependencies ✅
+
+**Phase 7: Agent Integration** - Q2 2027 📋 PLANNED
+- ❌ Claude Code marketplace skills plugin (`.claude-plugin/`)
+- ❌ Agent onboarding commands (`ab human`, `ab info`, `ab prime`, `ab setup`)
+- ❌ Context recovery commands for new sessions
+- ❌ Workflow guides for AI agents
+- ❌ Integration with beads-style agent memory
+- **Deliverable**: First-class AI agent support
+
+**Phase 8: Release & Community** - Q2 2027 📋 PLANNED
+- ❌ GitHub Actions for automated releases
+- ❌ Homebrew formula and tap repository
+- ❌ `CONTRIBUTING.md` with development guide
+- ❌ Cross-platform binaries (Linux, macOS, Windows)
+- ❌ Comprehensive documentation and tutorials
+- ❌ Community support channels
+- **Deliverable**: Production-ready open source release
 
 ### 8.3 Community and Contribution
 
