@@ -44,9 +44,11 @@
 //! ```
 
 mod address;
+mod locks;
 mod message;
 
 pub use address::{Address, AddressError, RoutingTarget};
+pub use locks::{ConflictStrategy, LockInfo, LockManager, LockResult};
 pub use message::{
     AgentStatus, BroadcastCategory, BroadcastPayload, HeartbeatPayload, LockRequest, Message,
     MessageId, MessageType, NotifyPayload, RequestPayload, ResponsePayload, ResponseStatus,

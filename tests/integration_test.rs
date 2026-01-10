@@ -436,4 +436,55 @@ mod mail_tests {
             RoutingTarget::Broadcast { .. }
         ));
     }
+
+    #[test]
+    fn test_lock_acquire_and_release() {
+        let mut manager = LockManager::new();
+        let holder: Address = "worker@project".parse().unwrap();
+
+        // Acquire lock
+        let result = manager.acquire(
+            "src/main.rs",
+            holder.clone(),
+            Duration::from_secs(3600),
+            ConflictStrategy::Abort,
+        );
+        assert!(matches!(result, LockResult::Acquired { .. }));
+
+        // Check status
+        let status = manager.status("src/main.rs");
+        assert!(status.is_some());
+        assert_eq!(status.unwrap().holder, holder);
+
+        // Release
+        let result = manager.release("src/main.rs", &holder);
+        assert!(matches!(result, LockResult::Released));
+
+        // Verify released
+        assert!(manager.status("src/main.rs").is_none());
+    }
+
+    #[test]
+    fn test_lock_conflict() {
+        let mut manager = LockManager::new();
+        let holder1: Address = "worker1@project".parse().unwrap();
+        let holder2: Address = "worker2@project".parse().unwrap();
+
+        // First agent acquires lock
+        manager.acquire(
+            "src/main.rs",
+            holder1.clone(),
+            Duration::from_secs(3600),
+            ConflictStrategy::Abort,
+        );
+
+        // Second agent tries to acquire - should fail
+        let result = manager.acquire(
+            "src/main.rs",
+            holder2,
+            Duration::from_secs(3600),
+            ConflictStrategy::Abort,
+        );
+        assert!(matches!(result, LockResult::Denied { holder, .. } if holder == holder1));
+    }
 }
