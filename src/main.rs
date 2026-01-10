@@ -8,7 +8,6 @@ use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, IssueType, Priority, Status};
 use allbeads::style;
 use clap::{Parser, Subcommand};
-use crossterm::style::Stylize;
 use std::path::PathBuf;
 use std::process;
 
@@ -576,8 +575,9 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             let ready = graph.ready_beads();
             println!();
             println!(
-                "📋 Ready work ({} beads with no blockers):",
-                ready.len().to_string().green()
+                "{} Ready work ({} beads with no blockers):",
+                style::header("○"),
+                style::count_ready(ready.len())
             );
             println!();
             for bead in ready {
@@ -598,16 +598,21 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             blocked.sort_by_key(|b| (b.priority, status_to_sort_key(b.status)));
 
             println!();
-            println!("🚫 Blocked beads ({}):", blocked.len().to_string().red());
+            println!(
+                "{} Blocked beads ({}):",
+                style::error("●"),
+                style::count_blocked(blocked.len())
+            );
             println!();
             for bead in blocked {
                 print_bead_summary(bead);
                 if !bead.dependencies.is_empty() {
                     println!(
-                        "  → Blocked by: {}",
+                        "  {} Blocked by: {}",
+                        style::dim("→"),
                         bead.dependencies
                             .iter()
-                            .map(|id| id.as_str())
+                            .map(|id| style::issue_id(id.as_str()).to_string())
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
@@ -835,20 +840,22 @@ fn run(cli: Cli) -> allbeads::Result<()> {
 
             if duplicates.is_empty() {
                 println!(
-                    "No potential duplicates found (threshold: {:.0}%)",
+                    "{} No potential duplicates found (threshold: {:.0}%)",
+                    style::success("✓"),
                     threshold * 100.0
                 );
             } else {
                 println!(
-                    "Potential duplicates (threshold: {:.0}%): {} pairs",
+                    "{} Potential duplicates (threshold: {:.0}%): {} pairs",
+                    style::warning("⚠"),
                     threshold * 100.0,
                     duplicates.len()
                 );
                 println!();
                 for (similarity, bead1, bead2) in duplicates {
-                    println!("Similarity: {:.0}%", similarity * 100.0);
-                    println!("  {}: {}", bead1.id.as_str(), bead1.title);
-                    println!("  {}: {}", bead2.id.as_str(), bead2.title);
+                    println!("{} Similarity: {:.0}%", style::warning("~"), similarity * 100.0);
+                    println!("  {}: {}", style::issue_id(bead1.id.as_str()), bead1.title);
+                    println!("  {}: {}", style::issue_id(bead2.id.as_str()), bead2.title);
                     println!();
                 }
             }
@@ -859,31 +866,31 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             let ready_count = graph.ready_beads().len();
 
             println!();
-            println!("📊 Aggregated Beads Status");
+            println!("{}", style::header("Aggregated Beads Status"));
             println!();
-            println!("Summary:");
-            println!("  Total Beads:          {}", stats.total_beads);
+            println!("{}", style::subheader("Summary"));
+            println!("  Total Beads:          {}", style::count_normal(stats.total_beads));
             println!(
                 "  Open:                 {}",
-                stats.open_beads.to_string().green()
+                style::count_ready(stats.open_beads)
             );
             println!(
                 "  In Progress:          {}",
-                stats.in_progress_beads.to_string().yellow()
+                style::count_in_progress(stats.in_progress_beads)
             );
             println!(
                 "  Blocked:              {}",
-                stats.blocked_beads.to_string().red()
+                style::count_blocked(stats.blocked_beads)
             );
-            println!("  Closed:               {}", stats.closed_beads);
+            println!("  Closed:               {}", style::dim(&stats.closed_beads.to_string()));
             println!(
                 "  Ready to Work:        {}",
-                ready_count.to_string().green()
+                style::count_ready(ready_count)
             );
             println!();
-            println!("Extended:");
-            println!("  Shadows:              {}", stats.total_shadows);
-            println!("  Rigs:                 {}", stats.total_rigs);
+            println!("{}", style::subheader("Extended"));
+            println!("  Shadows:              {}", style::dim(&stats.total_shadows.to_string()));
+            println!("  Rigs:                 {}", style::dim(&stats.total_rigs.to_string()));
 
             // Per-context breakdown
             use std::collections::HashMap;
@@ -906,7 +913,7 @@ fn run(cli: Cli) -> allbeads::Result<()> {
 
             if !context_counts.is_empty() {
                 println!();
-                println!("Contexts:");
+                println!("{}", style::subheader("Contexts"));
                 let mut contexts: Vec<_> = context_counts.iter().collect();
                 contexts.sort_by_key(|(ctx, _)| ctx.as_str());
 
@@ -915,9 +922,9 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                     let context_name = context.trim_start_matches('@');
                     println!(
                         "  {:<15} {} beads ({} open)",
-                        context_name,
+                        style::path(context_name),
                         count,
-                        open_count.to_string().green()
+                        style::count_ready(*open_count)
                     );
                 }
             }
@@ -925,20 +932,20 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             // Cache stats
             let cache_stats = cache.stats()?;
             println!();
-            println!("Cache:");
-            println!("  Beads cached:         {}", cache_stats.bead_count);
-            println!("  Rigs cached:          {}", cache_stats.rig_count);
+            println!("{}", style::subheader("Cache"));
+            println!("  Beads cached:         {}", style::dim(&cache_stats.bead_count.to_string()));
+            println!("  Rigs cached:          {}", style::dim(&cache_stats.rig_count.to_string()));
             if let Some(age) = cache_stats.age {
-                println!("  Cache age:            {:.1}s", age.as_secs_f64());
+                println!("  Cache age:            {}", style::dim(&format!("{:.1}s", age.as_secs_f64())));
             }
             let expired_str = if cache_stats.is_expired {
-                "true".red().to_string()
+                style::error("true")
             } else {
-                "false".green().to_string()
+                style::success("false")
             };
             println!("  Expired:              {}", expired_str);
             println!();
-            println!("For more details, use 'ab list' to see individual beads.");
+            println!("{}", style::dim("For more details, use 'ab list' to see individual beads."));
         }
 
         Commands::Tui => {
@@ -2643,16 +2650,16 @@ fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Res
     let ready_count = graph.ready_beads().len();
 
     println!();
-    println!("# AllBeads Project Info");
+    println!("{}", style::header("AllBeads Project Info"));
     println!();
-    println!("## Summary");
+    println!("{}", style::subheader("Summary"));
     println!();
-    println!("- Total beads: {}", stats.total_beads);
-    println!("- Open: {}", stats.open_beads);
-    println!("- In Progress: {}", stats.in_progress_beads);
-    println!("- Blocked: {}", stats.blocked_beads);
-    println!("- Closed: {}", stats.closed_beads);
-    println!("- Ready to work: {}", ready_count);
+    println!("  Total beads:    {}", style::count_normal(stats.total_beads));
+    println!("  Open:           {}", style::count_ready(stats.open_beads));
+    println!("  In Progress:    {}", style::count_in_progress(stats.in_progress_beads));
+    println!("  Blocked:        {}", style::count_blocked(stats.blocked_beads));
+    println!("  Closed:         {}", style::dim(&stats.closed_beads.to_string()));
+    println!("  Ready to work:  {}", style::count_ready(ready_count));
     println!();
 
     // Show contexts
@@ -2672,12 +2679,17 @@ fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Res
     }
 
     if !context_counts.is_empty() {
-        println!("## Contexts");
+        println!("{}", style::subheader("Contexts"));
         println!();
         let mut contexts: Vec<_> = context_counts.iter().collect();
         contexts.sort_by_key(|(ctx, _)| ctx.as_str());
         for (context, (total, open)) in contexts {
-            println!("- {}: {} beads ({} open)", context, total, open);
+            println!(
+                "  {}: {} beads ({} open)",
+                style::path(context),
+                total,
+                style::count_ready(*open)
+            );
         }
         println!();
     }
@@ -2688,25 +2700,25 @@ fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Res
     let recent: Vec<_> = recent.into_iter().take(5).collect();
 
     if !recent.is_empty() {
-        println!("## Recent Activity");
+        println!("{}", style::subheader("Recent Activity"));
         println!();
         for bead in recent {
             println!(
-                "- [{}] {}: {}",
-                format_status(bead.status),
-                bead.id.as_str(),
+                "  {} {} {}",
+                style::status_indicator(format_status(bead.status)),
+                style::issue_id(bead.id.as_str()),
                 bead.title
             );
         }
         println!();
     }
 
-    println!("## Quick Actions");
+    println!("{}", style::subheader("Quick Actions"));
     println!();
-    println!("- View ready work: `ab ready`");
-    println!("- View blocked work: `ab blocked`");
-    println!("- Launch TUI: `ab tui`");
-    println!("- Search beads: `ab search \"query\"`");
+    println!("  {} View ready work:    ab ready", style::dim("○"));
+    println!("  {} View blocked work:  ab blocked", style::dim("●"));
+    println!("  {} Launch TUI:         ab tui", style::dim("□"));
+    println!("  {} Search beads:       ab search \"query\"", style::dim("?"));
 
     Ok(())
 }
