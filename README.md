@@ -49,12 +49,18 @@ XML-based configuration defining:
 
 ## Current State
 
-**This is a greenfield Rust project.** We have:
+**Phase 1 (The Reader) - Complete**
 
-- ✅ Comprehensive architecture specification ([PRD](specs/PRD-00.md))
-- ✅ Rust project initialized (`cargo init`)
-- ✅ Beads issue tracking configured (prefix: `ab`)
-- ⬜ Implementation (in progress)
+AllBeads now provides read-only aggregation of multiple Boss repositories:
+
+- ✅ Multi-repository aggregation from git remotes
+- ✅ SQLite cache layer with automatic expiration
+- ✅ Context-aware filtering (@work, @personal, etc.)
+- ✅ Full CLI with filtering, search, and display commands
+- ✅ bd JSONL format compatibility
+- ⬜ Terminal UI (next up)
+
+See [demo.md](demo.md) for usage examples.
 
 ## Getting Started
 
@@ -64,21 +70,146 @@ XML-based configuration defining:
 - `bd` (beads CLI) - [Installation instructions](https://github.com/steveyegge/beads)
 - Git
 
-### Development Setup
+### Installation
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/thrashr888/AllBeads.git
 cd AllBeads
 
-# Check the build
-cargo check
+# Build the project
+cargo build --release
 
-# Run tests (when available)
-cargo test
+# Create config directory
+mkdir -p ~/.config/allbeads
 
-# See available beads issues
-bd list
+# Create initial configuration
+cat > ~/.config/allbeads/config.yaml << 'EOF'
+contexts:
+  - name: allbeads
+    type: git
+    url: https://github.com/thrashr888/AllBeads.git
+    path: /path/to/AllBeads
+    auth_strategy: ssh_agent
+agent_mail:
+  port: 8085
+  storage: ~/.config/allbeads/mail.db
+visualization:
+  default_view: kanban
+  theme: dark
+  refresh_interval: 60
+EOF
+```
+
+### Quick Start
+
+```bash
+# Setup alias for convenience
+alias ab='cargo run --quiet -- --cached'
+
+# Add Boss repositories
+ab context add work https://github.com/org/boss-work.git
+ab context add personal https://github.com/you/boss-personal.git
+
+# View aggregated statistics
+ab stats
+
+# List all beads
+ab list
+
+# Filter by status
+ab list --status open
+
+# Filter by priority
+ab list --priority P1
+
+# Show ready-to-work beads
+ab ready
+
+# Show bead details
+ab show ab-123
+```
+
+See [demo.md](demo.md) for more examples.
+
+### CLI Reference
+
+#### Context Management
+
+```bash
+# Add a new Boss repository
+allbeads context add <name> <url> [--path <path>] [--auth <strategy>]
+
+# List all configured contexts
+allbeads context list
+
+# Remove a context
+allbeads context remove <name>
+```
+
+#### Viewing Beads
+
+```bash
+# Show aggregated statistics
+allbeads stats
+
+# List all beads
+allbeads list
+
+# Filter by status (open, in_progress, blocked, deferred, closed)
+allbeads list --status <status>
+
+# Filter by priority (P0-P4 or 0-4)
+allbeads list --priority <priority>
+
+# Filter by context
+allbeads list --context <context-name>
+
+# Show beads ready to work (no blockers)
+allbeads ready
+
+# Show detailed information about a bead
+allbeads show <bead-id>
+```
+
+#### Cache Management
+
+```bash
+# Clear the local cache (forces refresh on next command)
+allbeads clear-cache
+
+# Use cached data only (don't fetch updates)
+allbeads --cached <command>
+```
+
+### Configuration
+
+Config file location: `~/.config/allbeads/config.yaml`
+
+Example configuration:
+
+```yaml
+contexts:
+  - name: work
+    type: git
+    url: https://github.com/org/boss-work.git
+    path: /Users/you/workspace/boss-work
+    auth_strategy: ssh_agent
+
+  - name: personal
+    type: git
+    url: git@github.com:you/boss-personal.git
+    path: /Users/you/workspace/boss-personal
+    auth_strategy: ssh_agent
+
+agent_mail:
+  port: 8085
+  storage: ~/.config/allbeads/mail.db
+
+visualization:
+  default_view: kanban
+  theme: dark
+  refresh_interval: 60
 ```
 
 ### Project Structure
