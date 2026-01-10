@@ -266,38 +266,92 @@ AllBeads acts as a **meta-onboarder** that orchestrates the onboarding of multip
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Claude Marketplace Integration
+### Registry Philosophy: Leverage, Don't Duplicate
 
-AllBeads leverages the Claude plugin marketplace system for plugin discovery and metadata.
+Anthropic (and others) will likely build comprehensive marketplace registries with search, ratings, and discovery. **AllBeads should not duplicate this effort.** Instead:
 
-```bash
-# List available marketplaces
-ab marketplace list
+1. **Leverage external registries** for discovery and metadata
+2. **Maintain a curated internal list** of known-good plugins for onboarding
+3. **Support direct installation** from any compatible plugin repo
 
-Registered Marketplaces:
-┌────────────────────────────────────────────────────────────────┐
-│ Name              │ URL                                │ Plugins │
-├───────────────────┼────────────────────────────────────┼─────────┤
-│ claude-official   │ github.com/anthropics/marketplace  │ 12      │
-│ openprose         │ github.com/openprose/prose         │ 1       │
-│ local-dev         │ ~/.config/allbeads/marketplace     │ 3       │
-└────────────────────────────────────────────────────────────────┘
-
-# Add a marketplace
-ab marketplace add https://github.com/openprose/prose
-
-# Sync marketplace metadata
-ab marketplace sync
 ```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Plugin Discovery Flow                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌──────────────────┐    ┌──────────────────┐                  │
+│   │  Claude Registry │    │  Other Registries│                  │
+│   │  (future)        │    │  (npm, crates.io)│                  │
+│   └────────┬─────────┘    └────────┬─────────┘                  │
+│            │                       │                             │
+│            ▼                       ▼                             │
+│   ┌─────────────────────────────────────────┐                   │
+│   │     AllBeads Curated Plugin List        │                   │
+│   │     (manually maintained, ~20-50)       │                   │
+│   └────────────────────┬────────────────────┘                   │
+│                        │                                         │
+│                        ▼                                         │
+│   ┌─────────────────────────────────────────┐                   │
+│   │     Plugin Onboarding Protocol          │                   │
+│   │     (allbeads-onboarding.yaml)          │                   │
+│   └─────────────────────────────────────────┘                   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Curated Plugin List
+
+AllBeads maintains a simple, manually-curated list of compatible plugins:
+
+```yaml
+# Built into AllBeads or ~/.config/allbeads/plugins.yaml
+plugins:
+  # Core (always available)
+  - name: beads
+    type: core
+    description: "Git-native issue tracking"
+    repo: https://github.com/anthropics/beads
+
+  # AI/Agent Tools
+  - name: prose
+    type: community
+    description: "Programming language for AI sessions"
+    repo: https://github.com/openprose/prose
+    agents: [claude, cursor, copilot]
+
+  - name: aider
+    type: community
+    description: "AI pair programming"
+    repo: https://github.com/paul-gauthier/aider
+    agents: [claude, codex, gemini]
+
+  # Development Tools
+  - name: conventional-commits
+    type: community
+    description: "Enforce commit message format"
+    repo: https://github.com/conventional-changelog/commitlint
+
+  # Documentation
+  - name: docs-generator
+    type: community
+    description: "Auto-generate documentation"
+    repo: https://github.com/example/docs-gen
+```
+
+**Why curated?**
+- Quality control (we've tested these work)
+- Security review (no arbitrary code execution)
+- Compatibility verified with AllBeads onboarding protocol
+- Small enough to manually maintain (~20-50 plugins)
 
 ### Plugin Discovery
 
-Plugins are discovered through multiple mechanisms:
+Plugins are discovered through:
 
-1. **Registered Marketplaces**: Queried via `claude plugin marketplace list`
-2. **Direct URLs**: Add plugins by repository URL
-3. **Project Detection**: Scan project for existing `.claude-plugin/` directories
-4. **Dependency Analysis**: Detect plugins from package.json, Cargo.toml, etc.
+1. **Curated List**: Built-in list of known-good plugins
+2. **External Registries**: Query Claude/npm/crates.io when they support it
+3. **Direct URL**: Install any compatible plugin by repo URL
+4. **Project Detection**: Scan for existing `.claude-plugin/` directories
 
 ```bash
 # Search for plugins
@@ -505,6 +559,191 @@ uninstall:
       file: "CLAUDE.md"
       remove_section: "## Prose Integration"
 ```
+
+## Multi-Agent Support
+
+AllBeads is designed to work with multiple coding agents, not just Claude. As the AI coding assistant landscape evolves, other agents are adopting similar patterns (skills, plugins, tools).
+
+### Supported Agents
+
+| Agent | Status | Config File | Skills/Plugins |
+|-------|--------|-------------|----------------|
+| **Claude Code** | ✓ Primary | `CLAUDE.md`, `.claude-plugin/` | Skills, MCP |
+| **Cursor** | ✓ Supported | `.cursorrules` | Rules, context |
+| **GitHub Copilot** | ✓ Supported | `.github/copilot-instructions.md` | Instructions |
+| **Codex CLI** | Planned | `.codex/` | TBD |
+| **Gemini CLI** | Planned | TBD | TBD |
+| **OpenCode** | Planned | TBD | TBD |
+| **Aider** | ✓ Supported | `.aider.conf.yml` | Config |
+
+### Agent Abstraction Layer
+
+AllBeads abstracts agent-specific configuration through a unified interface:
+
+```rust
+/// Supported coding agents
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CodingAgent {
+    Claude,
+    Cursor,
+    Copilot,
+    Codex,
+    Gemini,
+    OpenCode,
+    Aider,
+    Custom(String),
+}
+
+/// Agent-specific configuration
+pub trait AgentConfig {
+    /// Config file path relative to project root
+    fn config_path(&self) -> &str;
+
+    /// Check if agent is configured for this project
+    fn is_configured(&self, project_path: &Path) -> bool;
+
+    /// Initialize agent configuration
+    fn init(&self, project_path: &Path, config: &ProjectConfig) -> Result<()>;
+
+    /// Update configuration with project context
+    fn update(&self, project_path: &Path, context: &ProjectContext) -> Result<()>;
+}
+```
+
+### Agent Configuration During Onboarding
+
+```bash
+ab context setup ~/Workspace/my-project
+
+Step 4/5: Agent Configuration
+
+  Detected agents in use:
+    ✓ Claude Code (CLAUDE.md exists)
+    ✗ Cursor (.cursorrules not found)
+    ✗ Copilot (copilot-instructions.md not found)
+
+  ? Configure additional agents?
+    ◉ Cursor          - Add .cursorrules with project context
+    ◯ GitHub Copilot  - Add copilot-instructions.md
+    ◯ Aider           - Add .aider.conf.yml
+
+  ? Selected: [Cursor]
+
+  Creating .cursorrules...
+  ✓ Agent configuration complete
+
+Summary:
+  Agents configured: Claude, Cursor
+```
+
+### Cross-Agent Configuration Sync
+
+When you update project context in AllBeads, it can sync to all configured agents:
+
+```bash
+ab agent sync
+
+Syncing project context to configured agents...
+
+  Claude (CLAUDE.md)
+    ✓ Updated with beads commands, project structure
+
+  Cursor (.cursorrules)
+    ✓ Updated with coding standards, file patterns
+
+  Copilot (copilot-instructions.md)
+    ✓ Updated with project conventions
+
+All agents synchronized.
+```
+
+### Agent-Specific Plugin Compatibility
+
+Plugins can declare which agents they support:
+
+```yaml
+# In allbeads-onboarding.yaml
+agents:
+  supported:
+    - claude    # Full support
+    - cursor    # Full support
+    - copilot   # Partial (no skills, just instructions)
+    - aider     # Config only
+
+  # Agent-specific onboarding steps
+  agent_steps:
+    claude:
+      - id: add_skill
+        type: append
+        dest: "CLAUDE.md"
+        content: |
+          ## Prose Integration
+          Use `/prose` to run prose commands.
+
+    cursor:
+      - id: add_rule
+        type: append
+        dest: ".cursorrules"
+        content: |
+          # Prose
+          When writing documentation, use prose style guidelines.
+
+    copilot:
+      - id: add_instruction
+        type: append
+        dest: ".github/copilot-instructions.md"
+        content: |
+          This project uses Prose for structured documentation.
+```
+
+### Agent Commands
+
+```bash
+# List configured agents for current project
+ab agent list
+
+Configured Agents:
+┌──────────────────────────────────────────────────────────────┐
+│ Agent       │ Config File                  │ Status         │
+├─────────────┼──────────────────────────────┼────────────────┤
+│ Claude      │ CLAUDE.md                    │ ✓ Configured   │
+│ Cursor      │ .cursorrules                 │ ✓ Configured   │
+│ Copilot     │ .github/copilot-instruct...  │ ✗ Not found    │
+│ Aider       │ .aider.conf.yml              │ ✗ Not found    │
+└──────────────────────────────────────────────────────────────┘
+
+# Initialize a specific agent
+ab agent init cursor
+
+Creating .cursorrules with project context...
+✓ Cursor configured
+
+# Sync context to all agents
+ab agent sync
+
+# Show what would be written to an agent's config
+ab agent preview cursor
+```
+
+### Research: Existing Marketplace Examples
+
+Before finalizing our approach, we should study existing plugin/extension ecosystems:
+
+| Ecosystem | Registry | Discovery | Install | Notes |
+|-----------|----------|-----------|---------|-------|
+| **VS Code** | marketplace.visualstudio.com | Web + CLI | `code --install-extension` | Centralized, Microsoft-hosted |
+| **npm** | registry.npmjs.org | `npm search` | `npm install` | Decentralized publishing |
+| **Homebrew** | formulae.brew.sh | `brew search` | `brew install` | Community taps model |
+| **Cargo** | crates.io | `cargo search` | `cargo install` | Rust-native |
+| **Claude Plugins** | TBD (future) | TBD | `claude plugin install` | Emerging |
+| **Cursor** | cursor.sh/plugins | Web | GUI | Integrated |
+
+**Key learnings to apply:**
+1. **npm model**: Decentralized publishing, but curated "awesome" lists for quality
+2. **Homebrew model**: Official + community "taps" for flexibility
+3. **VS Code model**: Centralized with verified publishers for trust
+
+**Our approach**: Start with a curated list (like awesome-X repos), prepare to integrate with official registries when they exist.
 
 ### Plugin Commands
 
@@ -1338,7 +1577,18 @@ ab context setup ~/Workspace/project
 - Recommendation scoring
 - Integration with setup wizard
 
-### Phase 9: Polish
+### Phase 9: Multi-Agent Support
+- Agent abstraction layer (`AgentConfig` trait)
+- Agent detection and initialization
+- Cross-agent context sync (`ab agent sync`)
+- Agent-specific plugin steps
+
+### Phase 10: Registry Integration
+- Hook into Claude marketplace when available
+- Support for npm/crates.io plugin discovery
+- Fallback to curated list
+
+### Phase 11: Polish
 - Rich CLI UX
 - Error recovery
 - Documentation
@@ -1636,13 +1886,41 @@ Found 5 repositories with beads:
 19. How to handle orphaned worktrees (worktree deleted but still in config)?
 20. Should sync-branch mode use a separate git remote for beads data?
 
+### Multi-Agent Support
+21. How to handle conflicting agent config files (CLAUDE.md vs .cursorrules)?
+22. Should we auto-detect which agents the user has installed?
+23. How to keep agent configs in sync when one is manually edited?
+24. Should there be an "agent-agnostic" universal config format?
+25. How to handle agents that don't exist yet (future-proofing)?
+
+### Registry Strategy
+26. When Claude's marketplace launches, how do we integrate?
+27. Should we support private/internal plugin registries for enterprises?
+28. How to handle plugin versioning across different registries?
+
 ## References
 
+### AllBeads
 - [PRD-00: Boss Repository Architecture](./PRD-00.md)
 - [Beads Issue Tracker](https://github.com/anthropics/beads)
+
+### Claude Plugin Ecosystem
 - [Claude Code Marketplace](https://claude.ai/code/marketplace)
-- [Prose - AI Session Language](https://prose.md) / [GitHub](https://github.com/openprose/prose)
 - [Claude Plugin Marketplaces Documentation](https://code.claude.com/docs/en/plugin-marketplaces)
+- [Prose - AI Session Language](https://prose.md) / [GitHub](https://github.com/openprose/prose)
 - Example Plugin Structures:
   - [Prose marketplace.json](https://github.com/openprose/prose/blob/main/.claude-plugin/marketplace.json)
   - [Prose plugin.json](https://github.com/openprose/prose/blob/main/.claude-plugin/plugin.json)
+
+### Other AI Coding Agents
+- [Cursor](https://cursor.sh) - `.cursorrules` configuration
+- [GitHub Copilot](https://github.com/features/copilot) - `copilot-instructions.md`
+- [Aider](https://github.com/paul-gauthier/aider) - `.aider.conf.yml`
+- [OpenAI Codex CLI](https://github.com/openai/codex) - Emerging
+- [Google Gemini CLI](https://ai.google.dev/gemini-api) - Emerging
+
+### Registry/Marketplace Examples
+- [VS Code Marketplace](https://marketplace.visualstudio.com)
+- [npm Registry](https://www.npmjs.com)
+- [Homebrew Formulae](https://formulae.brew.sh)
+- [crates.io](https://crates.io)
