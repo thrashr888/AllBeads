@@ -15,6 +15,7 @@
       "Bash(bd q:*)",
       "Bash(bd ready:*)",
       "Bash(bd show:*)",
+      "Bash(bd stats:*)",
       "Bash(bd update:*)",
       "Bash(cargo build:*)",
       "Bash(cargo check:*)",
@@ -37,11 +38,11 @@
       "Bash(git commit:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
-      "Bash(git status:*)",
-      "Bash(sqlite3:*)",
-      "Bash(tree:*)",
       "Bash(git push)",
-      "Bash(RUST_LOG=warn cargo run:*)"
+      "Bash(git status:*)",
+      "Bash(RUST_LOG=warn cargo run:*)",
+      "Bash(sqlite3:*)",
+      "Bash(tree:*)"
     ]
   }
 }
