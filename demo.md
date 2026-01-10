@@ -326,6 +326,10 @@ ab search "agent" --context rookery
 ab search --status open
 ab search "bug" --status in_progress
 
+# Negate filters with ! prefix
+ab search --status=!closed              # All non-closed items
+ab search --type=!epic --status=!closed # Non-epic, non-closed items
+
 # Filter by priority range
 ab search --priority-min P0 --priority-max P2
 ab search "critical" --priority-min 0 --priority-max 1

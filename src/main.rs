@@ -77,7 +77,7 @@ enum Commands {
         #[arg(short = 'c', long)]
         context: Option<String>,
 
-        /// Filter by status (open, in_progress, blocked, deferred, closed)
+        /// Filter by status (open, in_progress, blocked, deferred, closed). Prefix with ! to negate (e.g., !closed)
         #[arg(short = 's', long)]
         status: Option<String>,
 
@@ -89,7 +89,7 @@ enum Commands {
         #[arg(long)]
         priority_max: Option<String>,
 
-        /// Filter by type (bug, feature, task, epic, chore)
+        /// Filter by type (bug, feature, task, epic, chore). Prefix with ! to negate (e.g., !epic)
         #[arg(short = 't', long = "type")]
         issue_type: Option<String>,
 
@@ -405,29 +405,47 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             let min_priority = priority_min.as_ref().and_then(|p| parse_priority_arg(p));
             let max_priority = priority_max.as_ref().and_then(|p| parse_priority_arg(p));
 
-            // Parse status filter
-            let status_filter = status.as_ref().and_then(|s| {
-                match s.to_lowercase().as_str() {
-                    "open" => Some(allbeads::graph::Status::Open),
-                    "in_progress" | "inprogress" => Some(allbeads::graph::Status::InProgress),
-                    "blocked" => Some(allbeads::graph::Status::Blocked),
-                    "deferred" => Some(allbeads::graph::Status::Deferred),
-                    "closed" => Some(allbeads::graph::Status::Closed),
-                    _ => None,
-                }
-            });
+            // Parse status filter (supports negation with ! prefix)
+            let (status_filter, status_negated) = status
+                .as_ref()
+                .map(|s| {
+                    let (negated, val) = if let Some(stripped) = s.strip_prefix('!') {
+                        (true, stripped)
+                    } else {
+                        (false, s.as_str())
+                    };
+                    let parsed = match val.to_lowercase().as_str() {
+                        "open" => Some(allbeads::graph::Status::Open),
+                        "in_progress" | "inprogress" => Some(allbeads::graph::Status::InProgress),
+                        "blocked" => Some(allbeads::graph::Status::Blocked),
+                        "deferred" => Some(allbeads::graph::Status::Deferred),
+                        "closed" => Some(allbeads::graph::Status::Closed),
+                        _ => None,
+                    };
+                    (parsed, negated)
+                })
+                .unwrap_or((None, false));
 
-            // Parse type filter
-            let type_filter = issue_type.as_ref().and_then(|t| {
-                match t.to_lowercase().as_str() {
-                    "bug" => Some(allbeads::graph::IssueType::Bug),
-                    "feature" => Some(allbeads::graph::IssueType::Feature),
-                    "task" => Some(allbeads::graph::IssueType::Task),
-                    "epic" => Some(allbeads::graph::IssueType::Epic),
-                    "chore" => Some(allbeads::graph::IssueType::Chore),
-                    _ => None,
-                }
-            });
+            // Parse type filter (supports negation with ! prefix)
+            let (type_filter, type_negated) = issue_type
+                .as_ref()
+                .map(|t| {
+                    let (negated, val) = if let Some(stripped) = t.strip_prefix('!') {
+                        (true, stripped)
+                    } else {
+                        (false, t.as_str())
+                    };
+                    let parsed = match val.to_lowercase().as_str() {
+                        "bug" => Some(allbeads::graph::IssueType::Bug),
+                        "feature" => Some(allbeads::graph::IssueType::Feature),
+                        "task" => Some(allbeads::graph::IssueType::Task),
+                        "epic" => Some(allbeads::graph::IssueType::Epic),
+                        "chore" => Some(allbeads::graph::IssueType::Chore),
+                        _ => None,
+                    };
+                    (parsed, negated)
+                })
+                .unwrap_or((None, false));
 
             let mut results: Vec<_> = graph
                 .beads
@@ -461,10 +479,13 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                         true
                     };
 
-                    // Status filter
+                    // Status filter (with negation support)
                     let matches_status = status_filter
                         .as_ref()
-                        .map(|s| b.status == *s)
+                        .map(|s| {
+                            let matches = b.status == *s;
+                            if status_negated { !matches } else { matches }
+                        })
                         .unwrap_or(true);
 
                     // Priority filter
@@ -480,10 +501,13 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                         min_ok && max_ok
                     };
 
-                    // Type filter
+                    // Type filter (with negation support)
                     let matches_type = type_filter
                         .as_ref()
-                        .map(|t| b.issue_type == *t)
+                        .map(|t| {
+                            let matches = b.issue_type == *t;
+                            if type_negated { !matches } else { matches }
+                        })
                         .unwrap_or(true);
 
                     // Label filter (must have ALL specified labels)
