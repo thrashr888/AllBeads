@@ -385,10 +385,10 @@ pub struct Message {
     pub id: MessageId,
 
     /// Sender address (e.g., "refactor_bot@legacy-repo")
-    pub from: String,
+    pub from: super::Address,
 
     /// Recipient address (e.g., "human@localhost", "all@project")
-    pub to: String,
+    pub to: super::Address,
 
     /// Message type and payload
     #[serde(flatten)]
@@ -403,16 +403,45 @@ pub struct Message {
 }
 
 impl Message {
-    /// Create a new message
-    pub fn new(from: impl Into<String>, to: impl Into<String>, message_type: MessageType) -> Self {
+    /// Create a new message with Address types
+    pub fn new(from: super::Address, to: super::Address, message_type: MessageType) -> Self {
         Self {
             id: MessageId::new(),
-            from: from.into(),
-            to: to.into(),
+            from,
+            to,
             message_type,
             timestamp: Utc::now(),
             correlation_id: None,
         }
+    }
+
+    /// Create a new message from string addresses (convenience method)
+    ///
+    /// # Panics
+    /// Panics if the addresses are invalid. Use `try_new` for fallible creation.
+    pub fn from_strings(
+        from: impl AsRef<str>,
+        to: impl AsRef<str>,
+        message_type: MessageType,
+    ) -> Self {
+        Self::new(
+            from.as_ref().parse().expect("invalid from address"),
+            to.as_ref().parse().expect("invalid to address"),
+            message_type,
+        )
+    }
+
+    /// Try to create a new message from string addresses
+    pub fn try_new(
+        from: impl AsRef<str>,
+        to: impl AsRef<str>,
+        message_type: MessageType,
+    ) -> Result<Self, super::AddressError> {
+        Ok(Self::new(
+            from.as_ref().parse()?,
+            to.as_ref().parse()?,
+            message_type,
+        ))
     }
 
     /// Set correlation ID
@@ -428,12 +457,27 @@ impl Message {
 
     /// Check if this is addressed to the human inbox
     pub fn is_for_human(&self) -> bool {
-        self.to.starts_with("human@")
+        self.to.is_human()
     }
 
     /// Check if this is a broadcast
     pub fn is_broadcast(&self) -> bool {
-        self.to.starts_with("all@")
+        self.to.is_broadcast()
+    }
+
+    /// Get the routing target for this message
+    pub fn routing_target(&self) -> super::RoutingTarget {
+        super::RoutingTarget::from_address(&self.to)
+    }
+
+    /// Get the sender's address
+    pub fn sender(&self) -> &super::Address {
+        &self.from
+    }
+
+    /// Get the recipient's address
+    pub fn recipient(&self) -> &super::Address {
+        &self.to
     }
 }
 
@@ -509,7 +553,7 @@ mod tests {
 
     #[test]
     fn test_full_message_serialization() {
-        let msg = Message::new(
+        let msg = Message::from_strings(
             "refactor_bot@auth-service",
             "human@localhost",
             MessageType::Request(RequestPayload::new("Approve scope change?")),
@@ -521,7 +565,7 @@ mod tests {
         assert!(json.contains("Request"));
 
         let parsed: Message = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.from, "refactor_bot@auth-service");
+        assert_eq!(parsed.from.to_string(), "refactor_bot@auth-service");
         assert!(parsed.is_for_human());
     }
 
@@ -548,7 +592,7 @@ mod tests {
 
     #[test]
     fn test_broadcast_detection() {
-        let msg = Message::new(
+        let msg = Message::from_strings(
             "agent@project",
             "all@project",
             MessageType::Broadcast(BroadcastPayload::new("System maintenance")),

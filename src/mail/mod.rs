@@ -24,9 +24,29 @@
 //! - `agent_name@project_id` - Specific agent
 //! - `human@localhost` - Human operator inbox
 //! - `all@project_id` - Broadcast to all agents
+//! - `postmaster@project_id` - The postmaster service
+//!
+//! # Examples
+//!
+//! ```
+//! use allbeads::mail::{Address, Message, MessageType, NotifyPayload};
+//!
+//! // Create addresses
+//! let from: Address = "worker@my-project".parse().unwrap();
+//! let to = Address::human();
+//!
+//! // Create a notification message
+//! let msg = Message::new(
+//!     from,
+//!     to,
+//!     MessageType::Notify(NotifyPayload::new("Task completed")),
+//! );
+//! ```
 
+mod address;
 mod message;
 
+pub use address::{Address, AddressError, RoutingTarget};
 pub use message::{
     AgentStatus, BroadcastCategory, BroadcastPayload, HeartbeatPayload, LockRequest, Message,
     MessageId, MessageType, NotifyPayload, RequestPayload, ResponsePayload, ResponseStatus,

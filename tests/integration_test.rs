@@ -359,7 +359,7 @@ mod mail_tests {
 
     #[test]
     fn test_lock_message_roundtrip() {
-        let msg = Message::new(
+        let msg = Message::from_strings(
             "worker@project",
             "postmaster@project",
             MessageType::Lock(
@@ -371,13 +371,13 @@ mod mail_tests {
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: Message = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(parsed.from, "worker@project");
+        assert_eq!(parsed.from.to_string(), "worker@project");
         assert!(parsed.is_lock());
     }
 
     #[test]
     fn test_human_inbox_message() {
-        let msg = Message::new(
+        let msg = Message::from_strings(
             "bot@project",
             "human@localhost",
             MessageType::Request(RequestPayload::new("Approve deployment?")),
@@ -389,7 +389,7 @@ mod mail_tests {
 
     #[test]
     fn test_broadcast_message() {
-        let msg = Message::new(
+        let msg = Message::from_strings(
             "monitor@project",
             "all@project",
             MessageType::Broadcast(
@@ -400,5 +400,40 @@ mod mail_tests {
 
         assert!(msg.is_broadcast());
         assert!(!msg.is_for_human());
+    }
+
+    #[test]
+    fn test_address_parsing() {
+        let addr: Address = "agent@project".parse().unwrap();
+        assert_eq!(addr.name(), "agent");
+        assert_eq!(addr.domain(), "project");
+    }
+
+    #[test]
+    fn test_special_addresses() {
+        let human = Address::human();
+        assert!(human.is_human());
+
+        let broadcast = Address::broadcast("my-project");
+        assert!(broadcast.is_broadcast());
+        assert!(broadcast.is_in_project("my-project"));
+
+        let postmaster = Address::postmaster("my-project");
+        assert!(postmaster.is_postmaster());
+    }
+
+    #[test]
+    fn test_routing_target() {
+        let human = Address::human();
+        assert!(matches!(
+            RoutingTarget::from_address(&human),
+            RoutingTarget::Human
+        ));
+
+        let broadcast = Address::broadcast("proj");
+        assert!(matches!(
+            RoutingTarget::from_address(&broadcast),
+            RoutingTarget::Broadcast { .. }
+        ));
     }
 }
