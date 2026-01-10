@@ -106,6 +106,15 @@ Gas Town operates on the "Propulsion Principle": the idea that the state of work
 
 ## 4. The AllBeads PRD: Distributed Orchestration with Agent Communication
 
+> **Implementation Status (as of January 2026):**
+> - ✅ **Core CLI**: 14+ commands implemented (`ab list`, `ab show`, `ab tui`, `ab mail`, `ab sheriff`, `ab janitor`, etc.)
+> - ✅ **Multi-Context**: Work/personal Boss repo aggregation fully functional
+> - ✅ **TUI**: Kanban and Mail views complete; Graph and Swarm views not yet implemented
+> - ✅ **Agent Mail**: Postmaster server with all 7 message types, file locking, HTTP/IPC interfaces
+> - ✅ **Sheriff**: Foreground mode with manifest parsing and shadow sync; background daemon mode planned
+> - ✅ **Janitor**: Automated codebase analysis for legacy repo onboarding
+> - 🔄 **Enterprise**: JIRA/GitHub integration placeholders only (Phase 4)
+
 We have established the limitations of Conductor (repo-bound) and the strengths of Beads (structured, git-backed). We now define the **AllBeads** product: an open-source CLI/TUI system that extends Beads from a single repository to a distributed, multi-context environment with inter-agent communication.
 
 ### 4.1 Problem Statement: The Identity and Coordination Failures
@@ -237,18 +246,26 @@ When a Mayor in auth-service promotes a task to an Epic, the "Sheriff" daemon (d
 
 #### 4.3.2 The Sheriff Daemon: The Synchronization Engine
 
+> **Implementation Status**: ✅ Foreground mode implemented (`ab sheriff --foreground`)
+> - ✅ Tokio async runtime with configurable poll intervals
+> - ✅ Manifest parsing (XML) with Rig configuration
+> - ✅ Shadow Bead synchronization
+> - ✅ Event stream for TUI communication
+> - ❌ Background daemon mode (systemd/launchd integration planned)
+> - ❌ External sync phase (JIRA/GitHub - Phase 4)
+
 The **Sheriff** is a long-running background process that enforces consistency across the federated graph. It is the "glue" of the AllBeads architecture.
 
 **Technical Specification:**
 
-* **Language:** Rust with tokio async runtime for performance and safety
-* **Concurrency:** Async tasks for parallel polling of Rigs and external APIs
+* **Language:** Rust with tokio async runtime for performance and safety ✅
+* **Concurrency:** Async tasks for parallel polling of Rigs and external APIs ✅
 * **Event Loop:**
-  1. **Poll Phase:** Iterate through manifests/default.xml. For each Rig, run `git fetch origin refs/beads/*`
-  2. **Diff Phase:** Compare the local `.beads` state of the Rig with the cached state in the Boss Graph
-  3. **Sync Phase:** If a Rig has new Epics, create Shadow Beads in Boss. If Boss has new directives (e.g., a "Global Mandate"), push new Beads to the Rig's `.beads` directory
-  4. **External Sync Phase:** Push/Pull changes to JIRA and GitHub Issues (detailed in Section 5)
-  5. **Mail Delivery Phase:** Process Agent Mail queue, deliver messages, enforce file locks
+  1. **Poll Phase:** Iterate through manifests/default.xml. For each Rig, run `git fetch origin refs/beads/*` ✅
+  2. **Diff Phase:** Compare the local `.beads` state of the Rig with the cached state in the Boss Graph ✅
+  3. **Sync Phase:** If a Rig has new Epics, create Shadow Beads in Boss. If Boss has new directives (e.g., a "Global Mandate"), push new Beads to the Rig's `.beads` directory ✅
+  4. **External Sync Phase:** Push/Pull changes to JIRA and GitHub Issues (detailed in Section 5) ❌
+  5. **Mail Delivery Phase:** Process Agent Mail queue, deliver messages, enforce file locks ✅
 
 ### 4.4 The Manifest Standard
 
@@ -277,7 +294,15 @@ To define the member Rigs, we adopt a schema compatible with the git-repo standa
 
 This XML allows the Sheriff to know not just *where* the code is, but *who* (which specialized agent persona) should be summoned to work on it, and *how* to namespace the beads (auth-xxx, ui-xxx) to ensure global uniqueness in the Boss graph.
 
-### 4.5 Agent Mail: The Communication and Coordination Layer
+### 4.5 Agent Mail: The Communication and Coordination Layer ✅ IMPLEMENTED
+
+> **Implementation Status**: Full Agent Mail system implemented
+> - ✅ Postmaster server (HTTP + IPC interfaces)
+> - ✅ All 7 message types (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT, RESPONSE)
+> - ✅ File locking with TTL and lease management
+> - ✅ SQLite-backed message persistence
+> - ✅ Agent addressing (`agent_name@project_id`)
+> - ✅ TUI Mail view with inbox
 
 While Beads provides the memory layer (what needs to be done), **Agent Mail** provides the signaling layer (who is doing what right now). This prevents the coordination failures that plague multi-agent systems.
 
@@ -352,7 +377,15 @@ The TUI includes a dedicated "Mail" tab showing:
 - **Break Lock**: Override file lock (with confirmation)
 - **Kill Agent**: Terminate agent process
 
-#### 4.5.5 The "Janitor" Workflow
+#### 4.5.5 The "Janitor" Workflow ✅ IMPLEMENTED
+
+> **Implementation Status**: `ab janitor` command fully implemented with:
+> - ✅ Missing documentation detection (README, LICENSE, CONTRIBUTING)
+> - ✅ Missing configuration detection (.gitignore, SECURITY.md)
+> - ✅ Test coverage analysis per language
+> - ✅ TODO/FIXME/HACK comment scanning
+> - ✅ Security pattern detection (hardcoded secrets, eval usage)
+> - ✅ `--dry-run` and `--verbose` flags
 
 A specialized use case for Agent Mail is the "Janitor" mode for legacy repository onboarding:
 
@@ -373,6 +406,11 @@ This command:
 This enables "fire and forget" adoption of brownfield codebases.
 
 ## 5. Enterprise Integration: Bridging the Gap with JIRA and GitHub
+
+> **Implementation Status**: ❌ Phase 4 - Not yet implemented
+> - Placeholder modules exist in `src/integrations/` (jira.rs, github.rs)
+> - Architecture defined but no functional implementation
+> - Planned for Q4 2026
 
 The greatest barrier to AI adoption in large organizations is the disconnect between the "System of Execution" (Git/Code) and the "System of Record" (JIRA/GitHub Issues). Managers live in JIRA; Agents live in Git. The "Boss" architecture bridges this gap.
 
@@ -417,6 +455,14 @@ Unlike JIRA, where the description is static, GitHub Issues are often conversati
 
 ## 6. Visualizing the Swarm: The Unified TUI ("All-Seeing Eye")
 
+> **Implementation Status**: ✅ Partially implemented
+> - ✅ Kanban view with multi-context aggregation
+> - ✅ Mail view with inbox, compose, and reply
+> - ❌ Graph view (dependency visualization) - planned
+> - ❌ Swarm view (agent status monitor) - planned
+> - ✅ ratatui + crossterm architecture
+> - ✅ Vim-style keyboard navigation
+
 A command-line tool (`bd list`) is insufficient for visualizing work spanning multiple contexts and repositories. The **AllBeads TUI** serves as the command center, aggregating all Boss repositories into a single, coherent interface.
 
 ### 6.1 Why TUI?
@@ -455,7 +501,9 @@ enum ViewMode {
 
 #### 6.2.2 The Four Primary Views
 
-**View 1: The Strategic Kanban**
+> **Implementation Status**: Kanban ✅ | Mail ✅ | Graph ❌ | Swarm ❌
+
+**View 1: The Strategic Kanban** ✅ IMPLEMENTED
 
 Aggregates beads from **all Boss contexts** into a unified board with context indicators:
 
@@ -477,7 +525,7 @@ Key features:
 - **Lock Indicators**: 🔒 shows active file locks
 - **Blocking Relationships**: Clearly marked with bead IDs
 
-**View 2: The Dependency Graph**
+**View 2: The Dependency Graph** ❌ NOT YET IMPLEMENTED
 
 Renders cross-repository dependencies using ASCII/Unicode:
 
@@ -499,7 +547,7 @@ Renders cross-repository dependencies using ASCII/Unicode:
 
 Allows instant identification of cross-context bottlenecks.
 
-**View 3: Agent Mail Inbox**
+**View 3: Agent Mail Inbox** ✅ IMPLEMENTED
 
 The communication hub for agent-human interaction:
 
@@ -523,7 +571,7 @@ The communication hub for agent-human interaction:
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**View 4: The Swarm Monitor**
+**View 4: The Swarm Monitor** ❌ NOT YET IMPLEMENTED
 
 Real-time status of all active agents across all contexts:
 
@@ -652,34 +700,34 @@ This moves beyond the concept of a single "Beads Boss" to a **"Beads Society"**�
 
 To ensure broad adoption and community contribution, AllBeads will be developed as an **MIT-licensed open-source project** with the following roadmap:
 
-**Phase 1: The Reader (Read-Only Aggregation)** - Q1 2026
-- CLI that reads multiple local `.beads` repositories
-- Basic TUI showing unified Kanban view
-- Multi-context configuration support
-- **Deliverable**: `allbeads list` shows work and personal tasks together
+**Phase 1: The Reader (Read-Only Aggregation)** - Q1 2026 ✅ COMPLETE
+- ✅ CLI that reads multiple local `.beads` repositories
+- ✅ Basic TUI showing unified Kanban view
+- ✅ Multi-context configuration support
+- **Deliverable**: `allbeads list` shows work and personal tasks together ✅
 
-**Phase 2: The Mailroom (Agent Communication)** - Q2 2026
-- Implement MCP Agent Mail server (Postmaster)
-- File locking/mutex protocol
-- Mail tab in TUI with human inbox
-- **Deliverable**: Agents can coordinate and prevent conflicts
+**Phase 2: The Mailroom (Agent Communication)** - Q2 2026 ✅ COMPLETE
+- ✅ Implement MCP Agent Mail server (Postmaster)
+- ✅ File locking/mutex protocol
+- ✅ Mail tab in TUI with human inbox
+- **Deliverable**: Agents can coordinate and prevent conflicts ✅
 
-**Phase 3: The Writer (Distributed Boss)** - Q3 2026
-- Support `allbeads init --remote` for legacy repos
-- Janitor workflow for automated issue discovery
-- Sheriff daemon with git sync
-- **Deliverable**: Full write-back to Boss repos
+**Phase 3: The Writer (Distributed Boss)** - Q3 2026 ✅ COMPLETE
+- ✅ Support `allbeads init --remote` for legacy repos
+- ✅ Janitor workflow for automated issue discovery
+- ✅ Sheriff daemon with git sync (foreground mode)
+- **Deliverable**: Full write-back to Boss repos ✅
 
-**Phase 4: Enterprise Integration** - Q4 2026
-- JIRA bi-directional sync
-- GitHub Issues integration
-- Plugin architecture for other systems (Linear, Asana)
+**Phase 4: Enterprise Integration** - Q4 2026 🔄 IN PROGRESS
+- ❌ JIRA bi-directional sync (placeholder only)
+- ❌ GitHub Issues integration (placeholder only)
+- ❌ Plugin architecture for other systems (Linear, Asana)
 - **Deliverable**: Enterprise-ready orchestration
 
-**Phase 5: The Swarm (Advanced Agents)** - 2027
-- Agent lifecycle management (spawn, monitor, kill)
-- Cost tracking and budget management
-- Advanced dependency resolution across contexts
+**Phase 5: The Swarm (Advanced Agents)** - 2027 📋 PLANNED
+- ❌ Agent lifecycle management (spawn, monitor, kill)
+- ❌ Cost tracking and budget management
+- ❌ Advanced dependency resolution across contexts
 - **Deliverable**: Self-managing agent workforce
 
 ### 8.3 Community and Contribution
