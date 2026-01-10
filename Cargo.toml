@@ -62,6 +62,7 @@ serde_repr = "0.1.20"
 axum = { version = "0.8.8", features = ["tokio"] }
 tower = "0.5.2"
 hyper-util = "0.1.19"
+quick-xml = "0.38.4"
 
 [dev-dependencies]
 tempfile = "3.13"

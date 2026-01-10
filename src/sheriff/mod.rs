@@ -1,5 +1,8 @@
 //! Sheriff daemon
 //!
 //! Background synchronization daemon with event loop.
+//! Handles syncing beads between Rig repositories and the Boss repo.
 
-// Placeholder - will be implemented in Phase 3
+mod sync;
+
+pub use sync::{sync_rig_to_shadows, ShadowSync, SyncResult};

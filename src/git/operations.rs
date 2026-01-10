@@ -298,6 +298,212 @@ impl BossRepo {
     pub fn path(&self) -> &Path {
         &self.path
     }
+
+    /// Stage files for commit
+    ///
+    /// # Arguments
+    /// * `paths` - Paths to stage (relative to repo root)
+    pub fn add(&self, paths: &[&Path]) -> Result<()> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let mut index = repo.index()?;
+
+        for path in paths {
+            tracing::debug!(path = %path.display(), "Staging file");
+            index.add_path(path)?;
+        }
+
+        index.write()?;
+        tracing::debug!("Staged {} files", paths.len());
+        Ok(())
+    }
+
+    /// Stage all changes in .beads directory
+    pub fn add_beads(&self) -> Result<()> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let mut index = repo.index()?;
+
+        // Add all files in .beads directory
+        index.add_all([".beads/*"], git2::IndexAddOption::DEFAULT, None)?;
+
+        index.write()?;
+        tracing::debug!("Staged .beads directory");
+        Ok(())
+    }
+
+    /// Create a commit with the staged changes
+    ///
+    /// # Arguments
+    /// * `message` - Commit message
+    /// * `author_name` - Author name
+    /// * `author_email` - Author email
+    pub fn commit(&self, message: &str, author_name: &str, author_email: &str) -> Result<git2::Oid> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let mut index = repo.index()?;
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
+
+        let signature = git2::Signature::now(author_name, author_email)?;
+
+        // Get parent commit (HEAD)
+        let parent = match repo.head() {
+            Ok(head) => Some(head.peel_to_commit()?),
+            Err(_) => None, // No commits yet
+        };
+
+        let parents: Vec<&git2::Commit> = parent.as_ref().map(|p| vec![p]).unwrap_or_default();
+
+        let commit_id = repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )?;
+
+        tracing::info!(commit = %commit_id, message = %message, "Created commit");
+        Ok(commit_id)
+    }
+
+    /// Push changes to remote
+    ///
+    /// # Arguments
+    /// * `branch` - Branch name to push (defaults to current branch)
+    pub fn push(&self, branch: Option<&str>) -> Result<()> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let branch_name = if let Some(b) = branch {
+            b.to_string()
+        } else {
+            // Get current branch
+            let head = repo.head()?;
+            head.shorthand()
+                .ok_or_else(|| AllBeadsError::Git("Could not determine current branch".to_string()))?
+                .to_string()
+        };
+
+        tracing::info!(context = %self.context.name, branch = %branch_name, "Pushing to remote");
+
+        let mut remote = repo.find_remote("origin")?;
+
+        let refspec = format!("refs/heads/{}:refs/heads/{}", branch_name, branch_name);
+
+        let mut push_options = git2::PushOptions::new();
+        push_options.remote_callbacks(self.credentials.create_callbacks());
+
+        remote.push(&[&refspec], Some(&mut push_options))?;
+
+        tracing::info!(context = %self.context.name, branch = %branch_name, "Push completed");
+        Ok(())
+    }
+
+    /// Create a new branch
+    ///
+    /// # Arguments
+    /// * `name` - Branch name
+    /// * `from` - Optional commit to branch from (defaults to HEAD)
+    pub fn create_branch(&self, name: &str, from: Option<git2::Oid>) -> Result<()> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let commit = if let Some(oid) = from {
+            repo.find_commit(oid)?
+        } else {
+            repo.head()?.peel_to_commit()?
+        };
+
+        repo.branch(name, &commit, false)?;
+
+        tracing::info!(branch = %name, "Created branch");
+        Ok(())
+    }
+
+    /// Checkout a branch
+    ///
+    /// # Arguments
+    /// * `name` - Branch name to checkout
+    pub fn checkout_branch(&self, name: &str) -> Result<()> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let refname = format!("refs/heads/{}", name);
+        let obj = repo.revparse_single(&refname)?;
+
+        let mut checkout_builder = git2::build::CheckoutBuilder::new();
+        checkout_builder.force();
+
+        repo.checkout_tree(&obj, Some(&mut checkout_builder))?;
+        repo.set_head(&refname)?;
+
+        tracing::info!(branch = %name, "Checked out branch");
+        Ok(())
+    }
+
+    /// Check if there are uncommitted changes
+    pub fn has_changes(&self) -> Result<bool> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let statuses = repo.statuses(None)?;
+        Ok(!statuses.is_empty())
+    }
+
+    /// Get list of changed files
+    pub fn changed_files(&self) -> Result<Vec<PathBuf>> {
+        let repo = self
+            .repo
+            .as_ref()
+            .ok_or_else(|| AllBeadsError::Git("Repository not cloned yet".to_string()))?;
+
+        let statuses = repo.statuses(None)?;
+        let mut files = Vec::new();
+
+        for entry in statuses.iter() {
+            if let Some(path) = entry.path() {
+                files.push(PathBuf::from(path));
+            }
+        }
+
+        Ok(files)
+    }
+
+    /// Sync beads to remote (add, commit, push)
+    ///
+    /// Convenience method that stages .beads, commits with a message, and pushes.
+    pub fn sync_beads(&self, message: &str) -> Result<()> {
+        if !self.has_changes()? {
+            tracing::debug!(context = %self.context.name, "No changes to sync");
+            return Ok(());
+        }
+
+        self.add_beads()?;
+        self.commit(message, "AllBeads Sheriff", "sheriff@allbeads.local")?;
+        self.push(None)?;
+
+        tracing::info!(context = %self.context.name, "Synced beads to remote");
+        Ok(())
+    }
 }
 
 #[cfg(test)]

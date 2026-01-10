@@ -342,14 +342,13 @@ impl Postmaster {
         // Store the broadcast message
         self.store_message(message, DeliveryStatus::Delivered)?;
 
-        // In a full implementation, we would:
-        // 1. Get list of all agents in the project
-        // 2. Create a copy for each agent's inbox
-        // For now, just store the original
+        // Store the broadcast message
+        // Note: In a multi-agent deployment, this would fan out to all agents.
+        // Currently we store a single copy that all agents can query.
 
         Ok(SendResult::Broadcast {
             message_id: message.id.clone(),
-            recipient_count: 1, // Placeholder
+            recipient_count: 1, // Single storage (agents query the broadcast address)
         })
     }
 
