@@ -97,6 +97,26 @@ enum Commands {
     /// Manage contexts (Boss repositories)
     #[command(subcommand)]
     Context(ContextCommands),
+
+    /// Agent Mail commands
+    #[command(subcommand)]
+    Mail(MailCommands),
+}
+
+#[derive(Subcommand, Debug)]
+enum MailCommands {
+    /// Send a test notification message
+    Test {
+        /// Message to send
+        #[arg(default_value = "Hello from AllBeads!")]
+        message: String,
+    },
+
+    /// Show inbox messages
+    Inbox,
+
+    /// Show unread message count
+    Unread,
 }
 
 #[derive(Subcommand, Debug)]
@@ -155,6 +175,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     // Handle context management commands (don't need graph)
     if let Commands::Context(ref ctx_cmd) = cli.command {
         return handle_context_command(ctx_cmd, &cli.config);
+    }
+
+    // Handle mail commands (don't need graph)
+    if let Commands::Mail(ref mail_cmd) = cli.command {
+        return handle_mail_command(mail_cmd);
     }
 
     // Load configuration
@@ -504,9 +529,9 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             println!("Cache cleared successfully");
         }
 
-        Commands::Context(_) | Commands::Init => {
+        Commands::Context(_) | Commands::Init | Commands::Mail(_) => {
             // Handled earlier in the function
-            unreachable!("Context and Init commands should be handled before aggregation")
+            unreachable!("Context, Init, and Mail commands should be handled before aggregation")
         }
     }
 
@@ -889,6 +914,145 @@ fn handle_context_command(
                     "Context '{}' not found",
                     name
                 )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
+    use allbeads::mail::{
+        Address, Message, MessageType, NotifyPayload, Postmaster, RequestPayload, Severity,
+    };
+
+    // Get mail database path
+    let mail_db_path = AllBeadsConfig::default_path()
+        .parent()
+        .map(|p| p.join("mail.db"))
+        .ok_or_else(|| {
+            allbeads::AllBeadsError::Config("Could not determine mail database path".to_string())
+        })?;
+
+    // Get project ID from config
+    let project_id = match AllBeadsConfig::load_default() {
+        Ok(config) => config
+            .contexts
+            .first()
+            .map(|c| c.name.clone())
+            .unwrap_or_else(|| "default".to_string()),
+        Err(_) => "default".to_string(),
+    };
+
+    let mut postmaster = Postmaster::with_project_id(mail_db_path, &project_id)?;
+
+    match cmd {
+        MailCommands::Test { message } => {
+            // Send a variety of test messages
+            let human = Address::human();
+
+            // 1. Simple notification
+            let msg1 = Message::new(
+                Address::new("worker", &project_id)?,
+                human.clone(),
+                MessageType::Notify(NotifyPayload::new(message).with_severity(Severity::Info)),
+            );
+            postmaster.send(msg1)?;
+            println!("Sent: [NOTIFY] {}", message);
+
+            // 2. Request for approval
+            let msg2 = Message::new(
+                Address::new("build-bot", &project_id)?,
+                human.clone(),
+                MessageType::Request(
+                    RequestPayload::new("Approve deployment to production?")
+                        .with_options(vec![
+                            "Approve".to_string(),
+                            "Deny".to_string(),
+                            "Defer".to_string(),
+                        ]),
+                ),
+            );
+            postmaster.send(msg2)?;
+            println!("Sent: [REQUEST] Approve deployment to production?");
+
+            // 3. Warning notification
+            let msg3 = Message::new(
+                Address::new("monitor", &project_id)?,
+                human.clone(),
+                MessageType::Notify(
+                    NotifyPayload::new("API rate limit at 80%").with_severity(Severity::Warning),
+                ),
+            );
+            postmaster.send(msg3)?;
+            println!("Sent: [NOTIFY] API rate limit at 80%");
+
+            // 4. Success notification
+            let msg4 = Message::new(
+                Address::new("ci", &project_id)?,
+                human,
+                MessageType::Notify(
+                    NotifyPayload::new("Build succeeded! All 42 tests passed.")
+                        .with_severity(Severity::Info),
+                ),
+            );
+            postmaster.send(msg4)?;
+            println!("Sent: [NOTIFY] Build succeeded! All 42 tests passed.");
+
+            println!();
+            println!("4 test messages sent to inbox. Run 'ab tui' to view them.");
+        }
+
+        MailCommands::Inbox => {
+            let human = Address::human();
+            let messages = postmaster.inbox(&human)?;
+
+            if messages.is_empty() {
+                println!("Inbox is empty.");
+                println!("Run 'ab mail test' to send some test messages.");
+            } else {
+                println!("Inbox ({} messages):", messages.len());
+                println!();
+                for msg in messages {
+                    let is_unread =
+                        msg.status == allbeads::mail::DeliveryStatus::Delivered;
+                    let marker = if is_unread { "*" } else { " " };
+                    let type_str = match &msg.message.message_type {
+                        MessageType::Notify(_) => "[NOTIFY]",
+                        MessageType::Request(_) => "[REQUEST]",
+                        MessageType::Lock(_) => "[LOCK]",
+                        MessageType::Unlock(_) => "[UNLOCK]",
+                        MessageType::Broadcast(_) => "[BROADCAST]",
+                        MessageType::Heartbeat(_) => "[HEARTBEAT]",
+                        MessageType::Response(_) => "[RESPONSE]",
+                    };
+                    let summary = match &msg.message.message_type {
+                        MessageType::Notify(n) => n.message.clone(),
+                        MessageType::Request(r) => r.message.clone(),
+                        MessageType::Lock(l) => format!("Lock: {}", l.path),
+                        MessageType::Unlock(u) => format!("Unlock: {}", u.path),
+                        MessageType::Broadcast(b) => b.message.clone(),
+                        MessageType::Heartbeat(h) => format!("Status: {:?}", h.status),
+                        MessageType::Response(r) => {
+                            r.message.clone().unwrap_or_else(|| format!("{:?}", r.status))
+                        }
+                    };
+                    let time = msg.message.timestamp.format("%H:%M");
+                    println!(
+                        "{} {} {} from {}: {}",
+                        marker, time, type_str, msg.message.from, summary
+                    );
+                }
+            }
+        }
+
+        MailCommands::Unread => {
+            let human = Address::human();
+            let count = postmaster.unread_count(&human)?;
+            if count == 0 {
+                println!("No unread messages.");
+            } else {
+                println!("{} unread message(s).", count);
             }
         }
     }

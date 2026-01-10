@@ -3,6 +3,7 @@
 //! Defines a comprehensive error enum covering all failure modes across the system.
 //! Uses thiserror for ergonomic error handling.
 
+use crate::mail::{AddressError, PostmasterError};
 use std::path::PathBuf;
 use thiserror::Error;
 
@@ -71,6 +72,14 @@ pub enum AllBeadsError {
     /// HTTP request errors
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+
+    /// Postmaster (Agent Mail) errors
+    #[error("Mail error: {0}")]
+    Mail(#[from] PostmasterError),
+
+    /// Address parsing errors
+    #[error("Address error: {0}")]
+    Address(#[from] AddressError),
 
     /// Other errors
     #[error("{0}")]
