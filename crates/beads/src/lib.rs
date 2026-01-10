@@ -66,6 +66,7 @@ pub enum Status {
     Blocked,
     Deferred,
     Closed,
+    Tombstone,
 }
 
 impl std::fmt::Display for Status {
@@ -76,6 +77,7 @@ impl std::fmt::Display for Status {
             Status::Blocked => write!(f, "blocked"),
             Status::Deferred => write!(f, "deferred"),
             Status::Closed => write!(f, "closed"),
+            Status::Tombstone => write!(f, "tombstone"),
         }
     }
 }

@@ -5,6 +5,7 @@
 
 use super::BeadId;
 use serde::{Deserialize, Serialize};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::HashSet;
 
 /// Issue status
@@ -16,6 +17,7 @@ pub enum Status {
     Blocked,
     Deferred,
     Closed,
+    Tombstone, // Deleted issues (used by bd)
 }
 
 impl Default for Status {
@@ -25,7 +27,7 @@ impl Default for Status {
 }
 
 /// Issue priority (0 = critical, 4 = backlog)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize_repr, Deserialize_repr)]
 #[repr(u8)]
 pub enum Priority {
     P0 = 0, // Critical
@@ -105,6 +107,7 @@ pub struct Bead {
     pub updated_at: String,
 
     /// Creator username
+    #[serde(default)]
     pub created_by: String,
 
     /// Optional assignee
@@ -112,11 +115,11 @@ pub struct Bead {
     pub assignee: Option<String>,
 
     /// Dependencies (beads this one depends on)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_dep_ids")]
     pub dependencies: Vec<BeadId>,
 
     /// Beads that depend on this one (blocked by this)
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty", deserialize_with = "deserialize_dep_ids")]
     pub blocks: Vec<BeadId>,
 
     /// Labels/tags
@@ -182,6 +185,43 @@ impl Bead {
     /// Update the timestamp to now
     pub fn update_timestamp(&mut self) {
         self.updated_at = chrono::Utc::now().to_rfc3339();
+    }
+}
+
+/// Custom deserializer for dependency/block IDs
+///
+/// Handles both bd's format (array of objects) and simple format (array of strings)
+fn deserialize_dep_ids<'de, D>(deserializer: D) -> Result<Vec<BeadId>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{Deserialize, Error};
+    use serde_json::Value;
+
+    let value = Value::deserialize(deserializer)?;
+
+    match value {
+        Value::Null => Ok(Vec::new()),
+        Value::Array(arr) => {
+            let mut ids = Vec::new();
+            for item in arr {
+                match item {
+                    // bd format: {"issue_id": "...", "depends_on_id": "...", ...}
+                    Value::Object(map) => {
+                        if let Some(Value::String(id)) = map.get("depends_on_id") {
+                            ids.push(BeadId::new(id));
+                        }
+                    }
+                    // Simple format: "ab-123"
+                    Value::String(id) => {
+                        ids.push(BeadId::new(id));
+                    }
+                    _ => return Err(D::Error::custom("Expected string or object in dependency array")),
+                }
+            }
+            Ok(ids)
+        }
+        _ => Err(D::Error::custom("Expected array or null for dependencies")),
     }
 }
 

@@ -239,8 +239,9 @@ fn parse_status(s: &str) -> allbeads::Result<Status> {
         "blocked" => Ok(Status::Blocked),
         "deferred" => Ok(Status::Deferred),
         "closed" => Ok(Status::Closed),
+        "tombstone" => Ok(Status::Tombstone),
         _ => Err(allbeads::AllBeadsError::Parse(format!(
-            "Invalid status: {}. Must be one of: open, in_progress, blocked, deferred, closed",
+            "Invalid status: {}. Must be one of: open, in_progress, blocked, deferred, closed, tombstone",
             s
         ))),
     }
@@ -267,6 +268,7 @@ fn status_to_sort_key(status: Status) -> u8 {
         Status::Blocked => 2,
         Status::Deferred => 3,
         Status::Closed => 4,
+        Status::Tombstone => 5,
     }
 }
 
@@ -332,6 +334,7 @@ fn format_status(status: Status) -> &'static str {
         Status::Blocked => "blocked",
         Status::Deferred => "deferred",
         Status::Closed => "closed",
+        Status::Tombstone => "tombstone",
     }
 }
 

@@ -17,6 +17,7 @@ impl From<beads::Status> for Status {
             beads::Status::Blocked => Status::Blocked,
             beads::Status::Deferred => Status::Deferred,
             beads::Status::Closed => Status::Closed,
+            beads::Status::Tombstone => Status::Tombstone,
         }
     }
 }
@@ -30,6 +31,7 @@ impl From<Status> for beads::Status {
             Status::Blocked => beads::Status::Blocked,
             Status::Deferred => beads::Status::Deferred,
             Status::Closed => beads::Status::Closed,
+            Status::Tombstone => beads::Status::Tombstone,
         }
     }
 }

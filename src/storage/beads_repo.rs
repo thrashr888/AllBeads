@@ -63,6 +63,7 @@ impl BeadsRepo {
             Status::Blocked => "blocked",
             Status::Deferred => "deferred",
             Status::Closed => "closed",
+            Status::Tombstone => "tombstone",
         };
 
         let issues = self.bd.list(Some(status_str), None)
@@ -149,6 +150,7 @@ impl BeadsRepo {
             Status::Blocked => "blocked",
             Status::Deferred => "deferred",
             Status::Closed => "closed",
+            Status::Tombstone => "tombstone",
         };
 
         self.bd.update_status(id.as_str(), status_str)

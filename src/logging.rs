@@ -7,11 +7,12 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 /// Initialize the tracing subscriber
 ///
 /// Sets up structured logging with:
-/// - Filtering via RUST_LOG environment variable (defaults to "info")
+/// - Filtering via RUST_LOG environment variable (defaults to "warn" for quiet output)
 /// - Formatted output to stderr
 /// - Optional file logging (future enhancement)
 ///
 /// # Example RUST_LOG values
+/// - `RUST_LOG=info` - Show info and above
 /// - `RUST_LOG=debug` - Show debug and above
 /// - `RUST_LOG=allbeads=trace` - Trace level for allbeads crate
 /// - `RUST_LOG=allbeads=debug,beads=info` - Different levels per crate
@@ -19,9 +20,9 @@ use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, Env
 /// # Errors
 /// Returns an error if the subscriber has already been initialized
 pub fn init() -> crate::Result<()> {
-    // Create an EnvFilter that respects RUST_LOG, defaulting to "info"
+    // Create an EnvFilter that respects RUST_LOG, defaulting to "warn" for quiet CLI output
     let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+        .unwrap_or_else(|_| EnvFilter::new("warn"));
 
     // Configure the tracing subscriber with:
     // - Environment-based filtering

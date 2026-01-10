@@ -25,8 +25,10 @@ fn default_mail_port() -> u16 {
 
 impl Default for AgentMailConfig {
     fn default() -> Self {
-        let mut storage = dirs::config_dir()
+        // Always use ~/.config for consistency across platforms (macOS, Linux)
+        let mut storage = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."));
+        storage.push(".config");
         storage.push("allbeads");
         storage.push("mail.db");
 
@@ -159,8 +161,10 @@ impl AllBeadsConfig {
 
     /// Get the default config path (~/.config/allbeads/config.yaml)
     pub fn default_path() -> PathBuf {
-        let mut path = dirs::config_dir()
+        // Always use ~/.config for consistency across platforms (macOS, Linux)
+        let mut path = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."));
+        path.push(".config");
         path.push("allbeads");
         path.push("config.yaml");
         path

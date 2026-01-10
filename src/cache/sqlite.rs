@@ -21,7 +21,9 @@ pub struct CacheConfig {
 
 impl Default for CacheConfig {
     fn default() -> Self {
-        let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
+        // Always use ~/.config for consistency across platforms (macOS, Linux)
+        let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        path.push(".config");
         path.push("allbeads");
         path.push("cache.db");
 
@@ -420,6 +422,7 @@ fn status_to_str(status: Status) -> &'static str {
         Status::Blocked => "blocked",
         Status::Deferred => "deferred",
         Status::Closed => "closed",
+        Status::Tombstone => "tombstone",
     }
 }
 
@@ -429,6 +432,7 @@ fn str_to_status(s: &str) -> Status {
         "blocked" => Status::Blocked,
         "deferred" => Status::Deferred,
         "closed" => Status::Closed,
+        "tombstone" => Status::Tombstone,
         _ => Status::Open,
     }
 }

@@ -39,7 +39,9 @@
       "Bash(git log:*)",
       "Bash(git status:*)",
       "Bash(sqlite3:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(git push)",
+      "Bash(RUST_LOG=warn cargo run:*)"
     ]
   }
 }
