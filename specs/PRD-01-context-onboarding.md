@@ -858,31 +858,268 @@ contexts:
 
 ## Git Worktree Support
 
-AllBeads supports multiple worktrees for the same repository.
+AllBeads supports tracking multiple worktrees of the same repository simultaneously, with careful handling of beads data location based on the chosen beads flavor.
+
+### The Worktree Challenge
+
+Git worktrees share the same `.git` directory but have separate working directories. This creates complexity for beads:
+
+```
+~/Workspace/
+├── myproject/                    # Main worktree (branch: main)
+│   ├── .git/                     # Shared git directory
+│   ├── .beads/                   # Beads data - WHERE?
+│   └── src/
+├── myproject-feature/            # Worktree (branch: feature/auth)
+│   ├── .git → ../myproject/.git  # Symlink to main
+│   ├── .beads/                   # Separate? Shared? Conflict?
+│   └── src/
+└── myproject-hotfix/             # Another worktree (branch: hotfix/bug)
+    ├── .git → ../myproject/.git
+    └── src/
+```
+
+### Beads Data Location by Flavor
+
+| Beads Flavor | Data Location | Worktree Behavior |
+|--------------|---------------|-------------------|
+| **Standard** | `.beads/` in worktree | ⚠️ Each worktree has separate issues |
+| **SyncBranch** | `beads-sync` branch | ✓ Shared across all worktrees |
+| **JsonlOnly** | `.beads/*.jsonl` | ⚠️ Each worktree has separate issues |
+| **SharedDB** | `~/.local/share/beads/<repo>/` | ✓ Shared across all worktrees |
 
 ### Worktree Detection
+
+When adding a worktree, AllBeads detects the relationship and existing beads setup:
 
 ```bash
 ab context add ~/Workspace/myproject-feature
 
 Detected: Git worktree
   Main worktree: ~/Workspace/myproject
-  This worktree: ~/Workspace/myproject-feature (branch: feature/new-auth)
+  This worktree: ~/Workspace/myproject-feature (branch: feature/auth)
 
-? Link to main worktree context? [Y/n] y
-? Share beads database? [Y/n] y
+  Existing worktrees in this repo:
+    ~/Workspace/myproject         (main)      - beads: standard, 12 issues
+    ~/Workspace/myproject-hotfix  (hotfix/x)  - beads: standard, 3 issues
 
-✓ Linked to main worktree
-  Beads will be shared across worktrees
+⚠️  Warning: Main worktree uses 'standard' beads mode.
+    Each worktree will have SEPARATE issue databases.
+
+? How would you like to handle beads for this worktree?
+  > Separate issues (each worktree independent)
+    Migrate to sync-branch mode (shared across worktrees)
+    Migrate to shared-db mode (shared, external database)
+    Skip beads for this worktree
 ```
 
-### Worktree Configuration
+### Worktree Strategies
+
+#### Strategy 1: Separate Issues (Default for Standard Mode)
+
+Each worktree maintains its own `.beads/` directory. Issues are independent.
 
 ```yaml
-# In main worktree .allbeads/config.yaml
-worktrees:
-  shared_beads: true
-  link_config: true
+# AllBeads config for worktree
+worktree:
+  strategy: separate
+  main_worktree: ~/Workspace/myproject
+  beads_mode: standard
+```
+
+**Pros:**
+- Simple, no conflicts
+- Branch-specific issues possible
+
+**Cons:**
+- Issues don't sync across worktrees
+- Can't see all work in one place
+
+#### Strategy 2: Sync Branch (Recommended for Multi-Worktree)
+
+All worktrees share issues via a dedicated `beads-sync` branch.
+
+```bash
+# When setting up, choose sync-branch mode
+ab context setup ~/Workspace/myproject --beads-mode=sync-branch
+
+# All worktrees automatically share the same issues
+ab context add ~/Workspace/myproject-feature
+# → Detects sync-branch mode, shares issues automatically
+```
+
+**How it works:**
+1. Issues stored in `beads-sync` branch (or configurable name)
+2. Branch is checked out to a temp location for reads/writes
+3. All worktrees read/write to the same branch
+4. No `.beads/` directory in working tree (or just cache)
+
+```yaml
+# AllBeads config
+worktree:
+  strategy: sync_branch
+  sync_branch: beads-sync
+  main_worktree: ~/Workspace/myproject
+```
+
+#### Strategy 3: Shared External Database
+
+SQLite database stored outside the repository, shared by all worktrees.
+
+```yaml
+worktree:
+  strategy: shared_db
+  db_path: ~/.local/share/beads/myproject/beads.db
+  jsonl_path: ~/.local/share/beads/myproject/issues/
+```
+
+#### Strategy 4: Hybrid (JSONL in Sync Branch + Local SQLite Cache)
+
+Best of both worlds: JSONL files in sync branch for git-based sharing, local SQLite for fast queries.
+
+```yaml
+worktree:
+  strategy: hybrid
+  sync_branch: beads-sync
+  local_cache: .beads/cache.db  # Per-worktree cache, gitignored
+```
+
+### Multi-Worktree Commands
+
+```bash
+# List all worktrees for a repo
+ab worktree list ~/Workspace/myproject
+
+Worktrees for myproject:
+┌────────────────────────────────────────────────────────────────────────┐
+│ Path                         │ Branch      │ Beads    │ Issues │ Sync │
+├──────────────────────────────┼─────────────┼──────────┼────────┼──────┤
+│ ~/Workspace/myproject        │ main        │ shared   │ 12     │ ✓    │
+│ ~/Workspace/myproject-feat   │ feature/x   │ shared   │ 12     │ ✓    │
+│ ~/Workspace/myproject-hotfix │ hotfix/y    │ shared   │ 12     │ ✓    │
+└────────────────────────────────────────────────────────────────────────┘
+
+Mode: sync-branch (beads-sync)
+All worktrees share the same issue database.
+
+# Migrate existing worktrees to shared mode
+ab worktree migrate ~/Workspace/myproject --to=sync-branch
+
+This will:
+  1. Export issues from all worktrees
+  2. Merge into single database (resolve conflicts)
+  3. Create beads-sync branch
+  4. Update all worktree configs
+
+? Proceed? [Y/n]
+```
+
+### Conflict Resolution
+
+When migrating from separate to shared, conflicts may arise:
+
+```bash
+ab worktree migrate ~/Workspace/myproject --to=sync-branch
+
+Analyzing worktrees...
+
+Found 3 worktrees with separate beads:
+  ~/Workspace/myproject         - 12 issues (PROJ-001 to PROJ-012)
+  ~/Workspace/myproject-feat    - 5 issues  (PROJ-001 to PROJ-005)  ⚠️
+  ~/Workspace/myproject-hotfix  - 3 issues  (PROJ-001 to PROJ-003)  ⚠️
+
+⚠️  Conflict: Issue IDs overlap across worktrees
+
+? How to resolve conflicts?
+  > Renumber: Keep main, renumber others (PROJ-001, PROJ-013, PROJ-018...)
+    Prefix: Add worktree prefix (main/PROJ-001, feat/PROJ-001, hotfix/PROJ-001)
+    Manual: Export all, let me resolve manually
+    Abort: Keep worktrees separate
+```
+
+### Worktree-Aware Issue Creation
+
+When creating issues in a multi-worktree setup:
+
+```bash
+# In a worktree with sync-branch mode
+cd ~/Workspace/myproject-feature
+bd create --title="Implement auth"
+
+Creating issue in shared database (beads-sync branch)
+Branch context: feature/auth
+✓ Created PROJ-015: Implement auth
+```
+
+### Configuration
+
+```yaml
+# ~/.config/allbeads/contexts/work.yaml
+folders:
+  - path: ~/Workspace/myproject
+    prefix: proj
+    beads_mode: sync_branch
+    worktree:
+      strategy: sync_branch
+      sync_branch: beads-sync
+      # Track all worktrees automatically
+      auto_discover: true
+      # Or list explicitly
+      worktrees:
+        - path: ~/Workspace/myproject-feature
+          branch: feature/auth
+        - path: ~/Workspace/myproject-hotfix
+          branch: hotfix/urgent
+```
+
+### Data Structures
+
+```rust
+/// Worktree tracking configuration
+pub struct WorktreeConfig {
+    /// Strategy for handling beads across worktrees
+    pub strategy: WorktreeStrategy,
+
+    /// Path to the main worktree
+    pub main_worktree: PathBuf,
+
+    /// All known worktrees for this repo
+    pub worktrees: Vec<WorktreeInfo>,
+
+    /// Auto-discover new worktrees
+    pub auto_discover: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum WorktreeStrategy {
+    /// Each worktree has separate .beads/ (default for standard mode)
+    Separate,
+
+    /// Shared via dedicated branch
+    SyncBranch {
+        branch: String,
+        local_cache: Option<PathBuf>,
+    },
+
+    /// Shared via external database
+    SharedDb {
+        db_path: PathBuf,
+        jsonl_path: PathBuf,
+    },
+
+    /// JSONL in sync branch + local SQLite cache
+    Hybrid {
+        sync_branch: String,
+        cache_db: PathBuf,  // Per-worktree, gitignored
+    },
+}
+
+pub struct WorktreeInfo {
+    pub path: PathBuf,
+    pub branch: String,
+    pub is_main: bool,
+    pub beads_status: Option<FolderStatus>,
+}
 ```
 
 ## Distributed Configuration
@@ -1391,6 +1628,13 @@ Found 5 repositories with beads:
 13. Should the onboarding protocol support conditional steps based on OS/platform?
 14. Should there be a "headless" mode for CI/CD environments?
 15. How to version the onboarding protocol itself?
+
+### Worktree Handling
+16. Should `ab context add` auto-discover all worktrees, or require explicit add?
+17. How to handle worktree creation/deletion events (git worktree add/remove)?
+18. Should issues be taggable with "branch context" even in shared mode?
+19. How to handle orphaned worktrees (worktree deleted but still in config)?
+20. Should sync-branch mode use a separate git remote for beads data?
 
 ## References
 
