@@ -7,6 +7,7 @@ use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, BossContext, AuthStrategy};
 use allbeads::graph::{BeadId, Priority, Status};
 use clap::{Parser, Subcommand};
+use crossterm::style::Stylize;
 use std::path::PathBuf;
 use std::process;
 
@@ -274,7 +275,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
 
         Commands::Ready => {
             let ready = graph.ready_beads();
-            println!("Ready to work on: {} beads", ready.len());
+            println!();
+            println!(
+                "📋 Ready work ({} beads with no blockers):",
+                ready.len().to_string().green()
+            );
             println!();
             for bead in ready {
                 print_bead_summary(bead);
@@ -288,7 +293,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
 
             blocked.sort_by_key(|b| (b.priority, status_to_sort_key(b.status)));
 
-            println!("Blocked beads: {}", blocked.len());
+            println!();
+            println!(
+                "🚫 Blocked beads ({}):",
+                blocked.len().to_string().red()
+            );
             println!();
             for bead in blocked {
                 print_bead_summary(bead);
@@ -362,16 +371,22 @@ fn run(cli: Cli) -> allbeads::Result<()> {
 
         Commands::Stats => {
             let stats = graph.stats();
-            println!("AllBeads Statistics:");
+            let ready_count = graph.ready_beads().len();
+
             println!();
-            println!("  Total beads:      {}", stats.total_beads);
-            println!("  Total shadows:    {}", stats.total_shadows);
-            println!("  Total rigs:       {}", stats.total_rigs);
+            println!("📊 Aggregated Beads Status");
             println!();
-            println!("  Open:             {}", stats.open_beads);
-            println!("  In Progress:      {}", stats.in_progress_beads);
-            println!("  Blocked:          {}", stats.blocked_beads);
-            println!("  Closed:           {}", stats.closed_beads);
+            println!("Summary:");
+            println!("  Total Beads:          {}", stats.total_beads);
+            println!("  Open:                 {}", stats.open_beads.to_string().green());
+            println!("  In Progress:          {}", stats.in_progress_beads.to_string().yellow());
+            println!("  Blocked:              {}", stats.blocked_beads.to_string().red());
+            println!("  Closed:               {}", stats.closed_beads);
+            println!("  Ready to Work:        {}", ready_count.to_string().green());
+            println!();
+            println!("Extended:");
+            println!("  Shadows:              {}", stats.total_shadows);
+            println!("  Rigs:                 {}", stats.total_rigs);
 
             // Per-context breakdown
             use std::collections::HashMap;
@@ -401,7 +416,12 @@ fn run(cli: Cli) -> allbeads::Result<()> {
                 for (context, count) in contexts {
                     let open_count = context_open.get(context).unwrap_or(&0);
                     let context_name = context.trim_start_matches('@');
-                    println!("  {:<15} {} beads ({} open)", context_name, count, open_count);
+                    println!(
+                        "  {:<15} {} beads ({} open)",
+                        context_name,
+                        count,
+                        open_count.to_string().green()
+                    );
                 }
             }
 
@@ -409,12 +429,19 @@ fn run(cli: Cli) -> allbeads::Result<()> {
             let cache_stats = cache.stats()?;
             println!();
             println!("Cache:");
-            println!("  Beads cached:     {}", cache_stats.bead_count);
-            println!("  Rigs cached:      {}", cache_stats.rig_count);
+            println!("  Beads cached:         {}", cache_stats.bead_count);
+            println!("  Rigs cached:          {}", cache_stats.rig_count);
             if let Some(age) = cache_stats.age {
-                println!("  Cache age:        {:.1}s", age.as_secs_f64());
+                println!("  Cache age:            {:.1}s", age.as_secs_f64());
             }
-            println!("  Expired:          {}", cache_stats.is_expired);
+            let expired_str = if cache_stats.is_expired {
+                "true".red().to_string()
+            } else {
+                "false".green().to_string()
+            };
+            println!("  Expired:              {}", expired_str);
+            println!();
+            println!("For more details, use 'ab list' to see individual beads.");
         }
 
         Commands::Kanban => {
