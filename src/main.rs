@@ -100,19 +100,22 @@ enum Commands {
 
 #[derive(Subcommand, Debug)]
 enum ContextCommands {
-    /// Add a new context
+    /// Add a new context (from current directory or explicit path)
     Add {
-        /// Context name (e.g., work, personal)
-        name: String,
+        /// Path to git repository (default: current directory)
+        /// Name and URL are inferred from git config
+        #[arg(default_value = ".")]
+        path: String,
 
-        /// Repository URL (HTTPS or SSH)
-        url: String,
-
-        /// Local path (default: ~/workspace/<name>)
+        /// Override context name (default: folder name)
         #[arg(short, long)]
-        path: Option<String>,
+        name: Option<String>,
 
-        /// Authentication strategy (ssh_agent, gh_token, gh_enterprise_token)
+        /// Override repository URL (default: git remote origin)
+        #[arg(short, long)]
+        url: Option<String>,
+
+        /// Authentication strategy (ssh_agent, personal_access_token, gh_enterprise_token)
         #[arg(short, long, default_value = "ssh_agent")]
         auth: String,
     },
@@ -466,8 +469,8 @@ fn handle_init_command(config_path: &Option<String>) -> allbeads::Result<()> {
     println!("✓ Created configuration at {}", config_file.display());
     println!();
     println!("Next steps:");
-    println!("  1. Add a context (repository with beads):");
-    println!("     ab context add myproject /path/to/repo");
+    println!("  1. Add a context (from within a git repo with beads):");
+    println!("     cd /path/to/repo && ab context add");
     println!();
     println!("  2. View aggregated beads:");
     println!("     ab stats");
@@ -634,14 +637,74 @@ fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -
     };
 
     match cmd {
-        ContextCommands::Add { name, url, path, auth } => {
-            // Check if context already exists
-            if config.get_context(name).is_some() {
+        ContextCommands::Add { path, name, url, auth } => {
+            // Resolve path to absolute
+            let repo_path = std::fs::canonicalize(path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!(
+                    "Failed to resolve path '{}': {}",
+                    path, e
+                ))
+            })?;
+
+            // Check if it's a git repository
+            let git_dir = repo_path.join(".git");
+            if !git_dir.exists() {
                 return Err(allbeads::AllBeadsError::Config(format!(
-                    "Context '{}' already exists",
-                    name
+                    "'{}' is not a git repository (no .git directory)",
+                    repo_path.display()
                 )));
             }
+
+            // Infer name from folder if not provided
+            let context_name = if let Some(n) = name {
+                n.clone()
+            } else {
+                repo_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| {
+                        allbeads::AllBeadsError::Config(
+                            "Could not infer context name from path".to_string(),
+                        )
+                    })?
+            };
+
+            // Check if context already exists
+            if config.get_context(&context_name).is_some() {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Context '{}' already exists",
+                    context_name
+                )));
+            }
+
+            // Get git remote URL if not provided
+            let remote_url = if let Some(u) = url {
+                u.clone()
+            } else {
+                // Run: git -C <path> remote get-url origin
+                let output = std::process::Command::new("git")
+                    .args(["-C", repo_path.to_str().unwrap(), "remote", "get-url", "origin"])
+                    .output()
+                    .map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!(
+                            "Failed to run git: {}",
+                            e
+                        ))
+                    })?;
+
+                if !output.status.success() {
+                    return Err(allbeads::AllBeadsError::Config(format!(
+                        "No 'origin' remote found. Add one with:\n  \
+                         git remote add origin <url>\n\n\
+                         Or specify the URL explicitly:\n  \
+                         ab context add {} --url <url>",
+                        path
+                    )));
+                }
+
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            };
 
             // Parse auth strategy
             let auth_strategy = match auth.to_lowercase().as_str() {
@@ -654,42 +717,24 @@ fn handle_context_command(cmd: &ContextCommands, config_path: &Option<String>) -
                 ))),
             };
 
-            // Validate URL and auth strategy compatibility
-            if auth_strategy == AuthStrategy::SshAgent && url.starts_with("https://") {
+            // Warn about HTTPS + ssh_agent mismatch
+            if auth_strategy == AuthStrategy::SshAgent && remote_url.starts_with("https://") {
                 eprintln!("⚠️  Warning: Using HTTPS URL with ssh_agent authentication may fail.");
-                eprintln!("   Suggestion: Use SSH URL instead:");
-                let ssh_url = url
-                    .replace("https://github.com/", "git@github.com:")
-                    .replace("https://", "git@")
-                    .replace(".git/", ".git")
-                    + if !url.ends_with(".git") { ".git" } else { "" };
-                eprintln!("   {}", ssh_url);
-                eprintln!();
-                eprintln!("   To add with SSH URL:");
-                eprintln!("   allbeads context add {} {}", name, ssh_url);
+                eprintln!("   Consider using SSH URL or --auth personal_access_token");
                 eprintln!();
             }
 
-            // Determine path
-            let repo_path = if let Some(p) = path {
-                Some(PathBuf::from(p))
-            } else {
-                // Default: ~/workspace/<name>
-                let mut default_path = dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("."));
-                default_path.push("workspace");
-                default_path.push(name);
-                Some(default_path)
-            };
+            // Print before moving auth_strategy
+            println!("✓ Added context '{}' from {}", context_name, repo_path.display());
+            println!("  URL:  {}", remote_url);
+            println!("  Auth: {:?}", auth_strategy);
 
             // Create context
-            let mut context = BossContext::new(name, url, auth_strategy);
-            context.path = repo_path;
+            let mut context = BossContext::new(&context_name, &remote_url, auth_strategy);
+            context.path = Some(repo_path);
 
             config.add_context(context);
             config.save(&config_file)?;
-
-            println!("Added context '{}' ({}) to {}", name, url, config_file.display());
         }
 
         ContextCommands::List => {
