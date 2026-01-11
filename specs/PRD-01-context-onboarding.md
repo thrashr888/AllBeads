@@ -1757,11 +1757,13 @@ ab context setup ~/Workspace/project
 - [x] Plugin recommendations (`ab plugin recommend`)
 - [x] Curated plugin registry (beads, prose, mcp-github, etc.)
 
-### Phase 6: Plugin Onboarding
+### Phase 6: Plugin Onboarding ✓
 
-- `ab plugin install/remove` with step execution
-- Interactive prompts from plugin definitions
-- Template rendering with Jinja-like syntax
+- [x] `ab plugin install/uninstall` with step execution
+- [x] Interactive prompts from plugin definitions
+- [x] Template rendering with {{ variable }} substitution
+- [x] OnboardingExecutor for running command/template/append steps
+- [x] Prerequisite checking with install hints
 
 ### Phase 7: Marketplace Integration
 

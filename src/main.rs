@@ -2477,8 +2477,8 @@ fn handle_plugin_detect(path: &str, verbose: bool) -> allbeads::Result<()> {
     Ok(())
 }
 
-fn handle_plugin_install(name: &str, _yes: bool) -> allbeads::Result<()> {
-    use allbeads::plugin::PluginRegistry;
+fn handle_plugin_install(name: &str, yes: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::{check_prerequisites, load_onboarding, OnboardingExecutor, PluginRegistry};
 
     let registry = PluginRegistry::builtin();
     let plugin = registry.find(name);
@@ -2487,35 +2487,135 @@ fn handle_plugin_install(name: &str, _yes: bool) -> allbeads::Result<()> {
     println!("{}", style::header(&format!("Install Plugin: {}", name)));
     println!();
 
-    if let Some(plugin) = plugin {
-        if let Some(ref marketplace) = plugin.marketplace {
-            println!("  To install this plugin, run:");
-            println!();
-            println!("    claude plugin install {}", marketplace);
-            println!();
-        } else {
-            println!(
-                "  This plugin does not have a marketplace entry."
-            );
-            if let Some(ref repo) = plugin.repository {
-                println!("  Manual installation from: {}", repo);
-            }
+    let plugin = match plugin {
+        Some(p) => p,
+        None => {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Plugin '{}' not found in registry. Use 'ab plugin list --all' to see available plugins.",
+                name
+            )));
         }
-    } else {
-        return Err(allbeads::AllBeadsError::Config(format!(
-            "Plugin '{}' not found in registry. Use 'ab plugin list --all' to see available plugins.",
-            name
-        )));
+    };
+
+    // If plugin has marketplace entry, suggest claude plugin install
+    if let Some(ref marketplace) = plugin.marketplace {
+        println!("  Step 1: Install via Claude marketplace");
+        println!();
+        println!("    claude plugin install {}", marketplace);
+        println!();
+    }
+
+    // Check if current directory has an onboarding protocol
+    let current_dir = std::env::current_dir().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Could not get current directory: {}", e))
+    })?;
+
+    if let Some(onboarding) = load_onboarding(&current_dir) {
+        println!("  Step 2: Run onboarding for this project");
+        println!();
+
+        // Check prerequisites
+        let prereqs = check_prerequisites(&onboarding, &current_dir);
+        let mut all_satisfied = true;
+
+        if !prereqs.is_empty() {
+            println!("  Prerequisites:");
+            for (prereq_name, satisfied, hint) in &prereqs {
+                if *satisfied {
+                    println!("    {} {}", style::success("✓"), prereq_name);
+                } else {
+                    println!("    {} {}", style::error("✗"), prereq_name);
+                    if let Some(h) = hint {
+                        println!("      Install with: {}", h);
+                    }
+                    all_satisfied = false;
+                }
+            }
+            println!();
+        }
+
+        if !all_satisfied {
+            println!("  {} Install missing prerequisites first.", style::warning("!"));
+            return Ok(());
+        }
+
+        if yes {
+            println!("  Executing onboarding steps...");
+            println!();
+
+            let mut executor = OnboardingExecutor::new(current_dir)
+                .auto_yes(true);
+            let result = executor.execute(&onboarding);
+
+            println!();
+            if result.success {
+                println!("  {} Plugin installed and configured!", style::success("✓"));
+                println!("    Steps completed: {}", result.steps_completed);
+                if result.steps_skipped > 0 {
+                    println!("    Steps skipped: {}", result.steps_skipped);
+                }
+            } else {
+                println!("  {} Some steps failed:", style::error("✗"));
+                for err in &result.errors {
+                    println!("    - {}", err);
+                }
+            }
+        } else {
+            println!("  Run with --yes to execute onboarding steps.");
+        }
+    } else if plugin.has_onboarding {
+        println!("  This plugin supports onboarding but no protocol found in current directory.");
+        println!("  The plugin may install its onboarding protocol after marketplace installation.");
     }
 
     Ok(())
 }
 
-fn handle_plugin_uninstall(name: &str, _yes: bool) -> allbeads::Result<()> {
+fn handle_plugin_uninstall(name: &str, yes: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::{load_onboarding, OnboardingExecutor};
+
     println!();
     println!("{}", style::header(&format!("Uninstall Plugin: {}", name)));
     println!();
-    println!("  To uninstall this plugin, run:");
+
+    // Check if current directory has an onboarding protocol with uninstall steps
+    let current_dir = std::env::current_dir().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Could not get current directory: {}", e))
+    })?;
+
+    if let Some(onboarding) = load_onboarding(&current_dir) {
+        if onboarding.uninstall.is_some() {
+            println!("  Found uninstall steps for {}", onboarding.plugin);
+            println!();
+
+            if yes {
+                println!("  Executing uninstall steps...");
+                println!();
+
+                let mut executor = OnboardingExecutor::new(current_dir)
+                    .auto_yes(true);
+                let result = executor.execute_uninstall(&onboarding);
+
+                println!();
+                if result.success {
+                    println!("  {} Plugin uninstalled!", style::success("✓"));
+                } else {
+                    println!("  {} Some steps failed:", style::error("✗"));
+                    for err in &result.errors {
+                        println!("    - {}", err);
+                    }
+                }
+            } else {
+                println!("  Run with --yes to execute uninstall steps.");
+            }
+        } else {
+            println!("  No uninstall steps defined for this plugin.");
+        }
+    }
+
+    // Also suggest claude plugin uninstall
+    println!();
+    println!("  To uninstall from Claude marketplace:");
     println!();
     println!("    claude plugin uninstall {}", name);
     println!();
@@ -2523,8 +2623,8 @@ fn handle_plugin_uninstall(name: &str, _yes: bool) -> allbeads::Result<()> {
     Ok(())
 }
 
-fn handle_plugin_onboard(name: &str, path: &str, _yes: bool) -> allbeads::Result<()> {
-    use allbeads::plugin::{load_onboarding, PluginRegistry};
+fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::{check_prerequisites, load_onboarding, OnboardingExecutor, PluginRegistry};
     use std::path::Path;
 
     let project_path = Path::new(path).canonicalize().map_err(|e| {
@@ -2553,6 +2653,32 @@ fn handle_plugin_onboard(name: &str, path: &str, _yes: bool) -> allbeads::Result
         println!("  Found onboarding protocol: {}", onboarding.plugin);
         println!("  Version: {}", onboarding.version);
         println!();
+
+        // Check prerequisites
+        let prereqs = check_prerequisites(&onboarding, &project_path);
+        if !prereqs.is_empty() {
+            println!("  Prerequisites:");
+            let mut all_satisfied = true;
+            for (prereq_name, satisfied, hint) in &prereqs {
+                if *satisfied {
+                    println!("    {} {}", style::success("✓"), prereq_name);
+                } else {
+                    println!("    {} {}", style::error("✗"), prereq_name);
+                    if let Some(h) = hint {
+                        println!("      Install with: {}", h);
+                    }
+                    all_satisfied = false;
+                }
+            }
+            println!();
+
+            if !all_satisfied && yes {
+                println!("  {} Install missing prerequisites first.", style::warning("!"));
+                return Ok(());
+            }
+        }
+
+        // Show steps
         println!("  Steps:");
         for (i, step) in onboarding.onboard.steps.iter().enumerate() {
             let step_name = match step {
@@ -2564,10 +2690,41 @@ fn handle_plugin_onboard(name: &str, path: &str, _yes: bool) -> allbeads::Result
             println!("    {}. {}", i + 1, step_name);
         }
         println!();
-        println!("  Run with --yes to execute these steps automatically.");
+
+        if yes {
+            println!("  Executing onboarding steps...");
+            println!();
+
+            let mut executor = OnboardingExecutor::new(project_path)
+                .auto_yes(true);
+            let result = executor.execute(&onboarding);
+
+            println!();
+            if result.success {
+                println!("  {} Onboarding complete!", style::success("✓"));
+                println!("    Steps completed: {}", result.steps_completed);
+                if result.steps_skipped > 0 {
+                    println!("    Steps skipped: {}", result.steps_skipped);
+                }
+            } else {
+                println!("  {} Some steps failed:", style::error("✗"));
+                for err in &result.errors {
+                    println!("    - {}", err);
+                }
+            }
+        } else {
+            println!("  Run with --yes to execute these steps.");
+        }
     } else {
         println!("  No onboarding protocol found in project.");
         println!("  Looking for: .claude-plugin/allbeads-onboarding.yaml");
+        println!();
+        println!("  The plugin may need to be installed first via:");
+        if let Some(ref marketplace) = plugin.marketplace {
+            println!("    claude plugin install {}", marketplace);
+        } else {
+            println!("    (manual installation required)");
+        }
     }
 
     Ok(())

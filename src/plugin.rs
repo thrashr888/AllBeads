@@ -488,6 +488,401 @@ pub fn load_onboarding(path: &PathBuf) -> Option<PluginOnboarding> {
     None
 }
 
+// ============================================================================
+// Onboarding Executor
+// ============================================================================
+
+use std::collections::HashMap as StdHashMap;
+use std::io::{self, Write};
+
+/// Results from executing onboarding
+#[derive(Debug, Clone, Default)]
+pub struct OnboardingResult {
+    pub success: bool,
+    pub steps_completed: usize,
+    pub steps_skipped: usize,
+    pub errors: Vec<String>,
+    pub prompt_responses: StdHashMap<String, String>,
+}
+
+/// Execute onboarding steps for a plugin
+pub struct OnboardingExecutor {
+    project_path: PathBuf,
+    dry_run: bool,
+    auto_yes: bool,
+    prompt_responses: StdHashMap<String, String>,
+}
+
+impl OnboardingExecutor {
+    pub fn new(project_path: PathBuf) -> Self {
+        Self {
+            project_path,
+            dry_run: false,
+            auto_yes: false,
+            prompt_responses: StdHashMap::new(),
+        }
+    }
+
+    pub fn dry_run(mut self, dry_run: bool) -> Self {
+        self.dry_run = dry_run;
+        self
+    }
+
+    pub fn auto_yes(mut self, auto_yes: bool) -> Self {
+        self.auto_yes = auto_yes;
+        self
+    }
+
+    /// Execute all onboarding steps
+    pub fn execute(&mut self, onboarding: &PluginOnboarding) -> OnboardingResult {
+        let mut result = OnboardingResult::default();
+
+        for step in &onboarding.onboard.steps {
+            match self.execute_step(step) {
+                Ok(skipped) => {
+                    if skipped {
+                        result.steps_skipped += 1;
+                    } else {
+                        result.steps_completed += 1;
+                    }
+                }
+                Err(e) => {
+                    result.errors.push(e);
+                    // Continue with other steps unless critical
+                }
+            }
+        }
+
+        result.success = result.errors.is_empty();
+        result.prompt_responses = self.prompt_responses.clone();
+        result
+    }
+
+    /// Execute a single step, returns Ok(true) if skipped
+    fn execute_step(&mut self, step: &OnboardingStep) -> Result<bool, String> {
+        match step {
+            OnboardingStep::Command {
+                id,
+                name,
+                description,
+                command,
+                cwd,
+                skip_if,
+            } => {
+                println!("  Step: {}", name);
+                println!("    {}", description);
+
+                // Check skip condition
+                if let Some(skip_config) = skip_if {
+                    if self.check_detection(skip_config) {
+                        println!("    → Skipped (already done)");
+                        return Ok(true);
+                    }
+                }
+
+                if self.dry_run {
+                    println!("    → Would run: {}", command);
+                    return Ok(false);
+                }
+
+                // Execute command
+                let work_dir = if let Some(dir) = cwd {
+                    self.project_path.join(dir)
+                } else {
+                    self.project_path.clone()
+                };
+
+                let output = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(command)
+                    .current_dir(&work_dir)
+                    .output()
+                    .map_err(|e| format!("Failed to run command '{}': {}", id, e))?;
+
+                if output.status.success() {
+                    println!("    ✓ Completed");
+                    Ok(false)
+                } else {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    Err(format!("Command '{}' failed: {}", id, stderr))
+                }
+            }
+
+            OnboardingStep::Interactive {
+                id: _,
+                name,
+                description,
+                prompts,
+            } => {
+                println!("  Step: {}", name);
+                println!("    {}", description);
+
+                if self.dry_run {
+                    println!("    → Would prompt for {} values", prompts.len());
+                    return Ok(false);
+                }
+
+                for prompt in prompts {
+                    let response = self.get_prompt_response(prompt)?;
+                    self.prompt_responses.insert(prompt.id.clone(), response);
+                }
+
+                println!("    ✓ Collected responses");
+                Ok(false)
+            }
+
+            OnboardingStep::Template {
+                id,
+                name,
+                description,
+                template,
+                dest,
+            } => {
+                println!("  Step: {}", name);
+                println!("    {}", description);
+
+                let dest_path = self.project_path.join(dest);
+
+                if self.dry_run {
+                    println!("    → Would create: {}", dest_path.display());
+                    return Ok(false);
+                }
+
+                // Simple template substitution
+                let rendered = self.render_template(template);
+
+                // Ensure parent directory exists
+                if let Some(parent) = dest_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create directory: {}", e))?;
+                }
+
+                std::fs::write(&dest_path, rendered)
+                    .map_err(|e| format!("Failed to write '{}': {}", id, e))?;
+
+                println!("    ✓ Created {}", dest);
+                Ok(false)
+            }
+
+            OnboardingStep::Append {
+                id,
+                name,
+                description,
+                dest,
+                content,
+            } => {
+                println!("  Step: {}", name);
+                println!("    {}", description);
+
+                let dest_path = self.project_path.join(dest);
+
+                if self.dry_run {
+                    println!("    → Would append to: {}", dest_path.display());
+                    return Ok(false);
+                }
+
+                // Read existing content
+                let existing = std::fs::read_to_string(&dest_path).unwrap_or_default();
+
+                // Check if content already exists
+                let rendered = self.render_template(content);
+                if existing.contains(rendered.trim()) {
+                    println!("    → Skipped (content already exists)");
+                    return Ok(true);
+                }
+
+                // Append content
+                let mut file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&dest_path)
+                    .map_err(|e| format!("Failed to open '{}': {}", id, e))?;
+
+                writeln!(file, "{}", rendered)
+                    .map_err(|e| format!("Failed to append to '{}': {}", id, e))?;
+
+                println!("    ✓ Appended to {}", dest);
+                Ok(false)
+            }
+        }
+    }
+
+    /// Check if detection config matches (for skip_if)
+    fn check_detection(&self, config: &DetectionConfig) -> bool {
+        // Check files
+        for file_check in &config.files {
+            let path = self.project_path.join(&file_check.path);
+            if !path.exists() {
+                return false;
+            }
+            if let Some(ref contains) = file_check.contains {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if !content.contains(contains) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+        }
+
+        // Check commands
+        for cmd_check in &config.commands {
+            let output = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(&cmd_check.command)
+                .current_dir(&self.project_path)
+                .output();
+
+            match output {
+                Ok(out) => {
+                    let expected_code = cmd_check.success_exit_code.unwrap_or(0);
+                    if out.status.code() != Some(expected_code) {
+                        return false;
+                    }
+                    if let Some(ref expected) = cmd_check.expected_output {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        if !stdout.contains(expected) {
+                            return false;
+                        }
+                    }
+                }
+                Err(_) => return false,
+            }
+        }
+
+        true
+    }
+
+    /// Get response for an interactive prompt
+    fn get_prompt_response(&self, prompt: &Prompt) -> Result<String, String> {
+        if self.auto_yes {
+            // Use default if available
+            return Ok(prompt.default.clone().unwrap_or_default());
+        }
+
+        // Print prompt
+        print!("    ? {}", prompt.message);
+        if let Some(ref default) = prompt.default {
+            print!(" [{}]", default);
+        }
+        print!(": ");
+        io::stdout().flush().ok();
+
+        // Read response
+        let mut response = String::new();
+        io::stdin()
+            .read_line(&mut response)
+            .map_err(|e| format!("Failed to read input: {}", e))?;
+
+        let response = response.trim().to_string();
+
+        // Use default if empty
+        if response.is_empty() {
+            Ok(prompt.default.clone().unwrap_or_default())
+        } else {
+            Ok(response)
+        }
+    }
+
+    /// Simple template rendering with {{ variable }} substitution
+    fn render_template(&self, template: &str) -> String {
+        let mut result = template.to_string();
+
+        // Replace {{ prompts.key }} with collected values
+        for (key, value) in &self.prompt_responses {
+            let pattern = format!("{{{{ prompts.{} }}}}", key);
+            result = result.replace(&pattern, value);
+
+            // Also try without spaces
+            let pattern_no_space = format!("{{{{prompts.{}}}}}", key);
+            result = result.replace(&pattern_no_space, value);
+        }
+
+        result
+    }
+
+    /// Execute uninstall steps
+    pub fn execute_uninstall(&mut self, onboarding: &PluginOnboarding) -> OnboardingResult {
+        let mut result = OnboardingResult::default();
+
+        if let Some(ref uninstall) = onboarding.uninstall {
+            for step in &uninstall.steps {
+                match self.execute_step(step) {
+                    Ok(skipped) => {
+                        if skipped {
+                            result.steps_skipped += 1;
+                        } else {
+                            result.steps_completed += 1;
+                        }
+                    }
+                    Err(e) => {
+                        result.errors.push(e);
+                    }
+                }
+            }
+        }
+
+        result.success = result.errors.is_empty();
+        result
+    }
+}
+
+/// Check prerequisites for a plugin
+pub fn check_prerequisites(
+    onboarding: &PluginOnboarding,
+    project_path: &PathBuf,
+) -> Vec<(String, bool, Option<String>)> {
+    let mut results = Vec::new();
+
+    for prereq in &onboarding.prerequisites {
+        let output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&prereq.check.command)
+            .current_dir(project_path)
+            .output();
+
+        let (satisfied, install_hint) = match output {
+            Ok(out) => {
+                let expected_code = prereq.check.success_exit_code.unwrap_or(0);
+                let success = out.status.code() == Some(expected_code);
+
+                let hint = if !success {
+                    // Build install hint
+                    let methods: Vec<String> = [
+                        prereq.install.cargo.as_ref().map(|c| format!("cargo install {}", c)),
+                        prereq.install.brew.as_ref().map(|b| format!("brew install {}", b)),
+                        prereq.install.npm.as_ref().map(|n| format!("npm install -g {}", n)),
+                        prereq.install.pip.as_ref().map(|p| format!("pip install {}", p)),
+                        prereq.install.manual.clone(),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .collect();
+
+                    if methods.is_empty() {
+                        None
+                    } else {
+                        Some(methods.join(" or "))
+                    }
+                } else {
+                    None
+                };
+
+                (success, hint)
+            }
+            Err(_) => {
+                let hint = prereq.install.manual.clone();
+                (false, hint)
+            }
+        };
+
+        results.push((prereq.name.clone(), satisfied, install_hint));
+    }
+
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
