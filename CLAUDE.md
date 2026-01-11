@@ -16,9 +16,9 @@ From specs/PRD-00.md, AllBeads implements:
 - **Agent Mail System**: Messaging protocol for agent-to-agent communication
 - **Janitor Workflow**: Automated issue discovery and repository analysis
 
-### Current State
+### Current State (v0.2.0)
 
-Phases 1-4 are complete. Phase 5 (The Swarm) is in progress.
+PRD-00 (Core Architecture) and PRD-01 (Context Onboarding) are complete. Phase 10 of PRD-01 (Registry Integration) is deferred pending Claude marketplace registry API availability.
 
 **Implemented:**
 - Multi-repository aggregation from git remotes (SSH/HTTPS)
@@ -30,16 +30,20 @@ Phases 1-4 are complete. Phase 5 (The Swarm) is in progress.
 - Agent Mail protocol (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
 - Postmaster daemon with message routing
 - Sheriff daemon with git sync (foreground mode)
-- `allbeads init --remote` for existing repositories
+- `ab init --remote` for existing repositories
 - Janitor workflow for automated issue discovery
 - JIRA bi-directional sync (REST API)
 - GitHub Issues integration (GraphQL + REST)
-- Plugin architecture for extensibility
+- Plugin system with Claude marketplace integration
+- Plugin recommendations based on project analysis
+- Multi-agent support (Claude Code, Cursor, Copilot, Aider)
+- Agent configuration sync (`ab agent sync`)
+- Unified sync command (`ab sync`)
 
-**In Progress (Phase 5):**
-- Agent lifecycle management (spawn, monitor, kill)
-- Cost tracking and budget management
-- Advanced dependency resolution across contexts
+**Deferred (Phase 10 - Registry Integration):**
+- Official Claude marketplace registry API integration
+- Plugin discovery from registry
+- Automatic version checking and updates
 
 ## Rust Development Commands
 

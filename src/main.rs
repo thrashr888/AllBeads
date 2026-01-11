@@ -12,7 +12,7 @@ use allbeads::style;
 use clap::{CommandFactory, Parser};
 use commands::*;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 
 fn main() {
@@ -947,7 +947,7 @@ fn handle_remote_init(
 }
 
 /// Run janitor analysis to scan codebase and create issues
-fn run_janitor_analysis(repo_path: &PathBuf) -> allbeads::Result<()> {
+fn run_janitor_analysis(repo_path: &Path) -> allbeads::Result<()> {
     use allbeads::git::BossRepo;
     use allbeads::storage::BeadsRepo;
 
@@ -1113,7 +1113,7 @@ fn scan_for_todos(repo_path: &std::path::Path) -> allbeads::Result<Vec<(String, 
 
 /// Run comprehensive janitor analysis on a repository
 fn run_full_janitor_analysis(
-    repo_path: &PathBuf,
+    repo_path: &Path,
     verbose: bool,
     dry_run: bool,
 ) -> allbeads::Result<()> {
@@ -1740,7 +1740,7 @@ fn handle_config_command(cmd: &ConfigCommands) -> allbeads::Result<()> {
 
 /// Initialize distributed config sync
 fn handle_config_init(
-    config_dir: &PathBuf,
+    config_dir: &Path,
     remote: Option<&str>,
     gist: Option<&str>,
     force: bool,
@@ -1831,13 +1831,11 @@ fn handle_config_init(
         .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e)))?;
 
     // Remove existing origin if force
-    if force {
-        if repo.find_remote("origin").is_ok() {
-            repo.remote_delete("origin").map_err(|e| {
-                allbeads::AllBeadsError::Git(format!("Failed to remove existing remote: {}", e))
-            })?;
-            println!("  {} Removed existing remote", style::dim("○"));
-        }
+    if force && repo.find_remote("origin").is_ok() {
+        repo.remote_delete("origin").map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to remove existing remote: {}", e))
+        })?;
+        println!("  {} Removed existing remote", style::dim("○"));
     }
 
     // Add remote
@@ -1908,7 +1906,7 @@ fn handle_config_init(
 }
 
 /// Pull config changes from remote
-fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()> {
+fn handle_config_pull(config_dir: &Path, force: bool) -> allbeads::Result<()> {
     use git2::Repository;
 
     let git_dir = config_dir.join(".git");
@@ -1980,7 +1978,7 @@ fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()>
 
 /// Push config changes to remote
 fn handle_config_push(
-    config_dir: &PathBuf,
+    config_dir: &Path,
     message: Option<&str>,
     force: bool,
 ) -> allbeads::Result<()> {
@@ -2099,7 +2097,7 @@ fn handle_config_push(
 }
 
 /// Show config sync status
-fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
+fn handle_config_status(config_dir: &Path) -> allbeads::Result<()> {
     use git2::Repository;
 
     println!();
@@ -2201,7 +2199,7 @@ fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
 }
 
 /// Show diff with remote
-fn handle_config_diff(config_dir: &PathBuf) -> allbeads::Result<()> {
+fn handle_config_diff(config_dir: &Path) -> allbeads::Result<()> {
     let git_dir = config_dir.join(".git");
     if !git_dir.exists() {
         return Err(allbeads::AllBeadsError::Config(
@@ -3096,13 +3094,13 @@ fn handle_marketplace_add(source: &str, name: Option<&str>) -> allbeads::Result<
     let (marketplace_url, marketplace_name) = if source.contains('/') && !source.contains("://") {
         // Assume GitHub shorthand: owner/repo
         let url = format!("https://github.com/{}", source);
-        let inferred_name = source.split('/').last().unwrap_or(source);
+        let inferred_name = source.split('/').next_back().unwrap_or(source);
         (url, name.unwrap_or(inferred_name).to_string())
     } else if source.starts_with("http") || source.starts_with("git@") {
         // Full URL
         let inferred_name = source
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or("marketplace")
             .trim_end_matches(".git");
         (
@@ -3296,7 +3294,7 @@ fn handle_agent_init(agent_name: &str, path: &str, yes: bool) -> allbeads::Resul
     use allbeads::coding_agent::{init_agent, CodingAgent};
     use std::path::Path;
 
-    let agent = CodingAgent::from_str(agent_name).ok_or_else(|| {
+    let agent = CodingAgent::parse(agent_name).ok_or_else(|| {
         allbeads::AllBeadsError::Config(format!(
             "Unknown agent '{}'. Available: claude, cursor, copilot, aider",
             agent_name
@@ -3426,7 +3424,7 @@ fn handle_agent_sync(path: &str, agent_filter: Option<&str>) -> allbeads::Result
 
     // Filter if specified
     let to_sync: Vec<_> = if let Some(filter) = agent_filter {
-        if let Some(agent) = CodingAgent::from_str(filter) {
+        if let Some(agent) = CodingAgent::parse(filter) {
             configured
                 .iter()
                 .filter(|s| s.agent == agent)
@@ -3468,7 +3466,7 @@ fn handle_agent_preview(agent_name: &str, path: &str) -> allbeads::Result<()> {
     use allbeads::coding_agent::{preview_agent_config, CodingAgent};
     use std::path::Path;
 
-    let agent = CodingAgent::from_str(agent_name).ok_or_else(|| {
+    let agent = CodingAgent::parse(agent_name).ok_or_else(|| {
         allbeads::AllBeadsError::Config(format!(
             "Unknown agent '{}'. Available: claude, cursor, copilot, aider",
             agent_name
@@ -4020,9 +4018,9 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
 
             for path_pattern in paths {
                 // Expand ~ to home directory
-                let expanded = if path_pattern.starts_with("~/") {
+                let expanded = if let Some(suffix) = path_pattern.strip_prefix("~/") {
                     if let Some(home) = dirs::home_dir() {
-                        home.join(&path_pattern[2..])
+                        home.join(suffix)
                     } else {
                         PathBuf::from(path_pattern)
                     }
@@ -4069,10 +4067,11 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
 
                     // Create folder config if prefix/persona specified
                     let config = if prefix.is_some() || persona.is_some() {
-                        let mut cfg = FolderConfig::default();
-                        cfg.prefix = prefix.clone();
-                        cfg.persona = persona.clone();
-                        Some(cfg)
+                        Some(FolderConfig {
+                            prefix: prefix.clone(),
+                            persona: persona.clone(),
+                            ..Default::default()
+                        })
                     } else {
                         None
                     };
@@ -4135,7 +4134,7 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
 
             // Filter by status if specified
             let folders: Vec<&TrackedFolder> = if let Some(status_str) = status {
-                let filter_status = FolderStatus::from_str(status_str).ok_or_else(|| {
+                let filter_status = FolderStatus::parse(status_str).ok_or_else(|| {
                     allbeads::AllBeadsError::Config(format!("Invalid status: {}", status_str))
                 })?;
                 context
@@ -4563,7 +4562,7 @@ struct PackageInfo {
 }
 
 /// Detect monorepo structure and packages
-fn detect_monorepo_structure(path: &PathBuf) -> MonorepoInfo {
+fn detect_monorepo_structure(path: &Path) -> MonorepoInfo {
     let mut info = MonorepoInfo::default();
 
     // Detect monorepo tool
@@ -4647,7 +4646,7 @@ fn detect_monorepo_structure(path: &PathBuf) -> MonorepoInfo {
 }
 
 /// Detect language of a package/service
-fn detect_package_language(path: &PathBuf) -> Option<String> {
+fn detect_package_language(path: &Path) -> Option<String> {
     if path.join("Cargo.toml").exists() {
         Some("Rust".to_string())
     } else if path.join("package.json").exists() {
@@ -4668,46 +4667,44 @@ fn detect_package_language(path: &PathBuf) -> Option<String> {
 }
 
 /// Detect if path is a worktree and get info
-fn detect_worktree_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
+fn detect_worktree_info(path: &Path) -> allbeads::context::DetectedInfo {
     let mut info = allbeads::context::DetectedInfo::default();
 
     // Check if this is a worktree by looking at .git
     let git_path = path.join(".git");
-    if git_path.exists() {
-        if git_path.is_file() {
-            // .git is a file - this is a worktree
-            info.is_worktree = true;
+    if git_path.exists() && git_path.is_file() {
+        // .git is a file - this is a worktree
+        info.is_worktree = true;
 
-            // Read the .git file to find the main worktree
-            if let Ok(content) = std::fs::read_to_string(&git_path) {
-                // Format: "gitdir: /path/to/.git/worktrees/name"
-                if let Some(gitdir) = content.strip_prefix("gitdir: ") {
-                    let gitdir = gitdir.trim();
-                    // Go up from .git/worktrees/name to find main .git
-                    let gitdir_path = PathBuf::from(gitdir);
-                    let main_git = gitdir_path
-                        .parent() // worktrees
-                        .and_then(|p| p.parent()) // .git
-                        .and_then(|p| p.parent()); // main worktree
-                    info.main_worktree = main_git.map(|p| p.to_path_buf());
-                }
+        // Read the .git file to find the main worktree
+        if let Ok(content) = std::fs::read_to_string(&git_path) {
+            // Format: "gitdir: /path/to/.git/worktrees/name"
+            if let Some(gitdir) = content.strip_prefix("gitdir: ") {
+                let gitdir = gitdir.trim();
+                // Go up from .git/worktrees/name to find main .git
+                let gitdir_path = PathBuf::from(gitdir);
+                let main_git = gitdir_path
+                    .parent() // worktrees
+                    .and_then(|p| p.parent()) // .git
+                    .and_then(|p| p.parent()); // main worktree
+                info.main_worktree = main_git.map(|p| p.to_path_buf());
             }
+        }
 
-            // Get current branch for worktree
-            if let Ok(output) = std::process::Command::new("git")
-                .args([
-                    "-C",
-                    path.to_str().unwrap_or("."),
-                    "branch",
-                    "--show-current",
-                ])
-                .output()
-            {
-                if output.status.success() {
-                    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    if !branch.is_empty() {
-                        info.branch = Some(branch);
-                    }
+        // Get current branch for worktree
+        if let Ok(output) = std::process::Command::new("git")
+            .args([
+                "-C",
+                path.to_str().unwrap_or("."),
+                "branch",
+                "--show-current",
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !branch.is_empty() {
+                    info.branch = Some(branch);
                 }
             }
         }
@@ -5315,7 +5312,7 @@ fn handle_template_delete(name: &str, yes: bool) -> allbeads::Result<()> {
 fn handle_folder_setup(
     path: &str,
     yes: bool,
-    folders_file: &PathBuf,
+    folders_file: &Path,
     context: &mut allbeads::context::Context,
 ) -> allbeads::Result<()> {
     use allbeads::context::{FolderConfig, FolderStatus, TrackedFolder};
@@ -5385,7 +5382,7 @@ fn handle_folder_setup(
                 println!("  {} Failed to initialize git", style::error("✗"));
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 if !stderr.is_empty() {
-                    println!("    {}", style::dim(&stderr.trim().to_string()));
+                    println!("    {}", style::dim(stderr.trim()));
                 }
             }
         } else {
@@ -5474,7 +5471,7 @@ fn handle_folder_setup(
                 println!("  {} Failed to initialize beads", style::error("✗"));
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 if !stderr.is_empty() {
-                    println!("    {}", style::dim(&stderr.trim().to_string()));
+                    println!("    {}", style::dim(stderr.trim()));
                 }
             }
         } else {
@@ -5673,7 +5670,7 @@ fn handle_folder_promote(
     path: &str,
     to: Option<&str>,
     yes: bool,
-    folders_file: &PathBuf,
+    folders_file: &Path,
     context: &mut allbeads::context::Context,
 ) -> allbeads::Result<()> {
     use allbeads::context::FolderStatus;
@@ -5688,7 +5685,7 @@ fn handle_folder_promote(
 
     // Determine target status
     let target_status = if let Some(target_str) = to {
-        FolderStatus::from_str(target_str).ok_or_else(|| {
+        FolderStatus::parse(target_str).ok_or_else(|| {
             allbeads::AllBeadsError::Config(format!("Invalid target status: {}", target_str))
         })?
     } else {
@@ -5817,7 +5814,7 @@ fn handle_folder_promote(
 }
 
 /// Detect project information (languages, frameworks, etc.)
-fn detect_project_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
+fn detect_project_info(path: &Path) -> allbeads::context::DetectedInfo {
     use allbeads::context::{DetectedInfo, Language};
 
     let mut info = DetectedInfo::default();
@@ -5883,7 +5880,7 @@ fn detect_project_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
 }
 
 /// Detect the current status of a folder (Dry to Wet progression)
-fn detect_folder_status(path: &PathBuf) -> allbeads::context::FolderStatus {
+fn detect_folder_status(path: &Path) -> allbeads::context::FolderStatus {
     use allbeads::context::FolderStatus;
 
     // Check if .beads/ exists (implies git exists too)

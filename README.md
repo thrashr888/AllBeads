@@ -103,30 +103,48 @@ See [DEMO.md](DEMO.md) for usage examples.
 
 ### Prerequisites
 
-- Rust toolchain (2024 edition)
 - `bd` (beads CLI) - [Installation instructions](https://github.com/steveyegge/beads)
 - Git
 
 ### Installation
+
+#### Homebrew (macOS/Linux)
+
+```bash
+# Add the tap
+brew tap thrashr888/allbeads
+
+# Install AllBeads
+brew install allbeads
+
+# Verify installation
+ab --version
+```
+
+#### From Source
 
 ```bash
 # Clone the repository
 git clone https://github.com/thrashr888/AllBeads.git
 cd AllBeads
 
-# Build the project
+# Build the project (requires Rust toolchain)
 cargo build --release
 
+# Add to PATH or create alias
+alias ab='./target/release/allbeads'
+```
+
+#### Initialize
+
+```bash
 # Initialize AllBeads (creates config directory and file)
-./target/release/allbeads init
+ab init
 ```
 
 ### Quick Start
 
 ```bash
-# Setup alias for convenience
-alias ab='./target/release/allbeads'
-
 # Add the current repository (auto-detects name, URL, and auth)
 cd /path/to/your-repo
 ab context add .
@@ -160,6 +178,8 @@ ab github status
 See [DEMO.md](DEMO.md) for more examples.
 
 ### CLI Reference
+
+> **Note:** The examples below use `allbeads` (the binary name). If you've set up the `ab` alias as shown above, you can use `ab` instead.
 
 #### Initialization
 

@@ -13,10 +13,13 @@ use std::fmt;
 /// - Beads: Beads initialized (.beads/ exists)
 /// - Configured: AllBeads config applied (prefix, persona, etc.)
 /// - Wet: Fully integrated (syncing, hooks active)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum FolderStatus {
     /// No git repository
+    #[default]
     Dry,
     /// Git initialized but no beads
     Git,
@@ -105,7 +108,7 @@ impl FolderStatus {
     }
 
     /// Parse from string (case-insensitive)
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "dry" => Some(Self::Dry),
             "git" => Some(Self::Git),
@@ -114,12 +117,6 @@ impl FolderStatus {
             "wet" => Some(Self::Wet),
             _ => None,
         }
-    }
-}
-
-impl Default for FolderStatus {
-    fn default() -> Self {
-        Self::Dry
     }
 }
 
@@ -161,18 +158,18 @@ mod tests {
     }
 
     #[test]
-    fn test_from_str() {
-        assert_eq!(FolderStatus::from_str("dry"), Some(FolderStatus::Dry));
-        assert_eq!(FolderStatus::from_str("WET"), Some(FolderStatus::Wet));
+    fn test_parse() {
+        assert_eq!(FolderStatus::parse("dry"), Some(FolderStatus::Dry));
+        assert_eq!(FolderStatus::parse("WET"), Some(FolderStatus::Wet));
         assert_eq!(
-            FolderStatus::from_str("config"),
+            FolderStatus::parse("config"),
             Some(FolderStatus::Configured)
         );
         assert_eq!(
-            FolderStatus::from_str("configured"),
+            FolderStatus::parse("configured"),
             Some(FolderStatus::Configured)
         );
-        assert_eq!(FolderStatus::from_str("unknown"), None);
+        assert_eq!(FolderStatus::parse("unknown"), None);
     }
 
     #[test]

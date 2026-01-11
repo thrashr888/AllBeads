@@ -30,7 +30,7 @@ pub enum Language {
 
 impl Language {
     /// Parse language from string
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "rust" | "rs" => Self::Rust,
             "typescript" | "ts" => Self::TypeScript,
@@ -363,9 +363,9 @@ mod tests {
 
     #[test]
     fn test_language_detection() {
-        assert_eq!(Language::from_str("rust"), Language::Rust);
-        assert_eq!(Language::from_str("ts"), Language::TypeScript);
-        assert_eq!(Language::from_str("python"), Language::Python);
+        assert_eq!(Language::parse("rust"), Language::Rust);
+        assert_eq!(Language::parse("ts"), Language::TypeScript);
+        assert_eq!(Language::parse("python"), Language::Python);
     }
 
     #[test]

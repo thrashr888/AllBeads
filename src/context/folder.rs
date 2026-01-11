@@ -9,10 +9,11 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 /// Beads installation mode for a folder
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "mode")]
 pub enum BeadsMode {
     /// SQLite + JSONL (default)
+    #[default]
     Standard,
     /// JSONL only, no SQLite
     JsonlOnly,
@@ -27,12 +28,6 @@ pub enum BeadsMode {
         #[serde(with = "serde_duration")]
         interval: Duration,
     },
-}
-
-impl Default for BeadsMode {
-    fn default() -> Self {
-        Self::Standard
-    }
 }
 
 /// Configuration for a tracked folder

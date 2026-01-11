@@ -4,7 +4,7 @@
 //! Each agent has its own configuration format and file locations.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Supported coding agents
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ impl CodingAgent {
     }
 
     /// Parse agent name from string
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "claude" | "claude-code" | "claude_code" => Some(Self::Claude),
             "cursor" => Some(Self::Cursor),
@@ -85,7 +85,7 @@ impl CodingAgent {
     }
 
     /// Check if agent is configured in the given path
-    pub fn is_configured(&self, project_path: &PathBuf) -> bool {
+    pub fn is_configured(&self, project_path: &Path) -> bool {
         for config_path in self.config_paths() {
             if project_path.join(config_path).exists() {
                 return true;
@@ -225,7 +225,7 @@ pub struct AgentStatus {
 }
 
 /// Detect all configured agents in a project
-pub fn detect_agents(project_path: &PathBuf) -> Vec<AgentStatus> {
+pub fn detect_agents(project_path: &Path) -> Vec<AgentStatus> {
     CodingAgent::all()
         .iter()
         .map(|agent| {
@@ -267,7 +267,7 @@ pub fn detect_agents(project_path: &PathBuf) -> Vec<AgentStatus> {
 /// Initialize an agent configuration
 pub fn init_agent(
     agent: CodingAgent,
-    project_path: &PathBuf,
+    project_path: &Path,
     overwrite: bool,
 ) -> Result<PathBuf, String> {
     let config_path = project_path.join(agent.primary_config());
@@ -340,7 +340,7 @@ pub fn generate_context_section(context: &AllBeadsContext) -> String {
 /// Sync AllBeads context to an agent's config
 pub fn sync_agent_context(
     agent: CodingAgent,
-    project_path: &PathBuf,
+    project_path: &Path,
     context: &AllBeadsContext,
 ) -> Result<(), String> {
     let config_path = project_path.join(agent.primary_config());
@@ -383,7 +383,7 @@ pub fn sync_agent_context(
 }
 
 /// Preview what the agent config would look like
-pub fn preview_agent_config(agent: CodingAgent, project_path: &PathBuf) -> Result<String, String> {
+pub fn preview_agent_config(agent: CodingAgent, project_path: &Path) -> Result<String, String> {
     let config_path = project_path.join(agent.primary_config());
 
     if config_path.exists() {
@@ -402,12 +402,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_agent_from_str() {
-        assert_eq!(CodingAgent::from_str("claude"), Some(CodingAgent::Claude));
-        assert_eq!(CodingAgent::from_str("cursor"), Some(CodingAgent::Cursor));
-        assert_eq!(CodingAgent::from_str("copilot"), Some(CodingAgent::Copilot));
-        assert_eq!(CodingAgent::from_str("aider"), Some(CodingAgent::Aider));
-        assert_eq!(CodingAgent::from_str("unknown"), None);
+    fn test_agent_parse() {
+        assert_eq!(CodingAgent::parse("claude"), Some(CodingAgent::Claude));
+        assert_eq!(CodingAgent::parse("cursor"), Some(CodingAgent::Cursor));
+        assert_eq!(CodingAgent::parse("copilot"), Some(CodingAgent::Copilot));
+        assert_eq!(CodingAgent::parse("aider"), Some(CodingAgent::Aider));
+        assert_eq!(CodingAgent::parse("unknown"), None);
     }
 
     #[test]

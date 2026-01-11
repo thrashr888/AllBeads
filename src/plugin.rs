@@ -6,13 +6,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Plugin status levels
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginStatus {
     /// Not installed
+    #[default]
     NotInstalled,
     /// Installed but not configured
     Installed,
@@ -20,12 +21,6 @@ pub enum PluginStatus {
     Initialized,
     /// Fully configured
     Configured,
-}
-
-impl Default for PluginStatus {
-    fn default() -> Self {
-        Self::NotInstalled
-    }
 }
 
 impl PluginStatus {
@@ -40,7 +35,7 @@ impl PluginStatus {
 }
 
 /// Plugin category
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginCategory {
     /// Official Claude plugins
@@ -54,13 +49,8 @@ pub enum PluginCategory {
     /// Testing and CI
     Testing,
     /// Other/uncategorized
+    #[default]
     Other,
-}
-
-impl Default for PluginCategory {
-    fn default() -> Self {
-        Self::Other
-    }
 }
 
 /// Information about an installed Claude plugin
@@ -557,7 +547,7 @@ pub fn load_known_marketplaces() -> HashMap<String, RegisteredMarketplace> {
 }
 
 /// Load marketplace metadata from a cloned marketplace directory
-pub fn load_marketplace_metadata(install_path: &PathBuf) -> Option<MarketplaceMetadata> {
+pub fn load_marketplace_metadata(install_path: &Path) -> Option<MarketplaceMetadata> {
     // Look for .claude-plugin/marketplace.json
     let marketplace_json = install_path.join(".claude-plugin").join("marketplace.json");
 
@@ -599,7 +589,7 @@ pub fn get_all_marketplace_plugins() -> Vec<(String, MarketplacePluginEntry)> {
 }
 
 /// Load plugin onboarding protocol from a path
-pub fn load_onboarding(path: &PathBuf) -> Option<PluginOnboarding> {
+pub fn load_onboarding(path: &Path) -> Option<PluginOnboarding> {
     let onboarding_path = path.join(".claude-plugin").join("allbeads-onboarding.yaml");
     if onboarding_path.exists() {
         if let Ok(content) = std::fs::read_to_string(&onboarding_path) {
@@ -954,7 +944,7 @@ impl OnboardingExecutor {
 /// Check prerequisites for a plugin
 pub fn check_prerequisites(
     onboarding: &PluginOnboarding,
-    project_path: &PathBuf,
+    project_path: &Path,
 ) -> Vec<(String, bool, Option<String>)> {
     let mut results = Vec::new();
 
@@ -1112,14 +1102,12 @@ pub struct ProjectAnalysis {
 }
 
 /// Analyze a project directory
-pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
-    let mut analysis = ProjectAnalysis::default();
-
-    // Check for git
-    analysis.has_git = path.join(".git").exists();
-
-    // Check for beads
-    analysis.has_beads = path.join(".beads").exists();
+pub fn analyze_project(path: &Path) -> ProjectAnalysis {
+    let mut analysis = ProjectAnalysis {
+        has_git: path.join(".git").exists(),
+        has_beads: path.join(".beads").exists(),
+        ..Default::default()
+    };
 
     // Language detection by file extensions
     let language_patterns = [
@@ -1188,16 +1176,14 @@ pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
                 // Check if we need to verify a dependency
                 if let Some(dep) = dep_check {
                     if let Ok(content) = std::fs::read_to_string(path.join(file)) {
-                        if content.contains(dep) {
-                            if !analysis.frameworks.contains(&framework.to_string()) {
-                                analysis.frameworks.push(framework.to_string());
-                            }
+                        if content.contains(dep)
+                            && !analysis.frameworks.contains(&framework.to_string())
+                        {
+                            analysis.frameworks.push(framework.to_string());
                         }
                     }
-                } else {
-                    if !analysis.frameworks.contains(&framework.to_string()) {
-                        analysis.frameworks.push(framework.to_string());
-                    }
+                } else if !analysis.frameworks.contains(&framework.to_string()) {
+                    analysis.frameworks.push(framework.to_string());
                 }
             }
         }
@@ -1290,7 +1276,7 @@ pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
 
 /// Generate plugin recommendations for a project
 pub fn recommend_plugins(
-    project_path: &PathBuf,
+    project_path: &Path,
     registry: &PluginRegistry,
     claude_state: &ClaudePluginState,
 ) -> Vec<PluginRecommendation> {
