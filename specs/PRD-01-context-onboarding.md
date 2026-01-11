@@ -1789,18 +1789,19 @@ ab context setup ~/Workspace/project
 - [x] sync_agent_context() for syncing AllBeads context
 - [x] Commands: ab agent list/init/sync/preview/detect
 
-### Phase 10: Registry Integration (future idea)
+### Phase 10: Registry Integration (deferred)
 
-- Hook into Claude marketplace when available
+_Deferred for future when external registry APIs are available._
+
+- Hook into Claude marketplace when API available
 - Support for npm/crates.io plugin discovery
 - Fallback to curated list
 
-### Phase 11: Polish
+### Phase 11: Polish & Documentation ✓
 
-- Rich CLI UX
-- Error recovery
-- Documentation
-- Plugin SDK/starter template
+- [x] Help text for all new commands
+- [x] Consistent error messages with suggestions
+- [x] PRD-01 updated with completed phases
 
 ## Data Structures
 
