@@ -9,7 +9,7 @@ use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, IssueType, Priority, Status};
 use allbeads::style;
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use commands::*;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -23,83 +23,93 @@ fn main() {
 
     let cli = Cli::parse();
 
+    // If no command provided, print help
+    if cli.command.is_none() {
+        Cli::command().print_help().ok();
+        println!();
+        return;
+    }
+
     if let Err(e) = run(cli) {
         eprintln!("Error: {}", e);
         process::exit(1);
     }
 }
 
-fn run(cli: Cli) -> allbeads::Result<()> {
+fn run(mut cli: Cli) -> allbeads::Result<()> {
+    // Take command - we know it's Some because we checked in main()
+    let command = cli.command.take().unwrap();
+
     // Handle init command first (creates config)
     if let Commands::Init {
         remote,
         target,
         janitor,
-    } = &cli.command
+    } = command
     {
-        return handle_init_command(&cli.config, remote.as_deref(), target.as_deref(), *janitor);
+        return handle_init_command(&cli.config, remote.as_deref(), target.as_deref(), janitor);
     }
 
     // Handle context management commands (don't need graph)
-    if let Commands::Context(ref ctx_cmd) = cli.command {
+    if let Commands::Context(ref ctx_cmd) = command {
         return handle_context_command(ctx_cmd, &cli.config);
     }
 
     // Handle folder tracking commands (don't need graph)
-    if let Commands::Folder(ref folder_cmd) = cli.command {
+    if let Commands::Folder(ref folder_cmd) = command {
         return handle_folder_command(folder_cmd);
     }
 
     // Handle mail commands (don't need graph)
-    if let Commands::Mail(ref mail_cmd) = cli.command {
+    if let Commands::Mail(ref mail_cmd) = command {
         return handle_mail_command(mail_cmd);
     }
 
     // Handle JIRA commands (don't need graph)
-    if let Commands::Jira(ref jira_cmd) = cli.command {
+    if let Commands::Jira(ref jira_cmd) = command {
         return handle_jira_command(jira_cmd);
     }
 
     // Handle GitHub commands (don't need graph)
-    if let Commands::GitHub(ref github_cmd) = cli.command {
+    if let Commands::GitHub(ref github_cmd) = command {
         return handle_github_command(github_cmd);
     }
 
     // Handle swarm commands (don't need graph)
-    if let Commands::Swarm(ref swarm_cmd) = cli.command {
+    if let Commands::Swarm(ref swarm_cmd) = command {
         return handle_swarm_command(swarm_cmd);
     }
 
     // Handle config sync commands (don't need graph)
-    if let Commands::Config(ref config_cmd) = cli.command {
+    if let Commands::Config(ref config_cmd) = command {
         return handle_config_command(config_cmd);
     }
 
     // Handle plugin commands (don't need graph)
-    if let Commands::Plugin(ref plugin_cmd) = cli.command {
+    if let Commands::Plugin(ref plugin_cmd) = command {
         return handle_plugin_command(plugin_cmd);
     }
 
     // Handle coding agent commands (don't need graph)
-    if let Commands::CodingAgent(ref agent_cmd) = cli.command {
+    if let Commands::CodingAgent(ref agent_cmd) = command {
         return handle_coding_agent_command(agent_cmd);
     }
 
     // Handle sync command
-    if let Commands::Sync { all, ref context, ref message, status } = cli.command {
+    if let Commands::Sync { all, ref context, ref message, status } = command {
         return handle_sync_command(all, context.as_deref(), message.as_deref(), status, &cli.config);
     }
 
     // Handle agent commands that don't need graph
-    if let Commands::Quickstart = cli.command {
+    if let Commands::Quickstart = command {
         return handle_quickstart_command();
     }
 
-    if let Commands::Setup = cli.command {
+    if let Commands::Setup = command {
         return handle_setup_command(&cli.config);
     }
 
-    if let Commands::Human { ref message } = cli.command {
+    if let Commands::Human { ref message } = command {
         return handle_human_command(message);
     }
 
@@ -175,7 +185,7 @@ fn run(cli: Cli) -> allbeads::Result<()> {
     };
 
     // Execute command
-    match cli.command {
+    match command {
         Commands::List {
             status,
             priority,

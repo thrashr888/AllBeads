@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(name = "allbeads")]
 #[command(version, about, long_about = None)]
+#[command(arg_required_else_help = true)]
 pub struct Cli {
     /// Path to config file (default: ~/.config/allbeads/config.yaml)
     #[arg(short, long)]
@@ -22,7 +23,7 @@ pub struct Cli {
     pub cached: bool,
 
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
