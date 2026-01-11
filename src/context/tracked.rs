@@ -175,6 +175,10 @@ pub struct DetectedInfo {
     /// Default branch name
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_branch: Option<String>,
+
+    /// Current branch name (for worktrees)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
 }
 
 impl DetectedInfo {

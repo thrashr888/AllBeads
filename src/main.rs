@@ -465,6 +465,34 @@ enum FolderCommands {
         #[arg(short, long)]
         yes: bool,
     },
+
+    /// Manage git worktrees
+    #[command(subcommand)]
+    Worktree(WorktreeCommands),
+
+    /// Detect and display monorepo structure
+    Monorepo {
+        /// Path to check (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum WorktreeCommands {
+    /// List all worktrees for a repository
+    List {
+        /// Path to any worktree in the repo (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+
+    /// Show worktree details and beads status
+    Status {
+        /// Path to worktree (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
 }
 
 fn main() {
@@ -2560,9 +2588,414 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
         FolderCommands::Promote { path, to, yes } => {
             handle_folder_promote(path, to.as_deref(), *yes, &folders_file, &mut context)?;
         }
+
+        FolderCommands::Worktree(wt_cmd) => {
+            handle_worktree_command(wt_cmd)?;
+        }
+
+        FolderCommands::Monorepo { path } => {
+            handle_monorepo_command(path)?;
+        }
     }
 
     Ok(())
+}
+
+/// Handle worktree subcommands
+fn handle_worktree_command(cmd: &WorktreeCommands) -> allbeads::Result<()> {
+    match cmd {
+        WorktreeCommands::List { path } => {
+            let abs_path = std::fs::canonicalize(path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
+            })?;
+
+            // Check if it's a git repository
+            if !abs_path.join(".git").exists() {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Not a git repository".to_string(),
+                ));
+            }
+
+            // Get worktrees
+            let output = std::process::Command::new("git")
+                .args(["worktree", "list", "--porcelain"])
+                .current_dir(&abs_path)
+                .output()
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to run git worktree: {}", e))
+                })?;
+
+            if !output.status.success() {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Failed to list worktrees".to_string(),
+                ));
+            }
+
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let worktrees = parse_worktree_list(&stdout);
+
+            if worktrees.is_empty() {
+                println!("No worktrees found.");
+                return Ok(());
+            }
+
+            println!();
+            println!("{}", style::header("Git Worktrees"));
+            println!();
+
+            for wt in &worktrees {
+                let status = detect_folder_status(&PathBuf::from(&wt.path));
+                let beads_info = if PathBuf::from(&wt.path).join(".beads").exists() {
+                    // Count issues
+                    let issues_file = PathBuf::from(&wt.path).join(".beads/issues.jsonl");
+                    let count = if issues_file.exists() {
+                        std::fs::read_to_string(&issues_file)
+                            .map(|s| s.lines().count())
+                            .unwrap_or(0)
+                    } else {
+                        0
+                    };
+                    format!("{} issues", count)
+                } else {
+                    "no beads".to_string()
+                };
+
+                let is_bare = wt.bare;
+                let branch_display = if is_bare {
+                    "(bare)".to_string()
+                } else {
+                    wt.branch.clone().unwrap_or_else(|| "(detached)".to_string())
+                };
+
+                println!(
+                    "  {} {} {}",
+                    style::folder_status_indicator(status.short_name()),
+                    style::path(&wt.path),
+                    style::dim(&format!("({}) - {}", branch_display, beads_info))
+                );
+            }
+            println!();
+        }
+
+        WorktreeCommands::Status { path } => {
+            let abs_path = std::fs::canonicalize(path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
+            })?;
+
+            let worktree_info = detect_worktree_info(&abs_path);
+
+            println!();
+            println!("{}", style::header("Worktree Status"));
+            println!();
+            println!(
+                "  Path:        {}",
+                style::path(&abs_path.display().to_string())
+            );
+
+            if worktree_info.is_worktree {
+                println!("  Type:        {}", style::dim("Git worktree"));
+                if let Some(ref main) = worktree_info.main_worktree {
+                    println!(
+                        "  Main:        {}",
+                        style::path(&main.display().to_string())
+                    );
+                }
+                if let Some(ref branch) = worktree_info.branch {
+                    println!("  Branch:      {}", branch);
+                }
+            } else if abs_path.join(".git").exists() {
+                println!("  Type:        {}", style::dim("Main repository"));
+            } else {
+                println!("  Type:        {}", style::dim("Not a git repository"));
+            }
+
+            // Beads info
+            let status = detect_folder_status(&abs_path);
+            println!(
+                "  Status:      {} {}",
+                style::folder_status_indicator(status.short_name()),
+                style::folder_status(status.short_name())
+            );
+
+            if abs_path.join(".beads").exists() {
+                // Detect beads mode
+                let mode = if abs_path.join(".beads/beads.db").exists() {
+                    "standard"
+                } else if abs_path.join(".beads/issues.jsonl").exists() {
+                    "jsonl-only"
+                } else {
+                    "unknown"
+                };
+                println!("  Beads Mode:  {}", style::dim(mode));
+            }
+            println!();
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse git worktree list --porcelain output
+fn parse_worktree_list(output: &str) -> Vec<WorktreeInfo> {
+    let mut worktrees = Vec::new();
+    let mut current: Option<WorktreeInfo> = None;
+
+    for line in output.lines() {
+        if line.starts_with("worktree ") {
+            if let Some(wt) = current.take() {
+                worktrees.push(wt);
+            }
+            current = Some(WorktreeInfo {
+                path: line.strip_prefix("worktree ").unwrap_or("").to_string(),
+                branch: None,
+                bare: false,
+            });
+        } else if line.starts_with("branch ") {
+            if let Some(ref mut wt) = current {
+                let branch = line.strip_prefix("branch refs/heads/").unwrap_or(
+                    line.strip_prefix("branch ").unwrap_or("")
+                );
+                wt.branch = Some(branch.to_string());
+            }
+        } else if line == "bare" {
+            if let Some(ref mut wt) = current {
+                wt.bare = true;
+            }
+        }
+    }
+
+    if let Some(wt) = current {
+        worktrees.push(wt);
+    }
+
+    worktrees
+}
+
+#[derive(Debug)]
+struct WorktreeInfo {
+    path: String,
+    branch: Option<String>,
+    bare: bool,
+}
+
+/// Handle monorepo detection command
+fn handle_monorepo_command(path: &str) -> allbeads::Result<()> {
+    let abs_path = std::fs::canonicalize(path).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
+    })?;
+
+    let monorepo_info = detect_monorepo_structure(&abs_path);
+
+    println!();
+    println!("{}", style::header("Monorepo Structure"));
+    println!();
+    println!(
+        "  Path:      {}",
+        style::path(&abs_path.display().to_string())
+    );
+
+    if monorepo_info.is_monorepo {
+        println!("  Type:      {}", style::success("Monorepo detected"));
+        if let Some(ref tool) = monorepo_info.tool {
+            println!("  Tool:      {}", tool);
+        }
+        println!();
+
+        if !monorepo_info.packages.is_empty() {
+            println!("{}", style::subheader("Packages"));
+            for pkg in &monorepo_info.packages {
+                let lang = pkg.language.as_deref().unwrap_or("unknown");
+                println!(
+                    "  {} {} {}",
+                    style::dim("├──"),
+                    style::path(&pkg.path),
+                    style::dim(&format!("({})", lang))
+                );
+            }
+            println!();
+        }
+
+        if !monorepo_info.services.is_empty() {
+            println!("{}", style::subheader("Services"));
+            for svc in &monorepo_info.services {
+                let lang = svc.language.as_deref().unwrap_or("unknown");
+                println!(
+                    "  {} {} {}",
+                    style::dim("├──"),
+                    style::path(&svc.path),
+                    style::dim(&format!("({})", lang))
+                );
+            }
+            println!();
+        }
+    } else {
+        println!("  Type:      {}", style::dim("Single project (not a monorepo)"));
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+struct MonorepoInfo {
+    is_monorepo: bool,
+    tool: Option<String>,
+    packages: Vec<PackageInfo>,
+    services: Vec<PackageInfo>,
+}
+
+#[derive(Debug)]
+struct PackageInfo {
+    path: String,
+    language: Option<String>,
+}
+
+/// Detect monorepo structure and packages
+fn detect_monorepo_structure(path: &PathBuf) -> MonorepoInfo {
+    let mut info = MonorepoInfo::default();
+
+    // Detect monorepo tool
+    if path.join("pnpm-workspace.yaml").exists() {
+        info.is_monorepo = true;
+        info.tool = Some("pnpm".to_string());
+    } else if path.join("lerna.json").exists() {
+        info.is_monorepo = true;
+        info.tool = Some("lerna".to_string());
+    } else if path.join("nx.json").exists() {
+        info.is_monorepo = true;
+        info.tool = Some("nx".to_string());
+    } else if path.join("turbo.json").exists() {
+        info.is_monorepo = true;
+        info.tool = Some("turborepo".to_string());
+    } else if path.join("Cargo.toml").exists() {
+        // Check for Rust workspace
+        if let Ok(content) = std::fs::read_to_string(path.join("Cargo.toml")) {
+            if content.contains("[workspace]") {
+                info.is_monorepo = true;
+                info.tool = Some("cargo workspace".to_string());
+            }
+        }
+    }
+
+    // Scan for packages/ directory
+    let packages_dir = path.join("packages");
+    if packages_dir.exists() && packages_dir.is_dir() {
+        info.is_monorepo = true;
+        if let Ok(entries) = std::fs::read_dir(&packages_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    let pkg_path = entry.path();
+                    let language = detect_package_language(&pkg_path);
+                    info.packages.push(PackageInfo {
+                        path: entry.file_name().to_string_lossy().to_string(),
+                        language,
+                    });
+                }
+            }
+        }
+    }
+
+    // Scan for services/ directory
+    let services_dir = path.join("services");
+    if services_dir.exists() && services_dir.is_dir() {
+        info.is_monorepo = true;
+        if let Ok(entries) = std::fs::read_dir(&services_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    let svc_path = entry.path();
+                    let language = detect_package_language(&svc_path);
+                    info.services.push(PackageInfo {
+                        path: entry.file_name().to_string_lossy().to_string(),
+                        language,
+                    });
+                }
+            }
+        }
+    }
+
+    // Scan for apps/ directory (common in turborepo)
+    let apps_dir = path.join("apps");
+    if apps_dir.exists() && apps_dir.is_dir() {
+        info.is_monorepo = true;
+        if let Ok(entries) = std::fs::read_dir(&apps_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    let app_path = entry.path();
+                    let language = detect_package_language(&app_path);
+                    info.packages.push(PackageInfo {
+                        path: format!("apps/{}", entry.file_name().to_string_lossy()),
+                        language,
+                    });
+                }
+            }
+        }
+    }
+
+    info
+}
+
+/// Detect language of a package/service
+fn detect_package_language(path: &PathBuf) -> Option<String> {
+    if path.join("Cargo.toml").exists() {
+        Some("Rust".to_string())
+    } else if path.join("package.json").exists() {
+        if path.join("tsconfig.json").exists() {
+            Some("TypeScript".to_string())
+        } else {
+            Some("JavaScript".to_string())
+        }
+    } else if path.join("go.mod").exists() {
+        Some("Go".to_string())
+    } else if path.join("pyproject.toml").exists() || path.join("setup.py").exists() {
+        Some("Python".to_string())
+    } else if path.join("pom.xml").exists() || path.join("build.gradle").exists() {
+        Some("Java".to_string())
+    } else {
+        None
+    }
+}
+
+/// Detect if path is a worktree and get info
+fn detect_worktree_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
+    let mut info = allbeads::context::DetectedInfo::default();
+
+    // Check if this is a worktree by looking at .git
+    let git_path = path.join(".git");
+    if git_path.exists() {
+        if git_path.is_file() {
+            // .git is a file - this is a worktree
+            info.is_worktree = true;
+
+            // Read the .git file to find the main worktree
+            if let Ok(content) = std::fs::read_to_string(&git_path) {
+                // Format: "gitdir: /path/to/.git/worktrees/name"
+                if let Some(gitdir) = content.strip_prefix("gitdir: ") {
+                    let gitdir = gitdir.trim();
+                    // Go up from .git/worktrees/name to find main .git
+                    let gitdir_path = PathBuf::from(gitdir);
+                    let main_git = gitdir_path
+                        .parent() // worktrees
+                        .and_then(|p| p.parent()) // .git
+                        .and_then(|p| p.parent()); // main worktree
+                    info.main_worktree = main_git.map(|p| p.to_path_buf());
+                }
+            }
+
+            // Get current branch for worktree
+            if let Ok(output) = std::process::Command::new("git")
+                .args(["-C", path.to_str().unwrap_or("."), "branch", "--show-current"])
+                .output()
+            {
+                if output.status.success() {
+                    let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !branch.is_empty() {
+                        info.branch = Some(branch);
+                    }
+                }
+            }
+        }
+    }
+
+    info
 }
 
 /// Handle the interactive setup wizard for a folder
