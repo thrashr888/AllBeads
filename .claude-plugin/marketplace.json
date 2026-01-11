@@ -1,14 +1,15 @@
 {
   "name": "allbeads-marketplace",
-  "description": "Local marketplace for AllBeads plugin development",
+  "description": "Multi-repo orchestration for AI agent workflows",
   "owner": {
-    "name": "Paul Thrasher"
+    "name": "Paul Thrasher",
+    "url": "https://github.com/thrashr888"
   },
   "plugins": [
     {
       "name": "allbeads",
-      "source": "./claude-plugin",
-      "description": "Distributed protocol for agentic orchestration and communication",
+      "source": "./",
+      "description": "Multi-repo orchestration for AI agent workflows. Aggregate beads across repositories, manage contexts, and coordinate distributed work.",
       "version": "0.2.0"
     }
   ]

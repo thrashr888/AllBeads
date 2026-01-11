@@ -1,0 +1,32 @@
+{
+  "name": "allbeads",
+  "description": "Multi-repo orchestration for AI agent workflows. Aggregate beads across repositories, manage contexts, and coordinate distributed work.",
+  "version": "0.2.0",
+  "author": {
+    "name": "Paul Thrasher",
+    "url": "https://github.com/thrashr888"
+  },
+  "repository": "https://github.com/thrashr888/AllBeads",
+  "license": "MIT",
+  "homepage": "https://github.com/thrashr888/AllBeads",
+  "keywords": [
+    "multi-repo",
+    "orchestration",
+    "agent-workflow",
+    "beads",
+    "federated"
+  ],
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "allbeads sync --status 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
