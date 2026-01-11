@@ -66,7 +66,14 @@ See [DEMO.md](DEMO.md) for usage examples.
 
 ### Installation
 
-#### Pre-built Binaries (Recommended)
+#### Homebrew (macOS/Linux)
+
+```bash
+brew tap thrashr888/allbeads
+brew install allbeads
+```
+
+#### Pre-built Binaries
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/thrashr888/AllBeads/releases):
 
