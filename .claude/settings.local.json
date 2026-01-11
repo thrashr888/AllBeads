@@ -44,7 +44,9 @@
       "Bash(RUST_LOG=warn cargo run:*)",
       "Bash(sqlite3:*)",
       "Bash(tree:*)",
-      "Bash(RUSTDOCFLAGS=\"-Dwarnings\" cargo doc:*)"
+      "Bash(RUSTDOCFLAGS=\"-Dwarnings\" cargo doc:*)",
+      "Bash(./target/debug/allbeads:*)",
+      "Skill(beads:show)"
     ]
   }
 }
