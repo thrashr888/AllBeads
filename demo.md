@@ -86,6 +86,22 @@ ab github pull -o <owner>         # Pull GitHub issues
 
 # Cache management
 ab clear-cache                    # Clear the cache
+
+# Plugin system (v0.2)
+ab plugin list                    # List plugins
+ab plugin recommend               # Get recommendations
+ab plugin marketplace-list        # Show marketplaces
+
+# Coding agents (v0.2)
+ab agent list                     # List configured agents
+ab agent detect                   # Detect agents in project
+ab agent init <agent>             # Initialize agent config
+ab agent sync                     # Sync context to agents
+
+# Sync (v0.2)
+ab sync                           # Sync config
+ab sync --all                     # Sync all context beads
+ab sync --status                  # Check sync status
 ```
 
 ## Context Management
@@ -634,6 +650,157 @@ ab list --priority P1 --status open
 ab tui
 ```
 
+## Plugin System (v0.2)
+
+AllBeads integrates with the Claude plugin ecosystem for extensibility.
+
+### List plugins
+
+```bash
+# List installed plugins
+ab plugin list
+
+# List all available plugins (including not installed)
+ab plugin list --all
+
+# Filter by category
+ab plugin list --category beads
+```
+
+### Get recommendations
+
+```bash
+# Analyze project and get plugin recommendations
+ab plugin recommend
+
+# Specify project path
+ab plugin recommend /path/to/project
+```
+
+Example output:
+
+```
+Plugin Recommendations
+
+  Project: /Users/you/workspace/my-project
+
+  Project Analysis
+
+  Languages: rust
+  Type: Monorepo
+  Git: ✓  Beads: ✓
+
+  Recommended Plugins
+
+  · ███ mcp-github - GitHub integration via MCP
+      → Found config file: .github (35% confidence)
+  · █░░ beads - Git-backed issue tracker with dependencies
+      → Recommended for all projects (20% confidence)
+
+  Legend: ✓ configured  ○ installed  · not installed
+          ███ high  ██░ medium  █░░ low confidence
+```
+
+### Marketplace
+
+```bash
+# List registered marketplaces
+ab plugin marketplace-list
+
+# Sync marketplace metadata
+ab plugin marketplace-sync
+```
+
+## Coding Agents (v0.2)
+
+AllBeads supports multiple coding agents (Claude Code, Cursor, GitHub Copilot, Aider).
+
+### Detect agents
+
+```bash
+# Detect which agents are configured
+ab agent detect
+```
+
+Example output:
+
+```
+Agent Detection
+
+  Project: /Users/you/workspace/my-project
+
+  ✓ Claude Code (CLAUDE.md) [synced]
+  · Cursor (not configured)
+  · GitHub Copilot (not configured)
+  · Aider (not configured)
+
+  Tip: Use 'ab agent init <agent>' to configure an agent.
+```
+
+### List agents
+
+```bash
+# List all agents with status
+ab agent list
+
+# JSON output
+ab agent list --json
+```
+
+### Initialize agents
+
+```bash
+# Initialize Claude Code configuration
+ab agent init claude
+
+# Initialize Cursor rules
+ab agent init cursor
+
+# Initialize GitHub Copilot instructions
+ab agent init copilot
+
+# Initialize Aider configuration
+ab agent init aider
+```
+
+### Sync context
+
+```bash
+# Sync AllBeads context to all configured agents
+ab agent sync
+
+# Sync to specific agent only
+ab agent sync --agent claude
+```
+
+### Preview configuration
+
+```bash
+# Preview what a config would look like
+ab agent preview cursor
+```
+
+## Sync (v0.2)
+
+Unified synchronization for AllBeads config and context beads.
+
+```bash
+# Sync AllBeads config directory (if tracked in git)
+ab sync
+
+# Sync all context beads (runs bd sync in each context)
+ab sync --all
+
+# Sync specific context
+ab sync mycontext
+
+# Check sync status without syncing
+ab sync --status
+
+# With commit message
+ab sync --message "Updated config"
+```
+
 ## Tips
 
 - **Use the alias**: `ab` with `--cached` is fast for repeated commands
@@ -642,3 +809,5 @@ ab tui
 - **Sheriff foreground**: Use `--foreground` during development to see sync events
 - **Environment tokens**: Set `JIRA_API_TOKEN` and `GITHUB_TOKEN` for integrations
 - **Dry run**: Use `--dry-run` with janitor to preview before creating issues
+- **Plugin recommendations**: Run `ab plugin recommend` to discover useful plugins
+- **Agent sync**: Use `ab agent sync` to keep agent configs updated with beads info

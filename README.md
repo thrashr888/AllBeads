@@ -85,7 +85,14 @@ External system adapters:
 - CLI commands: `ab jira`, `ab github`
 - Plugin architecture for extensibility
 
-**Phase 5 (The Swarm) - In Progress**
+**Phase 5 (Context Onboarding & Plugins) - Complete**
+- Plugin system with Claude marketplace integration
+- Multi-agent support (Claude, Cursor, Copilot, Aider)
+- Plugin recommendations based on project analysis
+- Coding agent configuration sync
+- Unified sync command (`ab sync`)
+
+**Phase 6 (The Swarm) - In Progress**
 - Agent lifecycle management
 - Cost tracking and budget management
 - Advanced dependency resolution
@@ -277,6 +284,63 @@ allbeads tui
 #   q             - Quit
 ```
 
+#### Plugin System
+
+```bash
+# List available plugins
+allbeads plugin list
+allbeads plugin list --all              # Include not-installed
+
+# Get plugin recommendations for current project
+allbeads plugin recommend
+
+# Plugin information and status
+allbeads plugin info <name>
+allbeads plugin status
+
+# Marketplace commands
+allbeads plugin marketplace-list
+allbeads plugin marketplace-sync
+```
+
+#### Coding Agents
+
+```bash
+# List configured coding agents
+allbeads agent list
+
+# Detect agents in project
+allbeads agent detect
+
+# Initialize agent configuration
+allbeads agent init claude              # Claude Code (CLAUDE.md)
+allbeads agent init cursor              # Cursor (.cursorrules)
+allbeads agent init copilot             # GitHub Copilot
+allbeads agent init aider               # Aider
+
+# Sync AllBeads context to agent configs
+allbeads agent sync
+
+# Preview agent configuration
+allbeads agent preview <agent>
+```
+
+#### Sync
+
+```bash
+# Sync AllBeads config (if in git)
+allbeads sync
+
+# Sync all context beads
+allbeads sync --all
+
+# Sync specific context
+allbeads sync mycontext
+
+# Check sync status
+allbeads sync --status
+```
+
 #### Cache Management
 
 ```bash
@@ -329,33 +393,27 @@ visualization:
 ```
 AllBeads/
 ├── specs/
-│   └── PRD-00.md           # Complete architecture specification
+│   ├── PRD-00.md           # Core architecture specification
+│   └── PRD-01-*.md         # Feature specifications
 ├── src/
 │   ├── main.rs             # CLI entry point
 │   ├── lib.rs              # Library exports
+│   ├── commands.rs         # CLI command definitions
 │   ├── aggregator/         # Multi-repo aggregation
 │   ├── cache/              # SQLite caching
+│   ├── coding_agent.rs     # Multi-agent support (Claude, Cursor, etc.)
 │   ├── config/             # Configuration management
+│   ├── context/            # Context & folder tracking
 │   ├── git/                # Git operations
 │   ├── graph/              # Bead/Shadow/Rig data structures
 │   ├── integrations/       # JIRA, GitHub adapters
-│   │   ├── jira.rs         # JIRA REST API client
-│   │   ├── github.rs       # GitHub GraphQL/REST client
-│   │   └── plugin.rs       # Plugin architecture
-│   ├── janitor/            # Automated issue discovery
 │   ├── mail/               # Agent Mail protocol
-│   │   ├── postmaster.rs   # Message routing
-│   │   ├── server.rs       # HTTP server
-│   │   └── locks.rs        # Resource locking
 │   ├── manifest/           # XML manifest parsing
+│   ├── plugin.rs           # Plugin system & marketplace
 │   ├── sheriff/            # Sheriff daemon
-│   │   ├── daemon.rs       # Event loop
-│   │   ├── sync.rs         # State synchronization
-│   │   └── external_sync.rs # JIRA/GitHub sync
 │   ├── storage/            # JSONL parsing
+│   ├── swarm/              # Agent swarm management
 │   └── tui/                # Terminal UI
-│       ├── kanban.rs       # Kanban board view
-│       └── mail.rs         # Mail view
 ├── tests/
 │   └── integration_test.rs # Integration tests
 ├── .beads/                 # Issue tracking database
