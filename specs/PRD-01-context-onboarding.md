@@ -17,13 +17,13 @@ This specification defines the enhanced context management system for AllBeads, 
 
 ### Status Levels
 
-| Level | Name | Description |
-|-------|------|-------------|
-| 0 | `dry` | Folder exists, no git or beads |
-| 1 | `git` | Git repository initialized |
-| 2 | `beads` | Beads initialized (`.beads/` exists) |
-| 3 | `configured` | AllBeads config applied (prefix, persona, etc.) |
-| 4 | `wet` | Fully integrated (syncing, hooks active) |
+| Level | Name         | Description                                     |
+| ----- | ------------ | ----------------------------------------------- |
+| 0     | `dry`        | Folder exists, no git or beads                  |
+| 1     | `git`        | Git repository initialized                      |
+| 2     | `beads`      | Beads initialized (`.beads/` exists)            |
+| 3     | `configured` | AllBeads config applied (prefix, persona, etc.) |
+| 4     | `wet`        | Fully integrated (syncing, hooks active)        |
 
 ### Status Indicators
 
@@ -65,6 +65,7 @@ ab context add ~/Workspace/new-project --setup
 ```
 
 **Behavior:**
+
 - Scans each path to determine current status
 - Adds to context configuration
 - Does NOT automatically initialize git/beads
@@ -196,6 +197,7 @@ ab context promote ~/Workspace/my-project --yes
 AllBeads supports multiple beads configurations to accommodate different use cases:
 
 ### Standard (Default)
+
 - SQLite database for queries
 - JSONL files for git-sync
 - Full feature set
@@ -205,6 +207,7 @@ ab context setup ~/project --beads-mode=standard
 ```
 
 ### JSONL-Only
+
 - No SQLite database
 - Lighter weight, simpler
 - Good for small projects
@@ -214,6 +217,7 @@ ab context setup ~/project --beads-mode=jsonl
 ```
 
 ### Custom Prefix
+
 - Non-standard prefix for namespacing
 - Useful when aggregating across repos
 
@@ -222,6 +226,7 @@ ab context setup ~/project --prefix=auth
 ```
 
 ### Sync Branch
+
 - Dedicated branch for beads data
 - Keeps issues separate from code commits
 - Cleaner git history
@@ -231,6 +236,7 @@ ab context setup ~/project --sync-branch=beads-sync
 ```
 
 ### Daemon Mode
+
 - Background sync daemon
 - Real-time updates
 - Higher resource usage
@@ -339,6 +345,7 @@ plugins:
 ```
 
 **Why curated?**
+
 - Quality control (we've tested these work)
 - Security review (no arbitrary code execution)
 - Compatibility verified with AllBeads onboarding protocol
@@ -369,6 +376,7 @@ project/
 ```
 
 **Project settings.json:**
+
 ```json
 {
   "enabledPlugins": {
@@ -379,19 +387,17 @@ project/
 ```
 
 **Local settings.local.json:**
+
 ```json
 {
   "permissions": {
-    "allow": [
-      "Bash(bd create:*)",
-      "Bash(cargo build:*)",
-      "..."
-    ]
+    "allow": ["Bash(bd create:*)", "Bash(cargo build:*)", "..."]
   }
 }
 ```
 
 AllBeads uses these to:
+
 1. **Detect installed plugins**: Read `enabledPlugins` from settings.json
 2. **Infer plugin usage**: Parse allowed permissions for tool patterns
 3. **Avoid re-onboarding**: Skip plugins that are already enabled
@@ -417,11 +423,11 @@ Suggested plugins based on context:
 
 ### Settings File Locations
 
-| File | Scope | Git-tracked | Contains |
-|------|-------|-------------|----------|
-| `.claude/settings.json` | Project | ✓ Yes | Enabled plugins, project config |
-| `.claude/settings.local.json` | Project | ✗ No | Permissions, local overrides |
-| `~/.claude/settings.json` | Global | N/A | User preferences, global plugins, hooks |
+| File                          | Scope   | Git-tracked | Contains                                |
+| ----------------------------- | ------- | ----------- | --------------------------------------- |
+| `.claude/settings.json`       | Project | ✓ Yes       | Enabled plugins, project config         |
+| `.claude/settings.local.json` | Project | ✗ No        | Permissions, local overrides            |
+| `~/.claude/settings.json`     | Global  | N/A         | User preferences, global plugins, hooks |
 
 ### Claude Plugin Infrastructure
 
@@ -446,32 +452,41 @@ Claude Code maintains a comprehensive plugin system that AllBeads can leverage:
 ```
 
 **installed_plugins.json:**
+
 ```json
 {
   "version": 2,
   "plugins": {
-    "beads@beads-marketplace": [{
-      "scope": "user",           // "user" (global) or "project"
-      "installPath": "~/.claude/plugins/cache/beads-marketplace/beads/0.32.1",
-      "version": "0.32.1",
-      "installedAt": "2025-12-31T08:59:21.563Z",
-      "gitCommitSha": "88c1ad9fee43..."
-    }],
-    "open-prose@prose": [{
-      "scope": "project",        // Project-specific installation
-      "installPath": "~/.claude/plugins/cache/prose/open-prose/0.3.1",
-      "version": "0.3.1",
-      "projectPath": "/Users/user/Workspace/AllBeads"
-    }]
+    "beads@beads-marketplace": [
+      {
+        "scope": "user", // "user" (global) or "project"
+        "installPath": "~/.claude/plugins/cache/beads-marketplace/beads/0.32.1",
+        "version": "0.32.1",
+        "installedAt": "2025-12-31T08:59:21.563Z",
+        "gitCommitSha": "88c1ad9fee43..."
+      }
+    ],
+    "open-prose@prose": [
+      {
+        "scope": "project", // Project-specific installation
+        "installPath": "~/.claude/plugins/cache/prose/open-prose/0.3.1",
+        "version": "0.3.1",
+        "projectPath": "/Users/user/Workspace/AllBeads"
+      }
+    ]
   }
 }
 ```
 
 **known_marketplaces.json:**
+
 ```json
 {
   "claude-plugins-official": {
-    "source": { "source": "github", "repo": "anthropics/claude-plugins-official" },
+    "source": {
+      "source": "github",
+      "repo": "anthropics/claude-plugins-official"
+    },
     "installLocation": "~/.claude/plugins/marketplaces/claude-plugins-official",
     "lastUpdated": "2026-01-10T17:49:20.317Z"
   },
@@ -562,13 +577,13 @@ version: 0.3.1
 # When is this plugin relevant to a project?
 relevance:
   # Match by project characteristics
-  languages: ["*"]           # Any language (or ["rust", "typescript"])
-  frameworks: []             # Specific frameworks
-  files: []                  # Required files to suggest this plugin
+  languages: ["*"] # Any language (or ["rust", "typescript"])
+  frameworks: [] # Specific frameworks
+  files: [] # Required files to suggest this plugin
 
   # Manual trigger conditions
-  always_suggest: false      # Always show in suggestions
-  user_requested: true       # Only when explicitly requested
+  always_suggest: false # Always show in suggestions
+  user_requested: true # Only when explicitly requested
 
 # How to detect if plugin is already onboarded
 detect:
@@ -734,15 +749,15 @@ AllBeads is designed to work with multiple coding agents, not just Claude. As th
 
 ### Supported Agents
 
-| Agent | Status | Config File | Skills/Plugins |
-|-------|--------|-------------|----------------|
-| **Claude Code** | ✓ Primary | `CLAUDE.md`, `.claude-plugin/` | Skills, MCP |
-| **Cursor** | ✓ Supported | `.cursorrules` | Rules, context |
-| **GitHub Copilot** | ✓ Supported | `.github/copilot-instructions.md` | Instructions |
-| **Codex CLI** | Planned | `.codex/` | TBD |
-| **Gemini CLI** | Planned | TBD | TBD |
-| **OpenCode** | Planned | TBD | TBD |
-| **Aider** | ✓ Supported | `.aider.conf.yml` | Config |
+| Agent              | Status      | Config File                       | Skills/Plugins |
+| ------------------ | ----------- | --------------------------------- | -------------- |
+| **Claude Code**    | ✓ Primary   | `CLAUDE.md`, `.claude-plugin/`    | Skills, MCP    |
+| **Cursor**         | ✓ Supported | `.cursorrules`                    | Rules, context |
+| **GitHub Copilot** | ✓ Supported | `.github/copilot-instructions.md` | Instructions   |
+| **Codex CLI**      | Planned     | `.codex/`                         | TBD            |
+| **Gemini CLI**     | Planned     | TBD                               | TBD            |
+| **OpenCode**       | Planned     | TBD                               | TBD            |
+| **Aider**          | ✓ Supported | `.aider.conf.yml`                 | Config         |
 
 ### Agent Abstraction Layer
 
@@ -833,10 +848,10 @@ Plugins can declare which agents they support:
 # In allbeads-onboarding.yaml
 agents:
   supported:
-    - claude    # Full support
-    - cursor    # Full support
-    - copilot   # Partial (no skills, just instructions)
-    - aider     # Config only
+    - claude # Full support
+    - cursor # Full support
+    - copilot # Partial (no skills, just instructions)
+    - aider # Config only
 
   # Agent-specific onboarding steps
   agent_steps:
@@ -897,16 +912,17 @@ ab agent preview cursor
 
 Before finalizing our approach, we should study existing plugin/extension ecosystems:
 
-| Ecosystem | Registry | Discovery | Install | Notes |
-|-----------|----------|-----------|---------|-------|
-| **VS Code** | marketplace.visualstudio.com | Web + CLI | `code --install-extension` | Centralized, Microsoft-hosted |
-| **npm** | registry.npmjs.org | `npm search` | `npm install` | Decentralized publishing |
-| **Homebrew** | formulae.brew.sh | `brew search` | `brew install` | Community taps model |
-| **Cargo** | crates.io | `cargo search` | `cargo install` | Rust-native |
-| **Claude Plugins** | TBD (future) | TBD | `claude plugin install` | Emerging |
-| **Cursor** | cursor.sh/plugins | Web | GUI | Integrated |
+| Ecosystem          | Registry                     | Discovery      | Install                    | Notes                         |
+| ------------------ | ---------------------------- | -------------- | -------------------------- | ----------------------------- |
+| **VS Code**        | marketplace.visualstudio.com | Web + CLI      | `code --install-extension` | Centralized, Microsoft-hosted |
+| **npm**            | registry.npmjs.org           | `npm search`   | `npm install`              | Decentralized publishing      |
+| **Homebrew**       | formulae.brew.sh             | `brew search`  | `brew install`             | Community taps model          |
+| **Cargo**          | crates.io                    | `cargo search` | `cargo install`            | Rust-native                   |
+| **Claude Plugins** | TBD (future)                 | TBD            | `claude plugin install`    | Emerging                      |
+| **Cursor**         | cursor.sh/plugins            | Web            | GUI                        | Integrated                    |
 
 **Key learnings to apply:**
+
 1. **npm model**: Decentralized publishing, but curated "awesome" lists for quality
 2. **Homebrew model**: Official + community "taps" for flexibility
 3. **VS Code model**: Centralized with verified publishers for trust
@@ -1215,13 +1231,13 @@ AllBeads automatically detects project languages and frameworks to provide conte
 
 ### Language-Specific Defaults
 
-| Language | Default Prefix | Suggested Persona |
-|----------|---------------|-------------------|
-| Rust | `rs` | Backend Developer |
-| TypeScript | `ts` | Frontend Developer |
-| Python | `py` | General |
-| Go | `go` | Backend Developer |
-| Security-related | - | Security Specialist |
+| Language         | Default Prefix | Suggested Persona   |
+| ---------------- | -------------- | ------------------- |
+| Rust             | `rs`           | Backend Developer   |
+| TypeScript       | `ts`           | Frontend Developer  |
+| Python           | `py`           | General             |
+| Go               | `go`           | Backend Developer   |
+| Security-related | -              | Security Specialist |
 
 ## Monorepo Support
 
@@ -1288,12 +1304,12 @@ Git worktrees share the same `.git` directory but have separate working director
 
 ### Beads Data Location by Flavor
 
-| Beads Flavor | Data Location | Worktree Behavior |
-|--------------|---------------|-------------------|
-| **Standard** | `.beads/` in worktree | ⚠️ Each worktree has separate issues |
-| **SyncBranch** | `beads-sync` branch | ✓ Shared across all worktrees |
-| **JsonlOnly** | `.beads/*.jsonl` | ⚠️ Each worktree has separate issues |
-| **SharedDB** | `~/.local/share/beads/<repo>/` | ✓ Shared across all worktrees |
+| Beads Flavor   | Data Location                  | Worktree Behavior                    |
+| -------------- | ------------------------------ | ------------------------------------ |
+| **Standard**   | `.beads/` in worktree          | ⚠️ Each worktree has separate issues |
+| **SyncBranch** | `beads-sync` branch            | ✓ Shared across all worktrees        |
+| **JsonlOnly**  | `.beads/*.jsonl`               | ⚠️ Each worktree has separate issues |
+| **SharedDB**   | `~/.local/share/beads/<repo>/` | ✓ Shared across all worktrees        |
 
 ### Worktree Detection
 
@@ -1335,10 +1351,12 @@ worktree:
 ```
 
 **Pros:**
+
 - Simple, no conflicts
 - Branch-specific issues possible
 
 **Cons:**
+
 - Issues don't sync across worktrees
 - Can't see all work in one place
 
@@ -1356,6 +1374,7 @@ ab context add ~/Workspace/myproject-feature
 ```
 
 **How it works:**
+
 1. Issues stored in `beads-sync` branch (or configurable name)
 2. Branch is checked out to a temp location for reads/writes
 3. All worktrees read/write to the same branch
@@ -1388,7 +1407,7 @@ Best of both worlds: JSONL files in sync branch for git-based sharing, local SQL
 worktree:
   strategy: hybrid
   sync_branch: beads-sync
-  local_cache: .beads/cache.db  # Per-worktree cache, gitignored
+  local_cache: .beads/cache.db # Per-worktree cache, gitignored
 ```
 
 ### Multi-Worktree Commands
@@ -1639,11 +1658,11 @@ A key design principle is that individual beads repositories remain unaware of A
 
 ### What Goes Where
 
-| Component | Location | Knows About |
-|-----------|----------|-------------|
-| Beads issues | `.beads/` in each repo | Nothing (standalone) |
-| AllBeads config | `~/.config/allbeads/` | All contexts, folders |
-| Per-repo hints | `.allbeads.yaml` in repo | Optional, minimal |
+| Component       | Location                 | Knows About           |
+| --------------- | ------------------------ | --------------------- |
+| Beads issues    | `.beads/` in each repo   | Nothing (standalone)  |
+| AllBeads config | `~/.config/allbeads/`    | All contexts, folders |
+| Per-repo hints  | `.allbeads.yaml` in repo | Optional, minimal     |
 
 ### Per-Repo Hints File (Optional)
 
@@ -1705,58 +1724,72 @@ ab context setup ~/Workspace/project
 
 ## Implementation Phases
 
-### Phase 1: Core Context Management
-- `ab context add/remove/list`
-- Status detection (dry/git/beads)
-- Basic configuration storage
+### Phase 1: Core Context Management ✓
 
-### Phase 2: Interactive Setup
-- `ab context setup` wizard
-- Language detection
-- Beads initialization
+- [x] `ab context add/remove/list`
+- [x] Status detection (dry/git/beads)
+- [x] Basic configuration storage
 
-### Phase 3: Advanced Configuration
-- Monorepo support
-- Worktree support
-- Templates
+### Phase 2: Interactive Setup ✓
 
-### Phase 4: Distributed Config
-- Git-based config sync
-- Gist support
-- Cross-machine synchronization
+- [x] `ab folder setup` wizard
+- [x] Language detection
+- [x] Beads initialization
 
-### Phase 5: Plugin Foundation
-- Plugin onboarding protocol parser (YAML)
-- `ab plugin list/info/status` commands
-- Plugin detection in projects
+### Phase 3: Advanced Configuration ✓
+
+- [x] Monorepo detection (`ab folder monorepo`)
+- [x] Worktree support (`ab folder worktree list/status`)
+- [x] Templates (`ab folder template create/apply/list/show/delete`)
+
+### Phase 4: Distributed Config ✓
+
+- [x] Git-based config sync (`ab config init --remote`)
+- [x] Gist support (`ab config init --gist`)
+- [x] Cross-machine synchronization (`ab config pull/push/clone`)
+- [x] `ab sync` command for unified sync (config + context beads)
+
+### Phase 5: Plugin Foundation ✓
+
+- [x] Plugin onboarding protocol parser (YAML)
+- [x] `ab plugin list/info/status` commands
+- [x] Plugin detection in projects (`ab plugin detect`)
+- [x] Plugin recommendations (`ab plugin recommend`)
+- [x] Curated plugin registry (beads, prose, mcp-github, etc.)
 
 ### Phase 6: Plugin Onboarding
+
 - `ab plugin install/remove` with step execution
 - Interactive prompts from plugin definitions
 - Template rendering with Jinja-like syntax
 
 ### Phase 7: Marketplace Integration
+
 - `ab marketplace add/list/sync` commands
 - Claude marketplace discovery via `claude plugin marketplace list`
 - Plugin metadata caching
 
 ### Phase 8: Plugin Recommendations
+
 - Project analysis engine
 - Recommendation scoring
 - Integration with setup wizard
 
 ### Phase 9: Multi-Agent Support
+
 - Agent abstraction layer (`AgentConfig` trait)
 - Agent detection and initialization
 - Cross-agent context sync (`ab agent sync`)
 - Agent-specific plugin steps
 
-### Phase 10: Registry Integration
+### Phase 10: Registry Integration (future idea)
+
 - Hook into Claude marketplace when available
 - Support for npm/crates.io plugin discovery
 - Fallback to curated list
 
 ### Phase 11: Polish
+
 - Rich CLI UX
 - Error recovery
 - Documentation
@@ -2013,12 +2046,14 @@ Found 5 repositories with beads:
 ## Success Metrics
 
 ### Context Management
+
 1. **Onboarding Time**: < 2 minutes for single project setup
 2. **Batch Onboarding**: < 30 seconds per project in batch mode
 3. **Config Sync**: < 5 seconds to sync config across machines
 4. **Zero Lock-in**: Beads works identically with or without AllBeads
 
 ### Plugin System
+
 5. **Plugin Install Time**: < 60 seconds for typical plugin (excluding prerequisite downloads)
 6. **Marketplace Sync**: < 10 seconds to refresh plugin metadata
 7. **Protocol Adoption**: Measure plugins with `allbeads-onboarding.yaml` in Claude marketplaces
@@ -2027,12 +2062,14 @@ Found 5 repositories with beads:
 ## Open Questions
 
 ### Context Management
+
 1. Should `ab` be a separate binary or subcommand of `allbeads`?
 2. How to handle conflicts when syncing config from multiple machines?
 3. Should templates support inheritance?
 4. How to handle private vs public repos in config sync?
 
 ### Plugin System
+
 5. Should AllBeads ship with a default marketplace, or start empty?
 6. How to handle plugin version conflicts (plugin requires newer AllBeads)?
 7. Should plugins be able to declare dependencies on other plugins?
@@ -2043,11 +2080,13 @@ Found 5 repositories with beads:
 12. How deep should Claude marketplace integration go? (read-only vs. bidirectional)
 
 ### Protocol Design
+
 13. Should the onboarding protocol support conditional steps based on OS/platform?
 14. Should there be a "headless" mode for CI/CD environments?
 15. How to version the onboarding protocol itself?
 
 ### Worktree Handling
+
 16. Should `ab context add` auto-discover all worktrees, or require explicit add?
 17. How to handle worktree creation/deletion events (git worktree add/remove)?
 18. Should issues be taggable with "branch context" even in shared mode?
@@ -2055,6 +2094,7 @@ Found 5 repositories with beads:
 20. Should sync-branch mode use a separate git remote for beads data?
 
 ### Multi-Agent Support
+
 21. How to handle conflicting agent config files (CLAUDE.md vs .cursorrules)?
 22. Should we auto-detect which agents the user has installed?
 23. How to keep agent configs in sync when one is manually edited?
@@ -2062,6 +2102,7 @@ Found 5 repositories with beads:
 25. How to handle agents that don't exist yet (future-proofing)?
 
 ### Registry Strategy
+
 26. When Claude's marketplace launches, how do we integrate?
 27. Should we support private/internal plugin registries for enterprises?
 28. How to handle plugin versioning across different registries?
@@ -2069,10 +2110,12 @@ Found 5 repositories with beads:
 ## References
 
 ### AllBeads
+
 - [PRD-00: Boss Repository Architecture](./PRD-00.md)
 - [Beads Issue Tracker](https://github.com/anthropics/beads)
 
 ### Claude Plugin Ecosystem
+
 - [Claude Code Marketplace](https://claude.ai/code/marketplace)
 - [Claude Plugin Marketplaces Documentation](https://code.claude.com/docs/en/plugin-marketplaces)
 - [Prose - AI Session Language](https://prose.md) / [GitHub](https://github.com/openprose/prose)
@@ -2081,6 +2124,7 @@ Found 5 repositories with beads:
   - [Prose plugin.json](https://github.com/openprose/prose/blob/main/.claude-plugin/plugin.json)
 
 ### Other AI Coding Agents
+
 - [Cursor](https://cursor.sh) - `.cursorrules` configuration
 - [GitHub Copilot](https://github.com/features/copilot) - `copilot-instructions.md`
 - [Aider](https://github.com/paul-gauthier/aider) - `.aider.conf.yml`
@@ -2088,6 +2132,7 @@ Found 5 repositories with beads:
 - [Google Gemini CLI](https://ai.google.dev/gemini-api) - Emerging
 
 ### Registry/Marketplace Examples
+
 - [VS Code Marketplace](https://marketplace.visualstudio.com)
 - [npm Registry](https://www.npmjs.com)
 - [Homebrew Formulae](https://formulae.brew.sh)

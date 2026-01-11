@@ -80,6 +80,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         return handle_plugin_command(plugin_cmd);
     }
 
+    // Handle sync command
+    if let Commands::Sync { all, ref context, ref message, status } = cli.command {
+        return handle_sync_command(all, context.as_deref(), message.as_deref(), status, &cli.config);
+    }
+
     // Handle agent commands that don't need graph
     if let Commands::Quickstart = cli.command {
         return handle_quickstart_command();
@@ -736,9 +741,10 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         | Commands::Quickstart
         | Commands::Setup
         | Commands::Human { .. }
-        | Commands::Plugin(_) => {
+        | Commands::Plugin(_)
+        | Commands::Sync { .. } => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Quickstart, Setup, and Human commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, and Human commands should be handled before aggregation")
         }
     }
 
@@ -2637,6 +2643,241 @@ fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// ============================================================================
+// Sync Command
+// ============================================================================
+
+fn handle_sync_command(
+    all: bool,
+    context: Option<&str>,
+    message: Option<&str>,
+    status: bool,
+    config_path: &Option<String>,
+) -> allbeads::Result<()> {
+    println!();
+    println!("{}", style::header("AllBeads Sync"));
+    println!();
+
+    // Load config
+    let config = if let Some(path) = config_path {
+        AllBeadsConfig::load(path)?
+    } else {
+        AllBeadsConfig::load_default().unwrap_or_else(|_| AllBeadsConfig::new())
+    };
+
+    // Get config directory
+    let config_dir = if let Some(path) = config_path {
+        PathBuf::from(path).parent().unwrap().to_path_buf()
+    } else {
+        AllBeadsConfig::default_path().parent().unwrap().to_path_buf()
+    };
+
+    if status {
+        // Show sync status only
+        println!("  Config directory: {}", style::path(&config_dir.display().to_string()));
+
+        // Check if config dir is a git repo
+        if config_dir.join(".git").exists() {
+            match git2::Repository::open(&config_dir) {
+                Ok(repo) => {
+                    let statuses = repo.statuses(None).ok();
+                    let changes = statuses.map(|s| s.len()).unwrap_or(0);
+                    if changes > 0 {
+                        println!("  Config status: {} uncommitted changes", style::warning(&changes.to_string()));
+                    } else {
+                        println!("  Config status: {}", style::success("clean"));
+                    }
+                }
+                Err(_) => {
+                    println!("  Config status: {}", style::dim("not a git repository"));
+                }
+            }
+        } else {
+            println!("  Config status: {}", style::dim("not tracked in git"));
+        }
+
+        // Show context status
+        if !config.contexts.is_empty() {
+            println!();
+            println!("  Contexts:");
+            for ctx in &config.contexts {
+                if let Some(ref path) = ctx.path {
+                    let beads_dir = path.join(".beads");
+                    let has_beads = beads_dir.exists();
+                    let status = if has_beads {
+                        style::success("✓ beads")
+                    } else {
+                        style::dim("no beads")
+                    };
+                    println!("    {} {} - {}", status, style::highlight(&ctx.name), path.display());
+                } else {
+                    println!("    {} {} - {}", style::dim("?"), style::highlight(&ctx.name), style::dim("(no local path)"));
+                }
+            }
+        }
+
+        return Ok(());
+    }
+
+    // Sync config directory if it's a git repo
+    if config_dir.join(".git").exists() {
+        println!("  Syncing config directory...");
+
+        match git2::Repository::open(&config_dir) {
+            Ok(repo) => {
+                // Get statuses
+                let statuses = repo.statuses(None)?;
+
+                if statuses.is_empty() {
+                    println!("    {}", style::dim("No changes to commit"));
+                } else {
+                    // Stage all changes
+                    let mut index = repo.index()?;
+                    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+                    index.write()?;
+
+                    // Create commit
+                    let tree_id = index.write_tree()?;
+                    let tree = repo.find_tree(tree_id)?;
+                    let sig = repo.signature().unwrap_or_else(|_| {
+                        git2::Signature::now("AllBeads", "allbeads@local").unwrap()
+                    });
+                    let head = repo.head().ok().and_then(|h| h.peel_to_commit().ok());
+
+                    let commit_msg = message.unwrap_or("sync");
+                    let parents: Vec<&git2::Commit> = head.iter().collect();
+
+                    repo.commit(Some("HEAD"), &sig, &sig, commit_msg, &tree, &parents)?;
+                    println!("    {} Committed changes", style::success("✓"));
+                }
+
+                // Try to pull and push if remote exists
+                if let Ok(remote) = repo.find_remote("origin") {
+                    if remote.url().is_some() {
+                        // Use git command for pull/push (git2 auth is complex)
+                        let config_dir_str = config_dir.display().to_string();
+
+                        // Pull
+                        let pull_result = std::process::Command::new("git")
+                            .args(["pull", "--rebase"])
+                            .current_dir(&config_dir_str)
+                            .output();
+
+                        match pull_result {
+                            Ok(output) if output.status.success() => {
+                                println!("    {} Pulled from remote", style::success("✓"));
+                            }
+                            Ok(output) => {
+                                let stderr = String::from_utf8_lossy(&output.stderr);
+                                if !stderr.contains("up to date") {
+                                    println!("    {} Pull warning: {}", style::warning("!"), stderr.trim());
+                                }
+                            }
+                            Err(_) => {
+                                println!("    {} Could not pull (git command failed)", style::dim("○"));
+                            }
+                        }
+
+                        // Push
+                        let push_result = std::process::Command::new("git")
+                            .args(["push"])
+                            .current_dir(&config_dir_str)
+                            .output();
+
+                        match push_result {
+                            Ok(output) if output.status.success() => {
+                                println!("    {} Pushed to remote", style::success("✓"));
+                            }
+                            Ok(_) => {
+                                println!("    {} Could not push (may need to pull first)", style::warning("!"));
+                            }
+                            Err(_) => {
+                                println!("    {} Could not push (git command failed)", style::dim("○"));
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                println!("    {} Could not sync config: {}", style::error("✗"), e);
+            }
+        }
+    } else {
+        println!("  Config directory is not tracked in git");
+        println!("  Use 'ab config init --remote <url>' to set up sync");
+    }
+
+    // Sync specific context or all contexts
+    if all || context.is_some() {
+        println!();
+
+        let contexts_to_sync: Vec<_> = if let Some(ctx_name) = context {
+            config
+                .contexts
+                .iter()
+                .filter(|c| c.name == ctx_name)
+                .collect()
+        } else {
+            config.contexts.iter().collect()
+        };
+
+        if contexts_to_sync.is_empty() {
+            if let Some(ctx_name) = context {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Context '{}' not found",
+                    ctx_name
+                )));
+            }
+            println!("  No contexts configured");
+        } else {
+            for ctx in contexts_to_sync {
+                println!("  Syncing context: {}", style::highlight(&ctx.name));
+
+                let ctx_path = match &ctx.path {
+                    Some(p) => p.clone(),
+                    None => {
+                        println!("    {} No local path configured", style::dim("○"));
+                        continue;
+                    }
+                };
+
+                let beads_dir = ctx_path.join(".beads");
+                if !beads_dir.exists() {
+                    println!("    {} No beads directory", style::dim("○"));
+                    continue;
+                }
+
+                // Run bd sync in the context directory
+                let sync_result = std::process::Command::new("bd")
+                    .arg("sync")
+                    .current_dir(&ctx_path)
+                    .output();
+
+                match sync_result {
+                    Ok(output) if output.status.success() => {
+                        println!("    {} Beads synced", style::success("✓"));
+                    }
+                    Ok(output) => {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        if stdout.contains("Sync complete") || stdout.contains("no changes") {
+                            println!("    {} Beads synced", style::success("✓"));
+                        } else {
+                            println!("    {} Sync issue: {}", style::warning("!"), stderr.trim());
+                        }
+                    }
+                    Err(_) => {
+                        println!("    {} 'bd' command not found - install beads CLI", style::error("✗"));
+                    }
+                }
+            }
+        }
+    }
+
+    println!();
     Ok(())
 }
 

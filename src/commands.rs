@@ -207,6 +207,24 @@ pub enum Commands {
     Plugin(PluginCommands),
 
     // === Daemons & Sync ===
+    /// Sync AllBeads state (config and/or context beads)
+    Sync {
+        /// Sync all contexts' beads (runs bd sync in each context)
+        #[arg(long)]
+        all: bool,
+
+        /// Specific context to sync (default: sync config only)
+        context: Option<String>,
+
+        /// Commit message for config sync
+        #[arg(short, long)]
+        message: Option<String>,
+
+        /// Show status only, don't sync
+        #[arg(long)]
+        status: bool,
+    },
+
     /// Run the Sheriff daemon (background sync)
     Sheriff {
         /// Path to manifest file (manifests/default.xml)
