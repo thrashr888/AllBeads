@@ -1765,11 +1765,11 @@ ab context setup ~/Workspace/project
 - [x] OnboardingExecutor for running command/template/append steps
 - [x] Prerequisite checking with install hints
 
-### Phase 7: Marketplace Integration
+### Phase 7: Marketplace Integration ✓
 
-- `ab marketplace add/list/sync` commands
-- Claude marketplace discovery via `claude plugin marketplace list`
-- Plugin metadata caching
+- [x] `ab plugin marketplace-list/add/sync` commands
+- [x] Claude marketplace discovery via known_marketplaces.json
+- [x] Plugin metadata loading from installed marketplaces
 
 ### Phase 8: Plugin Recommendations
 

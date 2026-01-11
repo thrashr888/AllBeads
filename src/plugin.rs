@@ -475,6 +475,122 @@ impl ClaudePluginState {
     }
 }
 
+// ============================================================================
+// Marketplace Integration
+// ============================================================================
+
+/// Registered marketplace from Claude's known_marketplaces.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisteredMarketplace {
+    pub source: MarketplaceSource,
+    #[serde(rename = "installLocation")]
+    pub install_location: String,
+    #[serde(rename = "lastUpdated")]
+    pub last_updated: Option<String>,
+}
+
+/// Marketplace source type
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "source", rename_all = "lowercase")]
+pub enum MarketplaceSource {
+    Github { repo: String },
+    Git { url: String },
+}
+
+/// Marketplace plugin entry from marketplace.json
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplacePluginEntry {
+    pub name: String,
+    pub source: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub allbeads_compatible: bool,
+}
+
+/// Parsed marketplace metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceMetadata {
+    pub name: String,
+    pub description: Option<String>,
+    pub owner: Option<MarketplaceOwner>,
+    #[serde(default)]
+    pub plugins: Vec<MarketplacePluginEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketplaceOwner {
+    pub name: String,
+    pub url: Option<String>,
+}
+
+/// Load Claude's known marketplaces
+pub fn load_known_marketplaces() -> HashMap<String, RegisteredMarketplace> {
+    let mut marketplaces = HashMap::new();
+
+    if let Some(home) = dirs::home_dir() {
+        let marketplaces_path = home
+            .join(".claude")
+            .join("plugins")
+            .join("known_marketplaces.json");
+
+        if marketplaces_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&marketplaces_path) {
+                if let Ok(parsed) =
+                    serde_json::from_str::<HashMap<String, RegisteredMarketplace>>(&content)
+                {
+                    marketplaces = parsed;
+                }
+            }
+        }
+    }
+
+    marketplaces
+}
+
+/// Load marketplace metadata from a cloned marketplace directory
+pub fn load_marketplace_metadata(install_path: &PathBuf) -> Option<MarketplaceMetadata> {
+    // Look for .claude-plugin/marketplace.json
+    let marketplace_json = install_path
+        .join(".claude-plugin")
+        .join("marketplace.json");
+
+    if marketplace_json.exists() {
+        if let Ok(content) = std::fs::read_to_string(&marketplace_json) {
+            if let Ok(metadata) = serde_json::from_str::<MarketplaceMetadata>(&content) {
+                return Some(metadata);
+            }
+        }
+    }
+
+    None
+}
+
+/// Get all plugins from all known marketplaces
+pub fn get_all_marketplace_plugins() -> Vec<(String, MarketplacePluginEntry)> {
+    let mut all_plugins = Vec::new();
+    let marketplaces = load_known_marketplaces();
+
+    for (name, marketplace) in marketplaces {
+        let install_path = if marketplace.install_location.starts_with('~') {
+            if let Some(home) = dirs::home_dir() {
+                home.join(&marketplace.install_location[2..])
+            } else {
+                PathBuf::from(&marketplace.install_location)
+            }
+        } else {
+            PathBuf::from(&marketplace.install_location)
+        };
+
+        if let Some(metadata) = load_marketplace_metadata(&install_path) {
+            for plugin in metadata.plugins {
+                all_plugins.push((name.clone(), plugin));
+            }
+        }
+    }
+
+    all_plugins
+}
+
 /// Load plugin onboarding protocol from a path
 pub fn load_onboarding(path: &PathBuf) -> Option<PluginOnboarding> {
     let onboarding_path = path.join(".claude-plugin").join("allbeads-onboarding.yaml");

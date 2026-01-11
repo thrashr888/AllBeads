@@ -507,6 +507,32 @@ pub enum PluginCommands {
         #[arg(default_value = ".")]
         path: String,
     },
+
+    /// List registered marketplaces
+    #[command(name = "marketplace-list")]
+    MarketplaceList {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Add a marketplace source
+    #[command(name = "marketplace-add")]
+    MarketplaceAdd {
+        /// Marketplace URL or GitHub repo (e.g., owner/repo)
+        source: String,
+
+        /// Custom name for the marketplace
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// Sync marketplace metadata
+    #[command(name = "marketplace-sync")]
+    MarketplaceSync {
+        /// Only sync specific marketplace
+        name: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

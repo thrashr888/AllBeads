@@ -2165,6 +2165,11 @@ fn handle_plugin_command(cmd: &PluginCommands) -> allbeads::Result<()> {
         PluginCommands::Uninstall { name, yes } => handle_plugin_uninstall(name, *yes),
         PluginCommands::Onboard { name, path, yes } => handle_plugin_onboard(name, path, *yes),
         PluginCommands::Recommend { path } => handle_plugin_recommend(path),
+        PluginCommands::MarketplaceList { json } => handle_marketplace_list(*json),
+        PluginCommands::MarketplaceAdd { source, name } => {
+            handle_marketplace_add(source, name.as_deref())
+        }
+        PluginCommands::MarketplaceSync { name } => handle_marketplace_sync(name.as_deref()),
     }
 }
 
@@ -2800,6 +2805,188 @@ fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+// ============================================================================
+// Marketplace Commands
+// ============================================================================
+
+fn handle_marketplace_list(json: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::{load_known_marketplaces, load_marketplace_metadata, MarketplaceSource};
+
+    let marketplaces = load_known_marketplaces();
+
+    if json {
+        let output: Vec<_> = marketplaces
+            .iter()
+            .map(|(name, m)| {
+                let source_str = match &m.source {
+                    MarketplaceSource::Github { repo } => format!("github:{}", repo),
+                    MarketplaceSource::Git { url } => format!("git:{}", url),
+                };
+                serde_json::json!({
+                    "name": name,
+                    "source": source_str,
+                    "install_location": m.install_location,
+                    "last_updated": m.last_updated,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", style::header("Registered Marketplaces"));
+    println!();
+
+    if marketplaces.is_empty() {
+        println!("  No marketplaces registered.");
+        println!();
+        println!("  Marketplaces are registered automatically when you install plugins via:");
+        println!("    claude plugin install <marketplace>/<plugin>");
+        return Ok(());
+    }
+
+    for (name, marketplace) in &marketplaces {
+        let source_str = match &marketplace.source {
+            MarketplaceSource::Github { repo } => format!("github:{}", repo),
+            MarketplaceSource::Git { url } => url.clone(),
+        };
+
+        println!("  {} {}", style::highlight(name), style::dim(&format!("({})", source_str)));
+
+        // Try to load metadata
+        let install_path = if marketplace.install_location.starts_with('~') {
+            if let Some(home) = dirs::home_dir() {
+                home.join(&marketplace.install_location[2..])
+            } else {
+                PathBuf::from(&marketplace.install_location)
+            }
+        } else {
+            PathBuf::from(&marketplace.install_location)
+        };
+
+        if let Some(metadata) = load_marketplace_metadata(&install_path) {
+            let allbeads_count = metadata
+                .plugins
+                .iter()
+                .filter(|p| p.allbeads_compatible)
+                .count();
+            println!(
+                "    Plugins: {} ({} AllBeads-compatible)",
+                metadata.plugins.len(),
+                allbeads_count
+            );
+        }
+
+        if let Some(ref updated) = marketplace.last_updated {
+            // Parse and format the date
+            if let Some(date) = updated.split('T').next() {
+                println!("    Updated: {}", date);
+            }
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+fn handle_marketplace_add(source: &str, name: Option<&str>) -> allbeads::Result<()> {
+    println!();
+    println!("{}", style::header("Add Marketplace"));
+    println!();
+
+    // Determine the full URL
+    let (marketplace_url, marketplace_name) = if source.contains('/') && !source.contains("://") {
+        // Assume GitHub shorthand: owner/repo
+        let url = format!("https://github.com/{}", source);
+        let inferred_name = source.split('/').last().unwrap_or(source);
+        (url, name.unwrap_or(inferred_name).to_string())
+    } else if source.starts_with("http") || source.starts_with("git@") {
+        // Full URL
+        let inferred_name = source
+            .split('/')
+            .last()
+            .unwrap_or("marketplace")
+            .trim_end_matches(".git");
+        (source.to_string(), name.unwrap_or(inferred_name).to_string())
+    } else {
+        return Err(allbeads::AllBeadsError::Config(
+            "Invalid source. Use GitHub shorthand (owner/repo) or full URL.".to_string(),
+        ));
+    };
+
+    println!("  Name: {}", style::highlight(&marketplace_name));
+    println!("  URL:  {}", style::path(&marketplace_url));
+    println!();
+
+    // Delegate to claude plugin marketplace add
+    println!("  To register this marketplace with Claude, run:");
+    println!();
+    println!("    claude plugin marketplace add {} {}", marketplace_name, marketplace_url);
+    println!();
+    println!("  After registration, plugins from this marketplace can be installed with:");
+    println!("    claude plugin install {}/PLUGIN_NAME", marketplace_name);
+
+    Ok(())
+}
+
+fn handle_marketplace_sync(name: Option<&str>) -> allbeads::Result<()> {
+    use allbeads::plugin::load_known_marketplaces;
+
+    println!();
+    println!("{}", style::header("Sync Marketplaces"));
+    println!();
+
+    let marketplaces = load_known_marketplaces();
+
+    if marketplaces.is_empty() {
+        println!("  No marketplaces registered.");
+        return Ok(());
+    }
+
+    let to_sync: Vec<_> = if let Some(n) = name {
+        marketplaces
+            .iter()
+            .filter(|(k, _)| k.as_str() == n)
+            .collect()
+    } else {
+        marketplaces.iter().collect()
+    };
+
+    if to_sync.is_empty() {
+        if let Some(n) = name {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Marketplace '{}' not found",
+                n
+            )));
+        }
+    }
+
+    for (mkt_name, _marketplace) in to_sync {
+        println!("  Syncing {}...", style::highlight(mkt_name));
+
+        // Use claude plugin marketplace sync
+        let result = std::process::Command::new("claude")
+            .args(["plugin", "marketplace", "sync", mkt_name])
+            .output();
+
+        match result {
+            Ok(output) if output.status.success() => {
+                println!("    {} Synced", style::success("✓"));
+            }
+            Ok(_) => {
+                println!("    {} Sync failed (try 'claude plugin marketplace sync {}')", style::warning("!"), mkt_name);
+            }
+            Err(_) => {
+                println!("    {} 'claude' command not found", style::error("✗"));
+            }
+        }
+    }
+
+    println!();
     Ok(())
 }
 
