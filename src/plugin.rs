@@ -999,6 +999,318 @@ pub fn check_prerequisites(
     results
 }
 
+// ============================================================================
+// Plugin Recommendation Engine
+// ============================================================================
+
+/// Reason why a plugin is recommended
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RecommendationReason {
+    /// Plugin matches detected project language
+    LanguageMatch(String),
+    /// Plugin matches detected framework
+    FrameworkMatch(String),
+    /// Plugin is related to existing config file
+    ConfigFileMatch(String),
+    /// Plugin matches dependencies
+    DependencyMatch(String),
+    /// Plugin is always recommended
+    AlwaysSuggested,
+    /// User has similar plugins installed
+    SimilarToInstalled(String),
+}
+
+impl RecommendationReason {
+    /// Get the confidence contribution for this reason
+    pub fn confidence(&self) -> f32 {
+        match self {
+            Self::LanguageMatch(_) => 0.3,
+            Self::FrameworkMatch(_) => 0.4,
+            Self::ConfigFileMatch(_) => 0.35,
+            Self::DependencyMatch(_) => 0.25,
+            Self::AlwaysSuggested => 0.2,
+            Self::SimilarToInstalled(_) => 0.15,
+        }
+    }
+
+    /// Human-readable description
+    pub fn description(&self) -> String {
+        match self {
+            Self::LanguageMatch(lang) => format!("Project uses {}", lang),
+            Self::FrameworkMatch(fw) => format!("Project uses {} framework", fw),
+            Self::ConfigFileMatch(file) => format!("Found config file: {}", file),
+            Self::DependencyMatch(dep) => format!("Uses dependency: {}", dep),
+            Self::AlwaysSuggested => "Recommended for all projects".to_string(),
+            Self::SimilarToInstalled(p) => format!("Similar to installed {}", p),
+        }
+    }
+}
+
+/// Plugin recommendation with confidence score
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginRecommendation {
+    pub plugin: CuratedPlugin,
+    pub confidence: f32,
+    pub reasons: Vec<RecommendationReason>,
+    pub is_installed: bool,
+    pub is_configured: bool,
+}
+
+impl PluginRecommendation {
+    /// Get confidence as a human-readable string
+    pub fn confidence_label(&self) -> &'static str {
+        if self.confidence >= 0.8 {
+            "High"
+        } else if self.confidence >= 0.5 {
+            "Medium"
+        } else {
+            "Low"
+        }
+    }
+}
+
+/// Detected project information
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectAnalysis {
+    /// Detected languages (e.g., "rust", "typescript", "python")
+    pub languages: Vec<String>,
+    /// Detected frameworks (e.g., "react", "next", "django")
+    pub frameworks: Vec<String>,
+    /// Config files found
+    pub config_files: Vec<String>,
+    /// Dependencies found
+    pub dependencies: Vec<String>,
+    /// Is this a monorepo?
+    pub is_monorepo: bool,
+    /// Has git repository
+    pub has_git: bool,
+    /// Has beads
+    pub has_beads: bool,
+}
+
+/// Analyze a project directory
+pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
+    let mut analysis = ProjectAnalysis::default();
+
+    // Check for git
+    analysis.has_git = path.join(".git").exists();
+
+    // Check for beads
+    analysis.has_beads = path.join(".beads").exists();
+
+    // Language detection by file extensions
+    let language_patterns = [
+        ("rust", vec!["Cargo.toml", "*.rs"]),
+        ("typescript", vec!["tsconfig.json", "*.ts", "*.tsx"]),
+        ("javascript", vec!["package.json", "*.js", "*.jsx"]),
+        ("python", vec!["pyproject.toml", "setup.py", "requirements.txt", "*.py"]),
+        ("go", vec!["go.mod", "go.sum", "*.go"]),
+        ("java", vec!["pom.xml", "build.gradle", "*.java"]),
+        ("ruby", vec!["Gemfile", "*.rb"]),
+        ("php", vec!["composer.json", "*.php"]),
+        ("c", vec!["CMakeLists.txt", "Makefile", "*.c", "*.h"]),
+        ("cpp", vec!["CMakeLists.txt", "*.cpp", "*.hpp"]),
+    ];
+
+    for (lang, patterns) in language_patterns {
+        for pattern in patterns {
+            if pattern.starts_with("*.") {
+                // Glob pattern - check if any files match
+                let glob_pattern = path.join(pattern);
+                if let Ok(entries) = glob::glob(glob_pattern.to_str().unwrap_or("")) {
+                    if entries.count() > 0 {
+                        if !analysis.languages.contains(&lang.to_string()) {
+                            analysis.languages.push(lang.to_string());
+                        }
+                        break;
+                    }
+                }
+            } else {
+                // Direct file check
+                if path.join(pattern).exists() {
+                    if !analysis.languages.contains(&lang.to_string()) {
+                        analysis.languages.push(lang.to_string());
+                    }
+                    analysis.config_files.push(pattern.to_string());
+                    break;
+                }
+            }
+        }
+    }
+
+    // Framework detection
+    let framework_patterns = [
+        ("react", vec!["package.json"], Some("react")),
+        ("next", vec!["next.config.js", "next.config.mjs", "next.config.ts"], None),
+        ("vue", vec!["vue.config.js"], None),
+        ("angular", vec!["angular.json"], None),
+        ("svelte", vec!["svelte.config.js"], None),
+        ("express", vec!["package.json"], Some("express")),
+        ("django", vec!["manage.py", "django"], None),
+        ("flask", vec!["app.py"], None),
+        ("rails", vec!["Gemfile"], Some("rails")),
+        ("spring", vec!["pom.xml"], Some("spring")),
+    ];
+
+    for (framework, files, dep_check) in framework_patterns {
+        for file in &files {
+            if path.join(file).exists() {
+                // Check if we need to verify a dependency
+                if let Some(dep) = dep_check {
+                    if let Ok(content) = std::fs::read_to_string(path.join(file)) {
+                        if content.contains(dep) {
+                            if !analysis.frameworks.contains(&framework.to_string()) {
+                                analysis.frameworks.push(framework.to_string());
+                            }
+                        }
+                    }
+                } else {
+                    if !analysis.frameworks.contains(&framework.to_string()) {
+                        analysis.frameworks.push(framework.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Config file detection
+    let config_files = [
+        ".prettierrc", ".prettierrc.json", "prettier.config.js",
+        ".eslintrc", ".eslintrc.json", "eslint.config.js",
+        "jest.config.js", "jest.config.ts",
+        "pytest.ini", "setup.cfg",
+        ".github/workflows", ".gitlab-ci.yml",
+        "Dockerfile", "docker-compose.yml",
+        "terraform", ".terraform",
+        "kubernetes", "k8s",
+    ];
+
+    for config in config_files {
+        if path.join(config).exists() {
+            analysis.config_files.push(config.to_string());
+        }
+    }
+
+    // Monorepo detection
+    let monorepo_indicators = [
+        "lerna.json",
+        "pnpm-workspace.yaml",
+        "rush.json",
+        "nx.json",
+        "turbo.json",
+    ];
+
+    for indicator in monorepo_indicators {
+        if path.join(indicator).exists() {
+            analysis.is_monorepo = true;
+            break;
+        }
+    }
+
+    // Also check for workspaces in package.json or Cargo.toml
+    if let Ok(content) = std::fs::read_to_string(path.join("package.json")) {
+        if content.contains("\"workspaces\"") {
+            analysis.is_monorepo = true;
+        }
+    }
+    if let Ok(content) = std::fs::read_to_string(path.join("Cargo.toml")) {
+        if content.contains("[workspace]") {
+            analysis.is_monorepo = true;
+        }
+    }
+
+    // Parse dependencies from package.json
+    if let Ok(content) = std::fs::read_to_string(path.join("package.json")) {
+        if let Ok(pkg) = serde_json::from_str::<serde_json::Value>(&content) {
+            for key in ["dependencies", "devDependencies"] {
+                if let Some(deps) = pkg.get(key).and_then(|d| d.as_object()) {
+                    for dep_name in deps.keys() {
+                        analysis.dependencies.push(dep_name.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // Parse dependencies from Cargo.toml
+    if let Ok(content) = std::fs::read_to_string(path.join("Cargo.toml")) {
+        if let Ok(cargo) = toml::from_str::<toml::Value>(&content) {
+            for key in ["dependencies", "dev-dependencies"] {
+                if let Some(deps) = cargo.get(key).and_then(|d| d.as_table()) {
+                    for dep_name in deps.keys() {
+                        analysis.dependencies.push(dep_name.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    analysis
+}
+
+/// Generate plugin recommendations for a project
+pub fn recommend_plugins(
+    project_path: &PathBuf,
+    registry: &PluginRegistry,
+    claude_state: &ClaudePluginState,
+) -> Vec<PluginRecommendation> {
+    let analysis = analyze_project(project_path);
+    let mut recommendations: Vec<PluginRecommendation> = Vec::new();
+
+    for plugin in &registry.plugins {
+        let mut reasons: Vec<RecommendationReason> = Vec::new();
+
+        // Check always_suggest
+        if plugin.relevance.always_suggest {
+            reasons.push(RecommendationReason::AlwaysSuggested);
+        }
+
+        // Check language matches
+        for lang in &plugin.relevance.languages {
+            if analysis.languages.iter().any(|l| l.eq_ignore_ascii_case(lang)) {
+                reasons.push(RecommendationReason::LanguageMatch(lang.clone()));
+            }
+        }
+
+        // Check framework matches
+        for fw in &plugin.relevance.frameworks {
+            if analysis.frameworks.iter().any(|f| f.eq_ignore_ascii_case(fw)) {
+                reasons.push(RecommendationReason::FrameworkMatch(fw.clone()));
+            }
+        }
+
+        // Check file matches
+        for file in &plugin.relevance.files {
+            if analysis.config_files.iter().any(|f| f.contains(file)) {
+                reasons.push(RecommendationReason::ConfigFileMatch(file.clone()));
+            }
+        }
+
+        // Only include if there are reasons to recommend
+        if !reasons.is_empty() {
+            // Calculate confidence (capped at 1.0)
+            let confidence: f32 = reasons.iter().map(|r| r.confidence()).sum::<f32>().min(1.0);
+
+            // Check installation status
+            let is_installed = claude_state.is_installed(&plugin.name);
+            let is_configured = claude_state.is_enabled(&plugin.name);
+
+            recommendations.push(PluginRecommendation {
+                plugin: plugin.clone(),
+                confidence,
+                reasons,
+                is_installed,
+                is_configured,
+            });
+        }
+    }
+
+    // Sort by confidence (highest first)
+    recommendations.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+
+    recommendations
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1017,5 +1329,19 @@ mod tests {
         let files = vec!["package.json".to_string()];
         let recommended = registry.recommend(&languages, &files);
         assert!(!recommended.is_empty());
+    }
+
+    #[test]
+    fn test_recommendation_reason_confidence() {
+        assert!(RecommendationReason::FrameworkMatch("react".to_string()).confidence() > 0.0);
+        assert!(RecommendationReason::AlwaysSuggested.confidence() > 0.0);
+    }
+
+    #[test]
+    fn test_project_analysis_empty() {
+        let analysis = ProjectAnalysis::default();
+        assert!(!analysis.has_git);
+        assert!(!analysis.has_beads);
+        assert!(analysis.languages.is_empty());
     }
 }

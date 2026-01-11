@@ -2736,7 +2736,9 @@ fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<
 }
 
 fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
-    use allbeads::plugin::PluginRegistry;
+    use allbeads::plugin::{
+        analyze_project, recommend_plugins, ClaudePluginState, PluginRegistry,
+    };
     use std::path::Path;
 
     let project_path = Path::new(path).canonicalize().map_err(|e| {
@@ -2746,63 +2748,104 @@ fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
     println!();
     println!("{}", style::header("Plugin Recommendations"));
     println!();
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
-    // Detect project characteristics
-    let mut languages = Vec::new();
-    let mut files = Vec::new();
+    // Analyze project
+    let analysis = analyze_project(&project_path);
 
-    let checks = [
-        ("package.json", "javascript"),
-        ("tsconfig.json", "typescript"),
-        ("Cargo.toml", "rust"),
-        ("go.mod", "go"),
-        ("pyproject.toml", "python"),
-        (".github", ""),
-        (".beads", ""),
-    ];
+    // Show detected project info
+    println!("  {}", style::header("Project Analysis"));
+    println!();
 
-    for (file, lang) in checks {
-        if project_path.join(file).exists() {
-            files.push(file.to_string());
-            if !lang.is_empty() && !languages.contains(&lang.to_string()) {
-                languages.push(lang.to_string());
-            }
-        }
+    if !analysis.languages.is_empty() {
+        println!(
+            "  Languages: {}",
+            style::highlight(&analysis.languages.join(", "))
+        );
     }
+    if !analysis.frameworks.is_empty() {
+        println!(
+            "  Frameworks: {}",
+            style::highlight(&analysis.frameworks.join(", "))
+        );
+    }
+    if analysis.is_monorepo {
+        println!("  Type: {}", style::highlight("Monorepo"));
+    }
+    if analysis.has_git {
+        print!("  Git: {}", style::success("✓"));
+    }
+    if analysis.has_beads {
+        print!("  Beads: {}", style::success("✓"));
+    }
+    if analysis.has_git || analysis.has_beads {
+        println!();
+    }
+    println!();
 
+    // Get recommendations
     let registry = PluginRegistry::builtin();
-    let recommended = registry.recommend(&languages, &files);
+    let claude_state = ClaudePluginState::load();
+    let recommendations = recommend_plugins(&project_path, &registry, &claude_state);
 
-    if recommended.is_empty() {
+    if recommendations.is_empty() {
         println!("  No specific plugins recommended for this project.");
         println!("  Use 'ab plugin list --all' to browse available plugins.");
     } else {
-        println!("  Based on your project, we recommend:");
+        println!("  {}", style::header("Recommended Plugins"));
         println!();
-        for plugin in recommended {
-            let reason = if plugin.relevance.always_suggest {
-                "always recommended".to_string()
-            } else if plugin
-                .relevance
-                .languages
-                .iter()
-                .any(|l| languages.contains(l))
-            {
-                format!("for {}", languages.join(", "))
+
+        for rec in &recommendations {
+            // Status indicator
+            let status_icon = if rec.is_configured {
+                style::success("✓")
+            } else if rec.is_installed {
+                style::warning("○")
             } else {
-                "based on project files".to_string()
+                style::dim("·")
+            };
+
+            // Confidence indicator
+            let confidence_bar = match rec.confidence_label() {
+                "High" => format!("{}", style::success("███")),
+                "Medium" => format!("{}", style::warning("██░")),
+                _ => format!("{}", style::dim("█░░")),
             };
 
             println!(
-                "  {} {} - {}",
-                style::success("→"),
-                style::highlight(&plugin.name),
-                plugin.description
+                "  {} {} {} - {}",
+                status_icon,
+                confidence_bar,
+                style::highlight(&rec.plugin.name),
+                rec.plugin.description
             );
-            println!("      {}", style::dim(&format!("({})", reason)));
+
+            // Show reasons
+            let reason_strs: Vec<String> = rec.reasons.iter().map(|r| r.description()).collect();
+            println!(
+                "      {} {} ({}% confidence)",
+                style::dim("→"),
+                style::dim(&reason_strs.join(", ")),
+                (rec.confidence * 100.0) as u32
+            );
         }
+
+        println!();
+        println!("  Legend: {} configured  {} installed  {} not installed",
+            style::success("✓"),
+            style::warning("○"),
+            style::dim("·")
+        );
+        println!(
+            "          {} high  {} medium  {} low confidence",
+            style::success("███"),
+            style::warning("██░"),
+            style::dim("█░░")
+        );
     }
 
     Ok(())
