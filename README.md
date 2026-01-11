@@ -66,17 +66,41 @@ See [DEMO.md](DEMO.md) for usage examples.
 
 ### Installation
 
-```bash
-# Clone the repository
-git clone https://github.com/thrashr888/AllBeads.git
-cd AllBeads
+#### Pre-built Binaries (Recommended)
 
-# Build the project (requires Rust toolchain)
-cargo build --release
+Download the latest release for your platform from [GitHub Releases](https://github.com/thrashr888/AllBeads/releases):
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/thrashr888/AllBeads/releases/latest/download/allbeads-macos-aarch64 -o ab
+chmod +x ab && sudo mv ab /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/thrashr888/AllBeads/releases/latest/download/allbeads-macos-x86_64 -o ab
+chmod +x ab && sudo mv ab /usr/local/bin/
+
+# Linux (x86_64)
+curl -L https://github.com/thrashr888/AllBeads/releases/latest/download/allbeads-linux-x86_64 -o ab
+chmod +x ab && sudo mv ab /usr/local/bin/
+
+# Verify installation
+ab --version
+```
+
+#### From Source
+
+```bash
+# Clone and build (requires Rust toolchain)
+git clone https://github.com/thrashr888/AllBeads.git
+cd AllBeads && cargo build --release
 
 # Add to PATH or create alias
 alias ab='./target/release/allbeads'
+```
 
+#### Initialize
+
+```bash
 # Initialize AllBeads (creates config directory and file)
 ab init
 ```
