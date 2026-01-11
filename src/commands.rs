@@ -196,6 +196,11 @@ pub enum Commands {
     #[command(subcommand)]
     Swarm(SwarmCommands),
 
+    // === Distributed Configuration ===
+    /// Manage distributed configuration sync
+    #[command(subcommand)]
+    Config(ConfigCommands),
+
     // === Daemons & Sync ===
     /// Run the Sheriff daemon (background sync)
     Sheriff {
@@ -344,6 +349,58 @@ pub enum SwarmCommands {
     Resume {
         /// Agent ID
         id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommands {
+    /// Initialize distributed config sync with a git remote
+    Init {
+        /// Remote repository URL for config sync
+        #[arg(long, conflicts_with = "gist")]
+        remote: Option<String>,
+
+        /// GitHub Gist ID for lightweight config sync
+        #[arg(long, conflicts_with = "remote")]
+        gist: Option<String>,
+
+        /// Force re-initialization (overwrites existing remote)
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Pull config changes from remote
+    Pull {
+        /// Force pull, discarding local changes
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Push config changes to remote
+    Push {
+        /// Commit message
+        #[arg(short, long)]
+        message: Option<String>,
+
+        /// Force push (use with caution)
+        #[arg(short, long)]
+        force: bool,
+    },
+
+    /// Show config sync status
+    Status,
+
+    /// Show config diff with remote
+    Diff,
+
+    /// Clone config from a remote to a new machine
+    Clone {
+        /// Remote repository URL or Gist ID
+        source: String,
+
+        /// Target directory (default: ~/.config/allbeads)
+        #[arg(short, long)]
+        target: Option<String>,
     },
 }
 

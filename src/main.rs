@@ -70,6 +70,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         return handle_swarm_command(swarm_cmd);
     }
 
+    // Handle config sync commands (don't need graph)
+    if let Commands::Config(ref config_cmd) = cli.command {
+        return handle_config_command(config_cmd);
+    }
+
     // Handle agent commands that don't need graph
     if let Commands::Quickstart = cli.command {
         return handle_quickstart_command();
@@ -722,11 +727,12 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         | Commands::Jira(_)
         | Commands::GitHub(_)
         | Commands::Swarm(_)
+        | Commands::Config(_)
         | Commands::Quickstart
         | Commands::Setup
         | Commands::Human { .. } => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Quickstart, Setup, and Human commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Quickstart, Setup, and Human commands should be handled before aggregation")
         }
     }
 
@@ -1630,6 +1636,505 @@ fn calculate_similarity(s1: &str, s2: &str) -> f64 {
     let union = words1.union(&words2).count();
 
     intersection as f64 / union as f64
+}
+
+// === Distributed Configuration Commands (Phase 4 of PRD-01) ===
+
+fn handle_config_command(cmd: &ConfigCommands) -> allbeads::Result<()> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| allbeads::AllBeadsError::Config("Could not determine config directory".to_string()))?
+        .join("allbeads");
+
+    match cmd {
+        ConfigCommands::Init { remote, gist, force } => {
+            handle_config_init(&config_dir, remote.as_deref(), gist.as_deref(), *force)?;
+        }
+        ConfigCommands::Pull { force } => {
+            handle_config_pull(&config_dir, *force)?;
+        }
+        ConfigCommands::Push { message, force } => {
+            handle_config_push(&config_dir, message.as_deref(), *force)?;
+        }
+        ConfigCommands::Status => {
+            handle_config_status(&config_dir)?;
+        }
+        ConfigCommands::Diff => {
+            handle_config_diff(&config_dir)?;
+        }
+        ConfigCommands::Clone { source, target } => {
+            handle_config_clone(source, target.as_deref())?;
+        }
+    }
+    Ok(())
+}
+
+/// Initialize distributed config sync
+fn handle_config_init(
+    config_dir: &PathBuf,
+    remote: Option<&str>,
+    gist: Option<&str>,
+    force: bool,
+) -> allbeads::Result<()> {
+    use git2::Repository;
+
+    // Ensure config directory exists
+    std::fs::create_dir_all(config_dir).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to create config directory: {}", e))
+    })?;
+
+    let git_dir = config_dir.join(".git");
+    let is_repo = git_dir.exists();
+
+    if is_repo && !force {
+        // Check if remote already configured
+        let repo = Repository::open(config_dir).map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
+        })?;
+
+        let existing_remote = repo.find_remote("origin")
+            .ok()
+            .and_then(|r| r.url().map(|u| u.to_string()));
+
+        if let Some(url) = existing_remote {
+            println!();
+            println!("{}", style::header("Config Sync Already Initialized"));
+            println!();
+            println!("  Remote: {}", style::path(&url));
+            println!();
+            println!("  Use --force to re-initialize with a new remote.");
+            return Ok(());
+        }
+    }
+
+    println!();
+    println!("{}", style::header("Initialize Config Sync"));
+    println!();
+
+    // Determine remote URL
+    let remote_url = if let Some(gist_id) = gist {
+        // GitHub Gist URL format
+        format!("https://gist.github.com/{}.git", gist_id)
+    } else if let Some(url) = remote {
+        url.to_string()
+    } else {
+        // No remote specified - just initialize local git repo
+        println!("  Initializing local config repository...");
+
+        if !is_repo {
+            Repository::init(config_dir).map_err(|e| {
+                allbeads::AllBeadsError::Git(format!("Failed to init config repo: {}", e))
+            })?;
+            println!("  {} Initialized git repository", style::success("✓"));
+        } else {
+            println!("  {} Git repository already exists", style::dim("○"));
+        }
+
+        // Create .gitignore
+        let gitignore = config_dir.join(".gitignore");
+        if !gitignore.exists() {
+            std::fs::write(&gitignore, "# Ignore local-only files\n*.local\n*.local.yaml\ncache/\n").ok();
+            println!("  {} Created .gitignore", style::success("✓"));
+        }
+
+        println!();
+        println!("  Config sync initialized (local only).");
+        println!("  To add a remote: ab config init --remote=<url>");
+        return Ok(());
+    };
+
+    println!("  Remote: {}", style::path(&remote_url));
+
+    // Initialize or reinitialize
+    if !is_repo {
+        Repository::init(config_dir).map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to init config repo: {}", e))
+        })?;
+        println!("  {} Initialized git repository", style::success("✓"));
+    }
+
+    let repo = Repository::open(config_dir).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
+    })?;
+
+    // Remove existing origin if force
+    if force {
+        if repo.find_remote("origin").is_ok() {
+            repo.remote_delete("origin").map_err(|e| {
+                allbeads::AllBeadsError::Git(format!("Failed to remove existing remote: {}", e))
+            })?;
+            println!("  {} Removed existing remote", style::dim("○"));
+        }
+    }
+
+    // Add remote
+    repo.remote("origin", &remote_url).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to add remote: {}", e))
+    })?;
+    println!("  {} Added remote 'origin'", style::success("✓"));
+
+    // Create .gitignore
+    let gitignore = config_dir.join(".gitignore");
+    if !gitignore.exists() {
+        std::fs::write(&gitignore, "# Ignore local-only files\n*.local\n*.local.yaml\ncache/\n").ok();
+        println!("  {} Created .gitignore", style::success("✓"));
+    }
+
+    // Initial commit if needed
+    let mut index = repo.index().map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to get index: {}", e))
+    })?;
+
+    // Add all files
+    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to add files: {}", e))
+    })?;
+    index.write().map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to write index: {}", e))
+    })?;
+
+    // Check if there are any commits
+    if repo.head().is_err() {
+        // No commits yet - create initial commit
+        let tree_id = index.write_tree().map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to write tree: {}", e))
+        })?;
+        let tree = repo.find_tree(tree_id).map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to find tree: {}", e))
+        })?;
+
+        let sig = git2::Signature::now("AllBeads", "noreply@allbeads.dev").map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to create signature: {}", e))
+        })?;
+
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial config sync setup", &tree, &[]).map_err(|e| {
+            allbeads::AllBeadsError::Git(format!("Failed to create initial commit: {}", e))
+        })?;
+        println!("  {} Created initial commit", style::success("✓"));
+    }
+
+    println!();
+    println!("  Config sync initialized successfully!");
+    println!();
+    println!("  Next steps:");
+    println!("    ab config push      # Push current config");
+    println!("    ab config status    # Check sync status");
+
+    Ok(())
+}
+
+/// Pull config changes from remote
+fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()> {
+    use git2::Repository;
+
+    let git_dir = config_dir.join(".git");
+    if !git_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Config sync not initialized. Run 'ab config init --remote=<url>' first.".to_string()
+        ));
+    }
+
+    println!();
+    println!("{}", style::header("Pull Config Changes"));
+    println!();
+
+    let repo = Repository::open(config_dir).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
+    })?;
+
+    // Check if remote exists
+    let remote = repo.find_remote("origin").map_err(|_| {
+        allbeads::AllBeadsError::Config(
+            "No remote configured. Run 'ab config init --remote=<url>' first.".to_string()
+        )
+    })?;
+
+    let remote_url = remote.url().unwrap_or("unknown");
+    println!("  Remote: {}", style::path(remote_url));
+
+    // Run git pull
+    let output = std::process::Command::new("git")
+        .args(if force {
+            vec!["-C", config_dir.to_str().unwrap(), "pull", "--force", "origin", "main"]
+        } else {
+            vec!["-C", config_dir.to_str().unwrap(), "pull", "origin", "main"]
+        })
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to run git pull: {}", e)))?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("Already up to date") {
+            println!("  {} Already up to date", style::success("✓"));
+        } else {
+            println!("  {} Pulled changes", style::success("✓"));
+            println!();
+            println!("{}", String::from_utf8_lossy(&output.stdout));
+        }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("fatal") || stderr.contains("error") {
+            return Err(allbeads::AllBeadsError::Git(format!("Pull failed: {}", stderr)));
+        }
+        println!("  {}", style::warning(&format!("Warning: {}", stderr.trim())));
+    }
+
+    Ok(())
+}
+
+/// Push config changes to remote
+fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) -> allbeads::Result<()> {
+    use git2::Repository;
+
+    let git_dir = config_dir.join(".git");
+    if !git_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Config sync not initialized. Run 'ab config init --remote=<url>' first.".to_string()
+        ));
+    }
+
+    println!();
+    println!("{}", style::header("Push Config Changes"));
+    println!();
+
+    let repo = Repository::open(config_dir).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
+    })?;
+
+    // Check if remote exists
+    let remote = repo.find_remote("origin").map_err(|_| {
+        allbeads::AllBeadsError::Config(
+            "No remote configured. Run 'ab config init --remote=<url>' first.".to_string()
+        )
+    })?;
+
+    let remote_url = remote.url().unwrap_or("unknown");
+    println!("  Remote: {}", style::path(remote_url));
+
+    // Stage all changes
+    let output = std::process::Command::new("git")
+        .args(["-C", config_dir.to_str().unwrap(), "add", "-A"])
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to stage changes: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(allbeads::AllBeadsError::Git(
+            format!("Failed to stage changes: {}", String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+
+    // Check for changes
+    let status_output = std::process::Command::new("git")
+        .args(["-C", config_dir.to_str().unwrap(), "status", "--porcelain"])
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to check status: {}", e)))?;
+
+    let has_changes = !String::from_utf8_lossy(&status_output.stdout).trim().is_empty();
+
+    if has_changes {
+        // Commit changes
+        let commit_msg = message.unwrap_or("Update config");
+        let output = std::process::Command::new("git")
+            .args(["-C", config_dir.to_str().unwrap(), "commit", "-m", commit_msg])
+            .output()
+            .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to commit: {}", e)))?;
+
+        if output.status.success() {
+            println!("  {} Committed changes", style::success("✓"));
+        }
+    } else {
+        println!("  {} No changes to commit", style::dim("○"));
+    }
+
+    // Push to remote
+    let push_args = if force {
+        vec!["-C", config_dir.to_str().unwrap(), "push", "--force", "-u", "origin", "main"]
+    } else {
+        vec!["-C", config_dir.to_str().unwrap(), "push", "-u", "origin", "main"]
+    };
+
+    let output = std::process::Command::new("git")
+        .args(&push_args)
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to push: {}", e)))?;
+
+    if output.status.success() {
+        println!("  {} Pushed to remote", style::success("✓"));
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("Everything up-to-date") {
+            println!("  {} Already up to date", style::success("✓"));
+        } else if stderr.contains("fatal") || stderr.contains("error") {
+            return Err(allbeads::AllBeadsError::Git(format!("Push failed: {}", stderr)));
+        }
+    }
+
+    Ok(())
+}
+
+/// Show config sync status
+fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
+    use git2::Repository;
+
+    println!();
+    println!("{}", style::header("Config Sync Status"));
+    println!();
+
+    println!("  Config dir: {}", style::path(&config_dir.display().to_string()));
+
+    let git_dir = config_dir.join(".git");
+    if !git_dir.exists() {
+        println!("  Status:     {}", style::warning("Not initialized"));
+        println!();
+        println!("  Run 'ab config init --remote=<url>' to initialize.");
+        return Ok(());
+    }
+
+    let repo = Repository::open(config_dir).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
+    })?;
+
+    // Check remote
+    if let Ok(remote) = repo.find_remote("origin") {
+        if let Some(url) = remote.url() {
+            println!("  Remote:     {}", style::path(url));
+        }
+    } else {
+        println!("  Remote:     {}", style::warning("Not configured"));
+    }
+
+    // Get current branch
+    if let Ok(head) = repo.head() {
+        if let Some(name) = head.shorthand() {
+            println!("  Branch:     {}", name);
+        }
+    }
+
+    // Check status
+    let output = std::process::Command::new("git")
+        .args(["-C", config_dir.to_str().unwrap(), "status", "--porcelain"])
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to check status: {}", e)))?;
+
+    let status_output = String::from_utf8_lossy(&output.stdout);
+    let changes: Vec<&str> = status_output.lines().collect();
+
+    if changes.is_empty() {
+        println!("  Changes:    {}", style::success("Clean"));
+    } else {
+        println!("  Changes:    {} modified files", changes.len());
+        for change in changes.iter().take(5) {
+            println!("              {}", change);
+        }
+        if changes.len() > 5 {
+            println!("              ... and {} more", changes.len() - 5);
+        }
+    }
+
+    // Check ahead/behind
+    let output = std::process::Command::new("git")
+        .args(["-C", config_dir.to_str().unwrap(), "rev-list", "--left-right", "--count", "HEAD...origin/main"])
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            let counts = String::from_utf8_lossy(&output.stdout);
+            let parts: Vec<&str> = counts.trim().split('\t').collect();
+            if parts.len() == 2 {
+                let ahead: i32 = parts[0].parse().unwrap_or(0);
+                let behind: i32 = parts[1].parse().unwrap_or(0);
+
+                if ahead > 0 && behind > 0 {
+                    println!("  Sync:       {} ahead, {} behind (diverged)", ahead, behind);
+                } else if ahead > 0 {
+                    println!("  Sync:       {} commits ahead", ahead);
+                } else if behind > 0 {
+                    println!("  Sync:       {} commits behind", behind);
+                } else {
+                    println!("  Sync:       {}", style::success("Up to date"));
+                }
+            }
+        }
+    }
+
+    println!();
+
+    Ok(())
+}
+
+/// Show diff with remote
+fn handle_config_diff(config_dir: &PathBuf) -> allbeads::Result<()> {
+    let git_dir = config_dir.join(".git");
+    if !git_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Config sync not initialized.".to_string()
+        ));
+    }
+
+    println!();
+    println!("{}", style::header("Config Diff"));
+    println!();
+
+    // Show local changes
+    let output = std::process::Command::new("git")
+        .args(["-C", config_dir.to_str().unwrap(), "diff", "--stat"])
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to get diff: {}", e)))?;
+
+    let diff = String::from_utf8_lossy(&output.stdout);
+    if diff.trim().is_empty() {
+        println!("  No local changes.");
+    } else {
+        println!("{}", diff);
+    }
+
+    Ok(())
+}
+
+/// Clone config from remote
+fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<()> {
+    let target_dir = if let Some(t) = target {
+        PathBuf::from(t)
+    } else {
+        dirs::config_dir()
+            .ok_or_else(|| allbeads::AllBeadsError::Config("Could not determine config directory".to_string()))?
+            .join("allbeads")
+    };
+
+    println!();
+    println!("{}", style::header("Clone Config"));
+    println!();
+
+    // Check if target exists
+    if target_dir.exists() && target_dir.join(".git").exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Config already exists at {}. Use 'ab config pull' to update.",
+            target_dir.display()
+        )));
+    }
+
+    // Determine if source is a Gist ID or full URL
+    let remote_url = if source.starts_with("http") || source.starts_with("git@") {
+        source.to_string()
+    } else {
+        // Assume it's a Gist ID
+        format!("https://gist.github.com/{}.git", source)
+    };
+
+    println!("  Source: {}", style::path(&remote_url));
+    println!("  Target: {}", style::path(&target_dir.display().to_string()));
+    println!();
+
+    // Clone the repository
+    git2::Repository::clone(&remote_url, &target_dir).map_err(|e| {
+        allbeads::AllBeadsError::Git(format!("Failed to clone config: {}", e))
+    })?;
+
+    println!("  {} Config cloned successfully!", style::success("✓"));
+    println!();
+    println!("  Your configuration is now synced from the remote.");
+    println!("  Use 'ab config pull' to get updates.");
+
+    Ok(())
 }
 
 fn handle_context_command(
