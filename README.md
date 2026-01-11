@@ -55,48 +55,6 @@ External system adapters:
 - **GitHub**: GraphQL + REST API for issue management
 - **Plugin Architecture**: Extensible for Linear, Asana, etc.
 
-## Current State
-
-**Phase 1 (The Reader) - Complete**
-- Multi-repository aggregation from git remotes (SSH and HTTPS)
-- SQLite cache layer with automatic expiration
-- Context-aware filtering (@work, @personal, etc.)
-- Full CLI with filtering, search, and display commands
-- Kanban TUI with keyboard navigation
-- bd JSONL format compatibility
-
-**Phase 2 (The Mailroom) - Complete**
-- Message types (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
-- Postmaster daemon with SQLite storage
-- Message routing and delivery
-- Resource locking protocol
-- TUI Mail view integration
-
-**Phase 3 (The Writer) - Complete**
-- Sheriff daemon with git sync (foreground mode)
-- `allbeads init --remote` for existing repositories
-- Janitor workflow for automated issue discovery
-- Full write-back to Boss repos
-
-**Phase 4 (Enterprise Integration) - Complete**
-- JIRA bi-directional sync (REST API adapter)
-- GitHub Issues integration (GraphQL + REST)
-- External sync in Sheriff daemon
-- CLI commands: `ab jira`, `ab github`
-- Plugin architecture for extensibility
-
-**Phase 5 (Context Onboarding & Plugins) - Complete**
-- Plugin system with Claude marketplace integration
-- Multi-agent support (Claude, Cursor, Copilot, Aider)
-- Plugin recommendations based on project analysis
-- Coding agent configuration sync
-- Unified sync command (`ab sync`)
-
-**Phase 6 (The Swarm) - In Progress**
-- Agent lifecycle management
-- Cost tracking and budget management
-- Advanced dependency resolution
-
 See [DEMO.md](DEMO.md) for usage examples.
 
 ## Getting Started
@@ -108,21 +66,6 @@ See [DEMO.md](DEMO.md) for usage examples.
 
 ### Installation
 
-#### Homebrew (macOS/Linux)
-
-```bash
-# Add the tap
-brew tap thrashr888/allbeads
-
-# Install AllBeads
-brew install allbeads
-
-# Verify installation
-ab --version
-```
-
-#### From Source
-
 ```bash
 # Clone the repository
 git clone https://github.com/thrashr888/AllBeads.git
@@ -133,11 +76,7 @@ cargo build --release
 
 # Add to PATH or create alias
 alias ab='./target/release/allbeads'
-```
 
-#### Initialize
-
-```bash
 # Initialize AllBeads (creates config directory and file)
 ab init
 ```
