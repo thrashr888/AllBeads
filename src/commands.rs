@@ -196,6 +196,10 @@ pub enum Commands {
     #[command(subcommand)]
     Swarm(SwarmCommands),
 
+    /// Coding agent configuration (Claude Code, Cursor, Copilot, etc.)
+    #[command(subcommand, name = "agent")]
+    CodingAgent(CodingAgentCommands),
+
     // === Distributed Configuration ===
     /// Manage distributed configuration sync
     #[command(subcommand)]
@@ -729,6 +733,62 @@ pub enum WorktreeCommands {
     /// Show worktree details and beads status
     Status {
         /// Path to worktree (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CodingAgentCommands {
+    /// List configured coding agents
+    List {
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Initialize a coding agent configuration
+    Init {
+        /// Agent name (claude, cursor, copilot, aider)
+        agent: String,
+
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Sync AllBeads context to all configured agents
+    Sync {
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Only sync specific agent
+        #[arg(short, long)]
+        agent: Option<String>,
+    },
+
+    /// Preview agent configuration
+    Preview {
+        /// Agent name (claude, cursor, copilot, aider)
+        agent: String,
+
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+
+    /// Show agent detection status
+    Detect {
+        /// Path to project (default: current directory)
         #[arg(default_value = ".")]
         path: String,
     },

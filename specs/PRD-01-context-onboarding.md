@@ -1780,12 +1780,14 @@ ab context setup ~/Workspace/project
 - [x] recommend_plugins() function with scoring and sorting
 - [x] Enhanced ab plugin recommend output with analysis and reasons
 
-### Phase 9: Multi-Agent Support
+### Phase 9: Multi-Agent Support ✓
 
-- Agent abstraction layer (`AgentConfig` trait)
-- Agent detection and initialization
-- Cross-agent context sync (`ab agent sync`)
-- Agent-specific plugin steps
+- [x] CodingAgent enum (Claude, Cursor, Copilot, Aider, Codex, Gemini)
+- [x] AgentStatus struct with detection and sync status
+- [x] detect_agents() for finding configured agents
+- [x] init_agent() for creating agent configs
+- [x] sync_agent_context() for syncing AllBeads context
+- [x] Commands: ab agent list/init/sync/preview/detect
 
 ### Phase 10: Registry Integration (future idea)
 

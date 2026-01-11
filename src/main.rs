@@ -80,6 +80,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         return handle_plugin_command(plugin_cmd);
     }
 
+    // Handle coding agent commands (don't need graph)
+    if let Commands::CodingAgent(ref agent_cmd) = cli.command {
+        return handle_coding_agent_command(agent_cmd);
+    }
+
     // Handle sync command
     if let Commands::Sync { all, ref context, ref message, status } = cli.command {
         return handle_sync_command(all, context.as_deref(), message.as_deref(), status, &cli.config);
@@ -742,6 +747,7 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         | Commands::Setup
         | Commands::Human { .. }
         | Commands::Plugin(_)
+        | Commands::CodingAgent(_)
         | Commands::Sync { .. } => {
             // Handled earlier in the function
             unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, and Human commands should be handled before aggregation")
@@ -3030,6 +3036,317 @@ fn handle_marketplace_sync(name: Option<&str>) -> allbeads::Result<()> {
     }
 
     println!();
+    Ok(())
+}
+
+// ============================================================================
+// Coding Agent Commands
+// ============================================================================
+
+fn handle_coding_agent_command(cmd: &commands::CodingAgentCommands) -> allbeads::Result<()> {
+    use commands::CodingAgentCommands;
+
+    match cmd {
+        CodingAgentCommands::List { path, json } => handle_agent_list(path, *json),
+        CodingAgentCommands::Init { agent, path, yes } => handle_agent_init(agent, path, *yes),
+        CodingAgentCommands::Sync { path, agent } => handle_agent_sync(path, agent.as_deref()),
+        CodingAgentCommands::Preview { agent, path } => handle_agent_preview(agent, path),
+        CodingAgentCommands::Detect { path } => handle_agent_detect(path),
+    }
+}
+
+fn handle_agent_list(path: &str, json: bool) -> allbeads::Result<()> {
+    use allbeads::coding_agent::detect_agents;
+    use std::path::Path;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    let agents = detect_agents(&project_path);
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&agents).unwrap_or_default());
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", style::header("Coding Agents"));
+    println!();
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    let configured: Vec<_> = agents.iter().filter(|a| a.configured).collect();
+    let not_configured: Vec<_> = agents.iter().filter(|a| !a.configured).collect();
+
+    if configured.is_empty() {
+        println!("  No coding agents configured.");
+        println!();
+    } else {
+        println!("  {}", style::header("Configured"));
+        println!();
+        for status in &configured {
+            let sync_icon = if status.has_allbeads_context {
+                style::success("✓")
+            } else {
+                style::dim("○")
+            };
+            println!(
+                "  {} {} {}",
+                sync_icon,
+                style::highlight(status.agent.display_name()),
+                style::dim(&format!("({})", status.config_path.as_deref().unwrap_or("")))
+            );
+        }
+        println!();
+    }
+
+    if !not_configured.is_empty() {
+        println!("  {}", style::header("Available"));
+        println!();
+        for status in &not_configured {
+            println!(
+                "  {} {} {}",
+                style::dim("·"),
+                status.agent.display_name(),
+                style::dim(&format!("({})", status.agent.primary_config()))
+            );
+        }
+        println!();
+    }
+
+    println!("  Legend: {} synced  {} not synced  {} not configured",
+        style::success("✓"),
+        style::dim("○"),
+        style::dim("·")
+    );
+    println!();
+    println!("  Use 'ab agent init <agent>' to configure an agent.");
+    println!("  Use 'ab agent sync' to sync AllBeads context.");
+
+    Ok(())
+}
+
+fn handle_agent_init(agent_name: &str, path: &str, yes: bool) -> allbeads::Result<()> {
+    use allbeads::coding_agent::{init_agent, CodingAgent};
+    use std::path::Path;
+
+    let agent = CodingAgent::from_str(agent_name).ok_or_else(|| {
+        allbeads::AllBeadsError::Config(format!(
+            "Unknown agent '{}'. Available: claude, cursor, copilot, aider",
+            agent_name
+        ))
+    })?;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    println!();
+    println!("{}", style::header("Initialize Agent"));
+    println!();
+    println!("  Agent: {}", style::highlight(agent.display_name()));
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    match init_agent(agent, &project_path, yes) {
+        Ok(config_path) => {
+            println!("  {} Created {}", style::success("✓"), style::path(&config_path.display().to_string()));
+            println!();
+            println!("  Edit this file to customize the agent's behavior.");
+            println!("  Use 'ab agent sync' to add AllBeads context.");
+        }
+        Err(e) => {
+            println!("  {} {}", style::error("✗"), e);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_agent_sync(path: &str, agent_filter: Option<&str>) -> allbeads::Result<()> {
+    use allbeads::coding_agent::{detect_agents, sync_agent_context, AllBeadsContext, CodingAgent};
+    use allbeads::plugin::analyze_project;
+    use std::path::Path;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    println!();
+    println!("{}", style::header("Sync Agent Context"));
+    println!();
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    // Analyze project
+    let analysis = analyze_project(&project_path);
+
+    // Build context
+    let project_name = project_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("project")
+        .to_string();
+
+    // Try to get beads info
+    let (open_issues, ready_issues, beads_prefix) = if project_path.join(".beads").exists() {
+        // Run bd commands to get counts
+        let open = std::process::Command::new("bd")
+            .args(["list", "--status=open"])
+            .current_dir(&project_path)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count().saturating_sub(1))
+            .unwrap_or(0);
+
+        let ready = std::process::Command::new("bd")
+            .args(["ready"])
+            .current_dir(&project_path)
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count().saturating_sub(1))
+            .unwrap_or(0);
+
+        // Try to get prefix from config
+        let prefix = std::fs::read_to_string(project_path.join(".beads/config.yaml"))
+            .ok()
+            .and_then(|c| {
+                c.lines()
+                    .find(|l| l.starts_with("prefix:"))
+                    .map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string())
+            });
+
+        (open, ready, prefix)
+    } else {
+        (0, 0, None)
+    };
+
+    let context = AllBeadsContext {
+        project_name,
+        beads_prefix,
+        open_issues,
+        ready_issues,
+        languages: analysis.languages,
+        frameworks: analysis.frameworks,
+    };
+
+    // Get configured agents
+    let agents = detect_agents(&project_path);
+    let configured: Vec<_> = agents.iter().filter(|a| a.configured).collect();
+
+    if configured.is_empty() {
+        println!("  No coding agents configured.");
+        println!("  Use 'ab agent init <agent>' to configure one.");
+        return Ok(());
+    }
+
+    // Filter if specified
+    let to_sync: Vec<_> = if let Some(filter) = agent_filter {
+        if let Some(agent) = CodingAgent::from_str(filter) {
+            configured.iter().filter(|s| s.agent == agent).cloned().collect()
+        } else {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Unknown agent '{}'",
+                filter
+            )));
+        }
+    } else {
+        configured
+    };
+
+    for status in to_sync {
+        print!("  Syncing {}...", style::highlight(status.agent.display_name()));
+        match sync_agent_context(status.agent, &project_path, &context) {
+            Ok(()) => println!(" {}", style::success("✓")),
+            Err(e) => println!(" {} {}", style::error("✗"), e),
+        }
+    }
+
+    println!();
+    println!("  Context synced:");
+    println!("    Open issues: {}", context.open_issues);
+    println!("    Ready: {}", context.ready_issues);
+    if !context.languages.is_empty() {
+        println!("    Languages: {}", context.languages.join(", "));
+    }
+
+    Ok(())
+}
+
+fn handle_agent_preview(agent_name: &str, path: &str) -> allbeads::Result<()> {
+    use allbeads::coding_agent::{preview_agent_config, CodingAgent};
+    use std::path::Path;
+
+    let agent = CodingAgent::from_str(agent_name).ok_or_else(|| {
+        allbeads::AllBeadsError::Config(format!(
+            "Unknown agent '{}'. Available: claude, cursor, copilot, aider",
+            agent_name
+        ))
+    })?;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    println!();
+    println!("{}", style::header(&format!("{} Configuration Preview", agent.display_name())));
+    println!();
+
+    match preview_agent_config(agent, &project_path) {
+        Ok(content) => {
+            // Print with line numbers
+            for (i, line) in content.lines().enumerate() {
+                println!("{:4} {}", style::dim(&format!("{}", i + 1)), line);
+            }
+        }
+        Err(e) => {
+            println!("  {} {}", style::error("Error:"), e);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_agent_detect(path: &str) -> allbeads::Result<()> {
+    use allbeads::coding_agent::detect_agents;
+    use std::path::Path;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    println!();
+    println!("{}", style::header("Agent Detection"));
+    println!();
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    let agents = detect_agents(&project_path);
+
+    for status in &agents {
+        let icon = if status.configured {
+            style::success("✓")
+        } else {
+            style::dim("·")
+        };
+
+        print!("  {} {}", icon, status.agent.display_name());
+
+        if status.configured {
+            if let Some(ref config_path) = status.config_path {
+                print!(" {}", style::dim(&format!("({})", config_path)));
+            }
+            if status.has_allbeads_context {
+                print!(" {}", style::success("[synced]"));
+            }
+        } else {
+            print!(" {}", style::dim("(not configured)"));
+        }
+        println!();
+    }
+
+    println!();
+    println!("  Tip: Use 'ab agent init <agent>' to configure an agent.");
+
     Ok(())
 }
 
