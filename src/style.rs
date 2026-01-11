@@ -134,6 +134,11 @@ pub fn issue_id(id: &str) -> StyledContent<String> {
     id.to_string().cyan()
 }
 
+/// Highlight important text (yellow)
+pub fn highlight(text: &str) -> StyledContent<String> {
+    text.to_string().yellow()
+}
+
 /// Path styling
 pub fn path(p: &str) -> StyledContent<String> {
     p.to_string().blue()

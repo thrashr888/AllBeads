@@ -8,6 +8,7 @@ use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, IssueType, Priority, Status};
 use allbeads::style;
 use clap::{Parser, Subcommand};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process;
 
@@ -475,6 +476,64 @@ enum FolderCommands {
         /// Path to check (default: current directory)
         #[arg(default_value = ".")]
         path: String,
+    },
+
+    /// Manage project templates
+    #[command(subcommand)]
+    Template(TemplateCommands),
+}
+
+#[derive(Subcommand, Debug)]
+enum TemplateCommands {
+    /// Create a template from an existing project
+    Create {
+        /// Template name
+        name: String,
+
+        /// Source project path to create template from
+        #[arg(long, default_value = ".")]
+        from: String,
+
+        /// Template description
+        #[arg(short, long)]
+        description: Option<String>,
+    },
+
+    /// Apply a template to the current or specified directory
+    Apply {
+        /// Template name to apply
+        name: String,
+
+        /// Target directory (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// List available templates
+    List {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show template details
+    Show {
+        /// Template name
+        name: String,
+    },
+
+    /// Delete a template
+    Delete {
+        /// Template name
+        name: String,
+
+        /// Skip confirmation
+        #[arg(short, long)]
+        yes: bool,
     },
 }
 
@@ -2596,6 +2655,10 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
         FolderCommands::Monorepo { path } => {
             handle_monorepo_command(path)?;
         }
+
+        FolderCommands::Template(tpl_cmd) => {
+            handle_template_command(tpl_cmd)?;
+        }
     }
 
     Ok(())
@@ -2996,6 +3059,538 @@ fn detect_worktree_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
     }
 
     info
+}
+
+/// Template definition for project setup
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProjectTemplate {
+    /// Template name
+    name: String,
+    /// Template description
+    #[serde(default)]
+    description: String,
+    /// Init settings
+    #[serde(default)]
+    init: TemplateInit,
+    /// Beads configuration
+    #[serde(default)]
+    beads: TemplateBeads,
+    /// General config
+    #[serde(default)]
+    config: TemplateConfig,
+    /// Files to copy
+    #[serde(default)]
+    files: Vec<TemplateFile>,
+    /// Source project path (where template was created from)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+    /// Creation timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    created: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct TemplateInit {
+    #[serde(default)]
+    git: bool,
+    #[serde(default)]
+    beads: bool,
+    #[serde(default)]
+    claude: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct TemplateBeads {
+    #[serde(default = "default_beads_mode")]
+    mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sync_branch: Option<String>,
+}
+
+fn default_beads_mode() -> String {
+    "standard".to_string()
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct TemplateConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    persona: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TemplateFile {
+    source: String,
+    dest: String,
+}
+
+/// Get the templates directory path
+fn get_templates_dir() -> allbeads::Result<PathBuf> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| allbeads::AllBeadsError::Config("Could not determine config directory".to_string()))?;
+    Ok(config_dir.join("allbeads").join("templates"))
+}
+
+/// Handle template subcommands
+fn handle_template_command(cmd: &TemplateCommands) -> allbeads::Result<()> {
+    match cmd {
+        TemplateCommands::Create { name, from, description } => {
+            handle_template_create(name, from, description.as_deref())?;
+        }
+        TemplateCommands::Apply { name, path, yes } => {
+            handle_template_apply(name, path, *yes)?;
+        }
+        TemplateCommands::List { json } => {
+            handle_template_list(*json)?;
+        }
+        TemplateCommands::Show { name } => {
+            handle_template_show(name)?;
+        }
+        TemplateCommands::Delete { name, yes } => {
+            handle_template_delete(name, *yes)?;
+        }
+    }
+    Ok(())
+}
+
+/// Create a template from an existing project
+fn handle_template_create(name: &str, from: &str, description: Option<&str>) -> allbeads::Result<()> {
+    use dialoguer::Confirm;
+
+    let source_path = std::fs::canonicalize(from).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", from, e))
+    })?;
+
+    println!();
+    println!("{}", style::header("Create Template"));
+    println!();
+    println!("  Name:   {}", style::highlight(name));
+    println!("  Source: {}", style::path(&source_path.display().to_string()));
+    println!();
+
+    // Detect project characteristics
+    let has_git = source_path.join(".git").exists();
+    let has_beads = source_path.join(".beads").exists();
+    let has_claude = source_path.join("CLAUDE.md").exists();
+    let detected = detect_project_info(&source_path);
+
+    // Build template
+    let mut template = ProjectTemplate {
+        name: name.to_string(),
+        description: description.unwrap_or("").to_string(),
+        init: TemplateInit {
+            git: has_git,
+            beads: has_beads,
+            claude: has_claude,
+        },
+        beads: TemplateBeads {
+            mode: if has_beads {
+                if source_path.join(".beads/beads.db").exists() {
+                    "standard".to_string()
+                } else {
+                    "jsonl-only".to_string()
+                }
+            } else {
+                "standard".to_string()
+            },
+            sync_branch: None,
+        },
+        config: TemplateConfig {
+            persona: None,
+            prefix: None,
+        },
+        files: Vec::new(),
+        source: Some(source_path.display().to_string()),
+        created: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
+    };
+
+    // Collect files to include
+    let include_files = vec![
+        ("CLAUDE.md", has_claude),
+        (".cargo/config.toml", source_path.join(".cargo/config.toml").exists()),
+        ("rust-toolchain.toml", source_path.join("rust-toolchain.toml").exists()),
+        (".prettierrc", source_path.join(".prettierrc").exists()),
+        (".eslintrc.json", source_path.join(".eslintrc.json").exists()),
+        ("tsconfig.json", source_path.join("tsconfig.json").exists()),
+        ("pyproject.toml", source_path.join("pyproject.toml").exists()),
+    ];
+
+    for (file, exists) in include_files {
+        if exists {
+            template.files.push(TemplateFile {
+                source: format!("{}.template", file),
+                dest: file.to_string(),
+            });
+        }
+    }
+
+    println!("  Detected:");
+    if has_git { println!("    {} Git repository", style::success("✓")); }
+    if has_beads { println!("    {} Beads initialized", style::success("✓")); }
+    if has_claude { println!("    {} CLAUDE.md present", style::success("✓")); }
+    if !detected.languages.is_empty() {
+        println!("    {} Languages: {:?}", style::success("✓"), detected.languages);
+    }
+    println!();
+    println!("  Files to include: {}", template.files.len());
+    for f in &template.files {
+        println!("    - {}", f.dest);
+    }
+    println!();
+
+    let proceed = Confirm::new()
+        .with_prompt("  Create template?")
+        .default(true)
+        .interact()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Input error: {}", e)))?;
+
+    if !proceed {
+        println!("  {}", style::dim("Template creation cancelled"));
+        return Ok(());
+    }
+
+    // Create templates directory
+    let templates_dir = get_templates_dir()?;
+    std::fs::create_dir_all(&templates_dir).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to create templates directory: {}", e))
+    })?;
+
+    // Create template subdirectory
+    let template_dir = templates_dir.join(name);
+    if template_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Template '{}' already exists. Use 'ab folder template delete {}' first.",
+            name, name
+        )));
+    }
+    std::fs::create_dir_all(&template_dir).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to create template directory: {}", e))
+    })?;
+
+    // Copy template files
+    for file in &template.files {
+        let source_file = source_path.join(&file.dest);
+        let dest_file = template_dir.join(&file.source);
+
+        if let Some(parent) = dest_file.parent() {
+            std::fs::create_dir_all(parent).ok();
+        }
+
+        if source_file.exists() {
+            std::fs::copy(&source_file, &dest_file).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to copy {}: {}", file.dest, e))
+            })?;
+        }
+    }
+
+    // Save template.yaml
+    let template_yaml = template_dir.join("template.yaml");
+    let yaml = serde_yaml::to_string(&template).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to serialize template: {}", e))
+    })?;
+    std::fs::write(&template_yaml, yaml).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to write template.yaml: {}", e))
+    })?;
+
+    println!();
+    println!("  {} Template '{}' created!", style::success("✓"), name);
+    println!("  Location: {}", style::path(&template_dir.display().to_string()));
+    println!();
+
+    Ok(())
+}
+
+/// Apply a template to a directory
+fn handle_template_apply(name: &str, path: &str, yes: bool) -> allbeads::Result<()> {
+    use dialoguer::Confirm;
+
+    let templates_dir = get_templates_dir()?;
+    let template_dir = templates_dir.join(name);
+    let template_yaml = template_dir.join("template.yaml");
+
+    if !template_yaml.exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Template '{}' not found. Use 'ab folder template list' to see available templates.",
+            name
+        )));
+    }
+
+    // Load template
+    let content = std::fs::read_to_string(&template_yaml).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to read template: {}", e))
+    })?;
+    let template: ProjectTemplate = serde_yaml::from_str(&content).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to parse template: {}", e))
+    })?;
+
+    let target_path = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
+
+    println!();
+    println!("{}", style::header("Apply Template"));
+    println!();
+    println!("  Template: {}", style::highlight(&template.name));
+    if !template.description.is_empty() {
+        println!("  Desc:     {}", style::dim(&template.description));
+    }
+    println!("  Target:   {}", style::path(&target_path.display().to_string()));
+    println!();
+
+    println!("  Actions:");
+    if template.init.git && !target_path.join(".git").exists() {
+        println!("    - Initialize git repository");
+    }
+    if template.init.beads && !target_path.join(".beads").exists() {
+        println!("    - Initialize beads ({})", template.beads.mode);
+    }
+    for f in &template.files {
+        println!("    - Copy {}", f.dest);
+    }
+    println!();
+
+    let proceed = if yes {
+        true
+    } else {
+        Confirm::new()
+            .with_prompt("  Apply template?")
+            .default(true)
+            .interact()
+            .map_err(|e| allbeads::AllBeadsError::Config(format!("Input error: {}", e)))?
+    };
+
+    if !proceed {
+        println!("  {}", style::dim("Template application cancelled"));
+        return Ok(());
+    }
+
+    // Ensure target directory exists
+    std::fs::create_dir_all(&target_path).ok();
+
+    // Initialize git if needed
+    if template.init.git && !target_path.join(".git").exists() {
+        let output = std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(&target_path)
+            .output();
+        if let Ok(out) = output {
+            if out.status.success() {
+                println!("  {} Git initialized", style::success("✓"));
+            }
+        }
+    }
+
+    // Initialize beads if needed
+    if template.init.beads && !target_path.join(".beads").exists() {
+        let output = std::process::Command::new("bd")
+            .args(["init"])
+            .current_dir(&target_path)
+            .output();
+        if let Ok(out) = output {
+            if out.status.success() {
+                println!("  {} Beads initialized", style::success("✓"));
+            }
+        }
+    }
+
+    // Copy files
+    for file in &template.files {
+        let source_file = template_dir.join(&file.source);
+        let dest_file = target_path.join(&file.dest);
+
+        if source_file.exists() {
+            if let Some(parent) = dest_file.parent() {
+                std::fs::create_dir_all(parent).ok();
+            }
+
+            std::fs::copy(&source_file, &dest_file).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to copy {}: {}", file.dest, e))
+            })?;
+            println!("  {} Copied {}", style::success("✓"), file.dest);
+        }
+    }
+
+    println!();
+    println!("  {} Template '{}' applied!", style::success("✓"), name);
+    println!();
+
+    Ok(())
+}
+
+/// List available templates
+fn handle_template_list(json: bool) -> allbeads::Result<()> {
+    let templates_dir = get_templates_dir()?;
+
+    if !templates_dir.exists() {
+        if json {
+            println!("[]");
+        } else {
+            println!();
+            println!("{}", style::header("Templates"));
+            println!();
+            println!("  {}", style::dim("No templates found"));
+            println!("  Use 'ab folder template create <name> --from=<path>' to create one");
+            println!();
+        }
+        return Ok(());
+    }
+
+    let mut templates = Vec::new();
+
+    for entry in std::fs::read_dir(&templates_dir).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to read templates directory: {}", e))
+    })? {
+        let entry = entry.map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to read entry: {}", e))
+        })?;
+
+        let template_yaml = entry.path().join("template.yaml");
+        if template_yaml.exists() {
+            if let Ok(content) = std::fs::read_to_string(&template_yaml) {
+                if let Ok(template) = serde_yaml::from_str::<ProjectTemplate>(&content) {
+                    templates.push(template);
+                }
+            }
+        }
+    }
+
+    if json {
+        let output = serde_json::to_string_pretty(&templates).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to serialize templates: {}", e))
+        })?;
+        println!("{}", output);
+    } else {
+        println!();
+        println!("{}", style::header("Templates"));
+        println!();
+
+        if templates.is_empty() {
+            println!("  {}", style::dim("No templates found"));
+            println!("  Use 'ab folder template create <name> --from=<path>' to create one");
+        } else {
+            for template in &templates {
+                println!("  {} {}", style::highlight(&template.name),
+                    if template.description.is_empty() { "".to_string() } else { format!("- {}", style::dim(&template.description)) });
+                println!("    Files: {}  Git: {}  Beads: {}",
+                    template.files.len(),
+                    if template.init.git { style::success("✓") } else { style::dim("-") },
+                    if template.init.beads { style::success("✓") } else { style::dim("-") }
+                );
+            }
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Show template details
+fn handle_template_show(name: &str) -> allbeads::Result<()> {
+    let templates_dir = get_templates_dir()?;
+    let template_yaml = templates_dir.join(name).join("template.yaml");
+
+    if !template_yaml.exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Template '{}' not found",
+            name
+        )));
+    }
+
+    let content = std::fs::read_to_string(&template_yaml).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to read template: {}", e))
+    })?;
+    let template: ProjectTemplate = serde_yaml::from_str(&content).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to parse template: {}", e))
+    })?;
+
+    println!();
+    println!("{}", style::header(&format!("Template: {}", template.name)));
+    println!();
+
+    if !template.description.is_empty() {
+        println!("  Description: {}", template.description);
+    }
+    if let Some(ref created) = template.created {
+        println!("  Created:     {}", created);
+    }
+    if let Some(ref source) = template.source {
+        println!("  Source:      {}", style::path(source));
+    }
+    println!();
+
+    println!("  Init:");
+    println!("    Git:    {}", if template.init.git { "Yes" } else { "No" });
+    println!("    Beads:  {}", if template.init.beads { "Yes" } else { "No" });
+    println!("    Claude: {}", if template.init.claude { "Yes" } else { "No" });
+    println!();
+
+    println!("  Beads Config:");
+    println!("    Mode: {}", template.beads.mode);
+    if let Some(ref branch) = template.beads.sync_branch {
+        println!("    Sync Branch: {}", branch);
+    }
+    println!();
+
+    if let Some(ref persona) = template.config.persona {
+        println!("  Config:");
+        println!("    Persona: {}", persona);
+    }
+    println!();
+
+    if !template.files.is_empty() {
+        println!("  Files:");
+        for f in &template.files {
+            println!("    {} → {}", f.source, f.dest);
+        }
+        println!();
+    }
+
+    Ok(())
+}
+
+/// Delete a template
+fn handle_template_delete(name: &str, yes: bool) -> allbeads::Result<()> {
+    use dialoguer::Confirm;
+
+    let templates_dir = get_templates_dir()?;
+    let template_dir = templates_dir.join(name);
+
+    if !template_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Template '{}' not found",
+            name
+        )));
+    }
+
+    println!();
+    println!("{}", style::header("Delete Template"));
+    println!();
+    println!("  Template: {}", style::highlight(name));
+    println!("  Location: {}", style::path(&template_dir.display().to_string()));
+    println!();
+
+    let proceed = if yes {
+        true
+    } else {
+        Confirm::new()
+            .with_prompt("  Delete this template?")
+            .default(false)
+            .interact()
+            .map_err(|e| allbeads::AllBeadsError::Config(format!("Input error: {}", e)))?
+    };
+
+    if !proceed {
+        println!("  {}", style::dim("Deletion cancelled"));
+        return Ok(());
+    }
+
+    std::fs::remove_dir_all(&template_dir).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to delete template: {}", e))
+    })?;
+
+    println!("  {} Template '{}' deleted", style::success("✓"), name);
+    println!();
+
+    Ok(())
 }
 
 /// Handle the interactive setup wizard for a folder
