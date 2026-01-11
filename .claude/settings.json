@@ -1,5 +1,28 @@
 {
   "enabledPlugins": {
-    "open-prose@prose": true
+    "open-prose@prose": true,
+    "allbeads@allbeads-marketplace": true,
+    "beads@beads-marketplace": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "allbeads sync --status 2>/dev/null || true",
+            "statusMessage": "Checking AllBeads sync status"
+          }
+        ]
+      }
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "allbeads-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "thrashr888/AllBeads"
+      }
+    }
   }
 }
