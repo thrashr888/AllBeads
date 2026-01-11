@@ -10,12 +10,6 @@
       "source": "./claude-plugin",
       "description": "Distributed protocol for agentic orchestration and communication",
       "version": "0.2.0"
-    },
-    {
-      "name": "open-prose",
-      "source": "github:openprose/prose",
-      "description": "OpenProse is a programming language for AI sessions - structures English into unambiguous control flow for multi-agent orchestration",
-      "version": "0.1.0"
     }
   ]
 }
