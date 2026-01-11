@@ -46,7 +46,8 @@
       "Bash(tree:*)",
       "Bash(RUSTDOCFLAGS=\"-Dwarnings\" cargo doc:*)",
       "Bash(./target/debug/allbeads:*)",
-      "Skill(beads:show)"
+      "Skill(beads:show)",
+      "Bash(ab:*)"
     ]
   }
 }
