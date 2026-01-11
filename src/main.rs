@@ -172,6 +172,9 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         .map(|c| c.name.clone())
         .unwrap_or_else(|| "default".to_string());
 
+    // Clone config for use in CRUD wrapper commands
+    let config_for_commands = config.clone();
+
     // Try to load from cache first
     let cache_config = CacheConfig::default();
     let cache = Cache::new(cache_config)?;
@@ -500,9 +503,16 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Duplicates { threshold } => {
-            // Group beads by similarity
-            let beads: Vec<_> = graph.beads.values().collect();
+        Commands::Duplicates {
+            threshold,
+            include_closed,
+        } => {
+            // Group beads by similarity (filter to open by default)
+            let beads: Vec<_> = graph
+                .beads
+                .values()
+                .filter(|b| include_closed || b.status != allbeads::graph::Status::Closed)
+                .collect();
             let mut duplicates: Vec<(f64, &allbeads::graph::Bead, &allbeads::graph::Bead)> =
                 Vec::new();
 
@@ -783,6 +793,163 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
         Commands::Onboard { full } => {
             handle_onboard_command(full, &graph)?;
+        }
+
+        Commands::Update {
+            id,
+            status,
+            priority,
+            assignee,
+        } => {
+            // Find which context this bead belongs to
+            let bead_id = allbeads::graph::BeadId::from(id.as_str());
+            if let Some(bead) = graph.beads.get(&bead_id) {
+                // Get the context path from the bead's labels
+                let context_label = bead
+                    .labels
+                    .iter()
+                    .find(|l| l.starts_with('@'))
+                    .map(|l| l.trim_start_matches('@'));
+
+                if let Some(ctx_name) = context_label {
+                    // Find the context path
+                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                        if let Some(ctx_path) = &ctx.path {
+                            let mut cmd = vec!["update".to_string(), id.clone()];
+                            if let Some(s) = status {
+                                cmd.push(format!("--status={}", s));
+                            }
+                            if let Some(p) = priority {
+                                cmd.push(format!("--priority={}", p));
+                            }
+                            if let Some(a) = assignee {
+                                cmd.push(format!("--assignee={}", a));
+                            }
+
+                            println!(
+                                "Updating {} in context @{}...",
+                                style::issue_id(&id),
+                                ctx_name
+                            );
+
+                            let output = std::process::Command::new("bd")
+                                .args(&cmd)
+                                .current_dir(ctx_path)
+                                .output()?;
+
+                            if output.status.success() {
+                                println!("{}", String::from_utf8_lossy(&output.stdout));
+                            } else {
+                                eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                            }
+                        } else {
+                            eprintln!("Context '{}' has no local path configured", ctx_name);
+                        }
+                    } else {
+                        eprintln!("Context '{}' not found in config", ctx_name);
+                    }
+                } else {
+                    eprintln!("Could not determine context for bead {}", id);
+                }
+            } else {
+                eprintln!("Bead {} not found", id);
+            }
+        }
+
+        Commands::Close { ids, reason } => {
+            // Group beads by context
+            let mut by_context: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+
+            for id in &ids {
+                let bead_id = allbeads::graph::BeadId::from(id.as_str());
+                if let Some(bead) = graph.beads.get(&bead_id) {
+                    if let Some(ctx_name) = bead
+                        .labels
+                        .iter()
+                        .find(|l| l.starts_with('@'))
+                        .map(|l| l.trim_start_matches('@').to_string())
+                    {
+                        by_context.entry(ctx_name).or_default().push(id.clone());
+                    }
+                }
+            }
+
+            for (ctx_name, bead_ids) in by_context {
+                if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx_path) = &ctx.path {
+                        let mut cmd = vec!["close".to_string()];
+                        cmd.extend(bead_ids.clone());
+                        if let Some(r) = &reason {
+                            cmd.push(format!("--reason={}", r));
+                        }
+
+                        println!(
+                            "Closing {} bead(s) in context @{}...",
+                            bead_ids.len(),
+                            ctx_name
+                        );
+
+                        let output = std::process::Command::new("bd")
+                            .args(&cmd)
+                            .current_dir(ctx_path)
+                            .output()?;
+
+                        if output.status.success() {
+                            println!("{}", String::from_utf8_lossy(&output.stdout));
+                        } else {
+                            eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Create {
+            title,
+            issue_type,
+            priority,
+            context,
+        } => {
+            // Find the target context
+            let ctx_name = context.unwrap_or_else(|| {
+                // Try to determine from current directory
+                let cwd = std::env::current_dir().unwrap_or_default();
+                config_for_commands
+                    .contexts
+                    .iter()
+                    .find(|c| c.path.as_ref().is_some_and(|p| cwd.starts_with(p)))
+                    .map(|c| c.name.clone())
+                    .unwrap_or_else(|| "default".to_string())
+            });
+
+            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                if let Some(ctx_path) = &ctx.path {
+                    let cmd = vec![
+                        "create".to_string(),
+                        format!("--title={}", title),
+                        format!("--type={}", issue_type),
+                        format!("--priority={}", priority),
+                    ];
+
+                    println!("Creating bead in context @{}...", ctx_name);
+
+                    let output = std::process::Command::new("bd")
+                        .args(&cmd)
+                        .current_dir(ctx_path)
+                        .output()?;
+
+                    if output.status.success() {
+                        println!("{}", String::from_utf8_lossy(&output.stdout));
+                    } else {
+                        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                    }
+                } else {
+                    eprintln!("Context '{}' has no local path configured", ctx_name);
+                }
+            } else {
+                eprintln!("Context '{}' not found", ctx_name);
+            }
         }
 
         Commands::Context(_)

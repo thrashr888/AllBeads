@@ -148,6 +148,58 @@ pub enum Commands {
         /// Similarity threshold (0.0-1.0, default: 0.8)
         #[arg(short, long, default_value = "0.8")]
         threshold: f64,
+
+        /// Include closed beads (default: open only)
+        #[arg(long)]
+        include_closed: bool,
+    },
+
+    // === CRUD Wrappers (delegate to bd) ===
+    /// Update a bead (delegates to bd in the bead's context)
+    Update {
+        /// Bead ID (e.g., ab-123, rk-456)
+        id: String,
+
+        /// Set status (open, in_progress, blocked, closed)
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Set priority (P0-P4 or 0-4)
+        #[arg(long)]
+        priority: Option<String>,
+
+        /// Set assignee
+        #[arg(long)]
+        assignee: Option<String>,
+    },
+
+    /// Close a bead (delegates to bd in the bead's context)
+    Close {
+        /// Bead ID(s) to close
+        ids: Vec<String>,
+
+        /// Reason for closing
+        #[arg(long)]
+        reason: Option<String>,
+    },
+
+    /// Create a bead in a specific context (delegates to bd)
+    Create {
+        /// Title of the new bead
+        #[arg(short, long)]
+        title: String,
+
+        /// Type (bug, feature, task, epic, chore)
+        #[arg(short = 'T', long = "type", default_value = "task")]
+        issue_type: String,
+
+        /// Priority (P0-P4 or 0-4)
+        #[arg(short, long, default_value = "2")]
+        priority: String,
+
+        /// Context to create in (defaults to current directory's context)
+        #[arg(short, long)]
+        context: Option<String>,
     },
 
     /// Run janitor analysis on a repository
