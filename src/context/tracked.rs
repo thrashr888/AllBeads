@@ -115,8 +115,8 @@ impl Framework {
             Self::Django => &["manage.py", "settings.py"],
             Self::Rails => &["Gemfile", "config/application.rb"],
             Self::Spring => &["pom.xml", "build.gradle"], // Need to check for spring
-            Self::Actix => &["Cargo.toml"], // Need to check for actix
-            Self::Axum => &["Cargo.toml"],  // Need to check for axum
+            Self::Actix => &["Cargo.toml"],               // Need to check for actix
+            Self::Axum => &["Cargo.toml"],                // Need to check for axum
             Self::Flutter => &["pubspec.yaml"],
             Self::Electron => &["electron.js", "main.js"], // Approximate
             Self::Tauri => &["tauri.conf.json"],

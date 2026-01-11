@@ -96,8 +96,20 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
     }
 
     // Handle sync command
-    if let Commands::Sync { all, ref context, ref message, status } = command {
-        return handle_sync_command(all, context.as_deref(), message.as_deref(), status, &cli.config);
+    if let Commands::Sync {
+        all,
+        ref context,
+        ref message,
+        status,
+    } = command
+    {
+        return handle_sync_command(
+            all,
+            context.as_deref(),
+            message.as_deref(),
+            status,
+            &cli.config,
+        );
     }
 
     // Handle agent commands that don't need graph
@@ -520,7 +532,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 );
                 println!();
                 for (similarity, bead1, bead2) in duplicates {
-                    println!("{} Similarity: {:.0}%", style::warning("~"), similarity * 100.0);
+                    println!(
+                        "{} Similarity: {:.0}%",
+                        style::warning("~"),
+                        similarity * 100.0
+                    );
                     println!("  {}: {}", style::issue_id(bead1.id.as_str()), bead1.title);
                     println!("  {}: {}", style::issue_id(bead2.id.as_str()), bead2.title);
                     println!();
@@ -536,7 +552,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             println!("{}", style::header("Aggregated Beads Status"));
             println!();
             println!("{}", style::subheader("Summary"));
-            println!("  Total Beads:          {}", style::count_normal(stats.total_beads));
+            println!(
+                "  Total Beads:          {}",
+                style::count_normal(stats.total_beads)
+            );
             println!(
                 "  Open:                 {}",
                 style::count_ready(stats.open_beads)
@@ -549,15 +568,24 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 "  Blocked:              {}",
                 style::count_blocked(stats.blocked_beads)
             );
-            println!("  Closed:               {}", style::dim(&stats.closed_beads.to_string()));
+            println!(
+                "  Closed:               {}",
+                style::dim(&stats.closed_beads.to_string())
+            );
             println!(
                 "  Ready to Work:        {}",
                 style::count_ready(ready_count)
             );
             println!();
             println!("{}", style::subheader("Extended"));
-            println!("  Shadows:              {}", style::dim(&stats.total_shadows.to_string()));
-            println!("  Rigs:                 {}", style::dim(&stats.total_rigs.to_string()));
+            println!(
+                "  Shadows:              {}",
+                style::dim(&stats.total_shadows.to_string())
+            );
+            println!(
+                "  Rigs:                 {}",
+                style::dim(&stats.total_rigs.to_string())
+            );
 
             // Per-context breakdown
             use std::collections::HashMap;
@@ -600,10 +628,19 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             let cache_stats = cache.stats()?;
             println!();
             println!("{}", style::subheader("Cache"));
-            println!("  Beads cached:         {}", style::dim(&cache_stats.bead_count.to_string()));
-            println!("  Rigs cached:          {}", style::dim(&cache_stats.rig_count.to_string()));
+            println!(
+                "  Beads cached:         {}",
+                style::dim(&cache_stats.bead_count.to_string())
+            );
+            println!(
+                "  Rigs cached:          {}",
+                style::dim(&cache_stats.rig_count.to_string())
+            );
             if let Some(age) = cache_stats.age {
-                println!("  Cache age:            {}", style::dim(&format!("{:.1}s", age.as_secs_f64())));
+                println!(
+                    "  Cache age:            {}",
+                    style::dim(&format!("{:.1}s", age.as_secs_f64()))
+                );
             }
             let expired_str = if cache_stats.is_expired {
                 style::error("true")
@@ -612,7 +649,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             };
             println!("  Expired:              {}", expired_str);
             println!();
-            println!("{}", style::dim("For more details, use 'ab list' to see individual beads."));
+            println!(
+                "{}",
+                style::dim("For more details, use 'ab list' to see individual beads.")
+            );
         }
 
         Commands::Tui => {
@@ -1536,11 +1576,7 @@ fn print_bead_detailed(bead: &allbeads::graph::Bead) {
         style::dim("by"),
         bead.created_by
     );
-    println!(
-        "  {} {}",
-        style::dim("Updated:"),
-        &bead.updated_at[..19]
-    );
+    println!("  {} {}", style::dim("Updated:"), &bead.updated_at[..19]);
 
     if let Some(ref assignee) = bead.assignee {
         println!("  {} {}", style::dim("Assignee:"), assignee);
@@ -1670,11 +1706,17 @@ fn calculate_similarity(s1: &str, s2: &str) -> f64 {
 
 fn handle_config_command(cmd: &ConfigCommands) -> allbeads::Result<()> {
     let config_dir = dirs::config_dir()
-        .ok_or_else(|| allbeads::AllBeadsError::Config("Could not determine config directory".to_string()))?
+        .ok_or_else(|| {
+            allbeads::AllBeadsError::Config("Could not determine config directory".to_string())
+        })?
         .join("allbeads");
 
     match cmd {
-        ConfigCommands::Init { remote, gist, force } => {
+        ConfigCommands::Init {
+            remote,
+            gist,
+            force,
+        } => {
             handle_config_init(&config_dir, remote.as_deref(), gist.as_deref(), *force)?;
         }
         ConfigCommands::Pull { force } => {
@@ -1719,7 +1761,8 @@ fn handle_config_init(
             allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
         })?;
 
-        let existing_remote = repo.find_remote("origin")
+        let existing_remote = repo
+            .find_remote("origin")
             .ok()
             .and_then(|r| r.url().map(|u| u.to_string()));
 
@@ -1760,7 +1803,11 @@ fn handle_config_init(
         // Create .gitignore
         let gitignore = config_dir.join(".gitignore");
         if !gitignore.exists() {
-            std::fs::write(&gitignore, "# Ignore local-only files\n*.local\n*.local.yaml\ncache/\n").ok();
+            std::fs::write(
+                &gitignore,
+                "# Ignore local-only files\n*.local\n*.local.yaml\ncache/\n",
+            )
+            .ok();
             println!("  {} Created .gitignore", style::success("✓"));
         }
 
@@ -1780,9 +1827,8 @@ fn handle_config_init(
         println!("  {} Initialized git repository", style::success("✓"));
     }
 
-    let repo = Repository::open(config_dir).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
-    })?;
+    let repo = Repository::open(config_dir)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e)))?;
 
     // Remove existing origin if force
     if force {
@@ -1795,46 +1841,57 @@ fn handle_config_init(
     }
 
     // Add remote
-    repo.remote("origin", &remote_url).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to add remote: {}", e))
-    })?;
+    repo.remote("origin", &remote_url)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to add remote: {}", e)))?;
     println!("  {} Added remote 'origin'", style::success("✓"));
 
     // Create .gitignore
     let gitignore = config_dir.join(".gitignore");
     if !gitignore.exists() {
-        std::fs::write(&gitignore, "# Ignore local-only files\n*.local\n*.local.yaml\ncache/\n").ok();
+        std::fs::write(
+            &gitignore,
+            "# Ignore local-only files\n*.local\n*.local.yaml\ncache/\n",
+        )
+        .ok();
         println!("  {} Created .gitignore", style::success("✓"));
     }
 
     // Initial commit if needed
-    let mut index = repo.index().map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to get index: {}", e))
-    })?;
+    let mut index = repo
+        .index()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to get index: {}", e)))?;
 
     // Add all files
-    index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to add files: {}", e))
-    })?;
-    index.write().map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to write index: {}", e))
-    })?;
+    index
+        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to add files: {}", e)))?;
+    index
+        .write()
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to write index: {}", e)))?;
 
     // Check if there are any commits
     if repo.head().is_err() {
         // No commits yet - create initial commit
-        let tree_id = index.write_tree().map_err(|e| {
-            allbeads::AllBeadsError::Git(format!("Failed to write tree: {}", e))
-        })?;
-        let tree = repo.find_tree(tree_id).map_err(|e| {
-            allbeads::AllBeadsError::Git(format!("Failed to find tree: {}", e))
-        })?;
+        let tree_id = index
+            .write_tree()
+            .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to write tree: {}", e)))?;
+        let tree = repo
+            .find_tree(tree_id)
+            .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to find tree: {}", e)))?;
 
         let sig = git2::Signature::now("AllBeads", "noreply@allbeads.dev").map_err(|e| {
             allbeads::AllBeadsError::Git(format!("Failed to create signature: {}", e))
         })?;
 
-        repo.commit(Some("HEAD"), &sig, &sig, "Initial config sync setup", &tree, &[]).map_err(|e| {
+        repo.commit(
+            Some("HEAD"),
+            &sig,
+            &sig,
+            "Initial config sync setup",
+            &tree,
+            &[],
+        )
+        .map_err(|e| {
             allbeads::AllBeadsError::Git(format!("Failed to create initial commit: {}", e))
         })?;
         println!("  {} Created initial commit", style::success("✓"));
@@ -1857,7 +1914,7 @@ fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()>
     let git_dir = config_dir.join(".git");
     if !git_dir.exists() {
         return Err(allbeads::AllBeadsError::Config(
-            "Config sync not initialized. Run 'ab config init --remote=<url>' first.".to_string()
+            "Config sync not initialized. Run 'ab config init --remote=<url>' first.".to_string(),
         ));
     }
 
@@ -1865,14 +1922,13 @@ fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()>
     println!("{}", style::header("Pull Config Changes"));
     println!();
 
-    let repo = Repository::open(config_dir).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
-    })?;
+    let repo = Repository::open(config_dir)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e)))?;
 
     // Check if remote exists
     let remote = repo.find_remote("origin").map_err(|_| {
         allbeads::AllBeadsError::Config(
-            "No remote configured. Run 'ab config init --remote=<url>' first.".to_string()
+            "No remote configured. Run 'ab config init --remote=<url>' first.".to_string(),
         )
     })?;
 
@@ -1882,7 +1938,14 @@ fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()>
     // Run git pull
     let output = std::process::Command::new("git")
         .args(if force {
-            vec!["-C", config_dir.to_str().unwrap(), "pull", "--force", "origin", "main"]
+            vec![
+                "-C",
+                config_dir.to_str().unwrap(),
+                "pull",
+                "--force",
+                "origin",
+                "main",
+            ]
         } else {
             vec!["-C", config_dir.to_str().unwrap(), "pull", "origin", "main"]
         })
@@ -1901,22 +1964,32 @@ fn handle_config_pull(config_dir: &PathBuf, force: bool) -> allbeads::Result<()>
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("fatal") || stderr.contains("error") {
-            return Err(allbeads::AllBeadsError::Git(format!("Pull failed: {}", stderr)));
+            return Err(allbeads::AllBeadsError::Git(format!(
+                "Pull failed: {}",
+                stderr
+            )));
         }
-        println!("  {}", style::warning(&format!("Warning: {}", stderr.trim())));
+        println!(
+            "  {}",
+            style::warning(&format!("Warning: {}", stderr.trim()))
+        );
     }
 
     Ok(())
 }
 
 /// Push config changes to remote
-fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) -> allbeads::Result<()> {
+fn handle_config_push(
+    config_dir: &PathBuf,
+    message: Option<&str>,
+    force: bool,
+) -> allbeads::Result<()> {
     use git2::Repository;
 
     let git_dir = config_dir.join(".git");
     if !git_dir.exists() {
         return Err(allbeads::AllBeadsError::Config(
-            "Config sync not initialized. Run 'ab config init --remote=<url>' first.".to_string()
+            "Config sync not initialized. Run 'ab config init --remote=<url>' first.".to_string(),
         ));
     }
 
@@ -1924,14 +1997,13 @@ fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) 
     println!("{}", style::header("Push Config Changes"));
     println!();
 
-    let repo = Repository::open(config_dir).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
-    })?;
+    let repo = Repository::open(config_dir)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e)))?;
 
     // Check if remote exists
     let remote = repo.find_remote("origin").map_err(|_| {
         allbeads::AllBeadsError::Config(
-            "No remote configured. Run 'ab config init --remote=<url>' first.".to_string()
+            "No remote configured. Run 'ab config init --remote=<url>' first.".to_string(),
         )
     })?;
 
@@ -1945,9 +2017,10 @@ fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) 
         .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to stage changes: {}", e)))?;
 
     if !output.status.success() {
-        return Err(allbeads::AllBeadsError::Git(
-            format!("Failed to stage changes: {}", String::from_utf8_lossy(&output.stderr))
-        ));
+        return Err(allbeads::AllBeadsError::Git(format!(
+            "Failed to stage changes: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
 
     // Check for changes
@@ -1956,13 +2029,21 @@ fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) 
         .output()
         .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to check status: {}", e)))?;
 
-    let has_changes = !String::from_utf8_lossy(&status_output.stdout).trim().is_empty();
+    let has_changes = !String::from_utf8_lossy(&status_output.stdout)
+        .trim()
+        .is_empty();
 
     if has_changes {
         // Commit changes
         let commit_msg = message.unwrap_or("Update config");
         let output = std::process::Command::new("git")
-            .args(["-C", config_dir.to_str().unwrap(), "commit", "-m", commit_msg])
+            .args([
+                "-C",
+                config_dir.to_str().unwrap(),
+                "commit",
+                "-m",
+                commit_msg,
+            ])
             .output()
             .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to commit: {}", e)))?;
 
@@ -1975,9 +2056,24 @@ fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) 
 
     // Push to remote
     let push_args = if force {
-        vec!["-C", config_dir.to_str().unwrap(), "push", "--force", "-u", "origin", "main"]
+        vec![
+            "-C",
+            config_dir.to_str().unwrap(),
+            "push",
+            "--force",
+            "-u",
+            "origin",
+            "main",
+        ]
     } else {
-        vec!["-C", config_dir.to_str().unwrap(), "push", "-u", "origin", "main"]
+        vec![
+            "-C",
+            config_dir.to_str().unwrap(),
+            "push",
+            "-u",
+            "origin",
+            "main",
+        ]
     };
 
     let output = std::process::Command::new("git")
@@ -1992,7 +2088,10 @@ fn handle_config_push(config_dir: &PathBuf, message: Option<&str>, force: bool) 
         if stderr.contains("Everything up-to-date") {
             println!("  {} Already up to date", style::success("✓"));
         } else if stderr.contains("fatal") || stderr.contains("error") {
-            return Err(allbeads::AllBeadsError::Git(format!("Push failed: {}", stderr)));
+            return Err(allbeads::AllBeadsError::Git(format!(
+                "Push failed: {}",
+                stderr
+            )));
         }
     }
 
@@ -2007,7 +2106,10 @@ fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
     println!("{}", style::header("Config Sync Status"));
     println!();
 
-    println!("  Config dir: {}", style::path(&config_dir.display().to_string()));
+    println!(
+        "  Config dir: {}",
+        style::path(&config_dir.display().to_string())
+    );
 
     let git_dir = config_dir.join(".git");
     if !git_dir.exists() {
@@ -2017,9 +2119,8 @@ fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
         return Ok(());
     }
 
-    let repo = Repository::open(config_dir).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e))
-    })?;
+    let repo = Repository::open(config_dir)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to open config repo: {}", e)))?;
 
     // Check remote
     if let Ok(remote) = repo.find_remote("origin") {
@@ -2060,7 +2161,14 @@ fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
 
     // Check ahead/behind
     let output = std::process::Command::new("git")
-        .args(["-C", config_dir.to_str().unwrap(), "rev-list", "--left-right", "--count", "HEAD...origin/main"])
+        .args([
+            "-C",
+            config_dir.to_str().unwrap(),
+            "rev-list",
+            "--left-right",
+            "--count",
+            "HEAD...origin/main",
+        ])
         .output();
 
     if let Ok(output) = output {
@@ -2072,7 +2180,10 @@ fn handle_config_status(config_dir: &PathBuf) -> allbeads::Result<()> {
                 let behind: i32 = parts[1].parse().unwrap_or(0);
 
                 if ahead > 0 && behind > 0 {
-                    println!("  Sync:       {} ahead, {} behind (diverged)", ahead, behind);
+                    println!(
+                        "  Sync:       {} ahead, {} behind (diverged)",
+                        ahead, behind
+                    );
                 } else if ahead > 0 {
                     println!("  Sync:       {} commits ahead", ahead);
                 } else if behind > 0 {
@@ -2094,7 +2205,7 @@ fn handle_config_diff(config_dir: &PathBuf) -> allbeads::Result<()> {
     let git_dir = config_dir.join(".git");
     if !git_dir.exists() {
         return Err(allbeads::AllBeadsError::Config(
-            "Config sync not initialized.".to_string()
+            "Config sync not initialized.".to_string(),
         ));
     }
 
@@ -2124,7 +2235,9 @@ fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<(
         PathBuf::from(t)
     } else {
         dirs::config_dir()
-            .ok_or_else(|| allbeads::AllBeadsError::Config("Could not determine config directory".to_string()))?
+            .ok_or_else(|| {
+                allbeads::AllBeadsError::Config("Could not determine config directory".to_string())
+            })?
             .join("allbeads")
     };
 
@@ -2149,13 +2262,15 @@ fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<(
     };
 
     println!("  Source: {}", style::path(&remote_url));
-    println!("  Target: {}", style::path(&target_dir.display().to_string()));
+    println!(
+        "  Target: {}",
+        style::path(&target_dir.display().to_string())
+    );
     println!();
 
     // Clone the repository
-    git2::Repository::clone(&remote_url, &target_dir).map_err(|e| {
-        allbeads::AllBeadsError::Git(format!("Failed to clone config: {}", e))
-    })?;
+    git2::Repository::clone(&remote_url, &target_dir)
+        .map_err(|e| allbeads::AllBeadsError::Git(format!("Failed to clone config: {}", e)))?;
 
     println!("  {} Config cloned successfully!", style::success("✓"));
     println!();
@@ -2171,9 +2286,11 @@ fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<(
 
 fn handle_plugin_command(cmd: &PluginCommands) -> allbeads::Result<()> {
     match cmd {
-        PluginCommands::List { all, category, json } => {
-            handle_plugin_list(*all, category.as_deref(), *json)
-        }
+        PluginCommands::List {
+            all,
+            category,
+            json,
+        } => handle_plugin_list(*all, category.as_deref(), *json),
         PluginCommands::Info { name } => handle_plugin_info(name),
         PluginCommands::Status { name } => handle_plugin_status(name.as_deref()),
         PluginCommands::Detect { path, verbose } => handle_plugin_detect(path, *verbose),
@@ -2418,14 +2535,17 @@ fn handle_plugin_detect(path: &str, verbose: bool) -> allbeads::Result<()> {
     use allbeads::plugin::PluginRegistry;
     use std::path::Path;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     println!();
     println!("{}", style::header("Plugin Detection"));
     println!();
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
     // Detect languages and files
@@ -2499,7 +2619,9 @@ fn handle_plugin_detect(path: &str, verbose: bool) -> allbeads::Result<()> {
 }
 
 fn handle_plugin_install(name: &str, yes: bool) -> allbeads::Result<()> {
-    use allbeads::plugin::{check_prerequisites, load_onboarding, OnboardingExecutor, PluginRegistry};
+    use allbeads::plugin::{
+        check_prerequisites, load_onboarding, OnboardingExecutor, PluginRegistry,
+    };
 
     let registry = PluginRegistry::builtin();
     let plugin = registry.find(name);
@@ -2556,7 +2678,10 @@ fn handle_plugin_install(name: &str, yes: bool) -> allbeads::Result<()> {
         }
 
         if !all_satisfied {
-            println!("  {} Install missing prerequisites first.", style::warning("!"));
+            println!(
+                "  {} Install missing prerequisites first.",
+                style::warning("!")
+            );
             return Ok(());
         }
 
@@ -2564,8 +2689,7 @@ fn handle_plugin_install(name: &str, yes: bool) -> allbeads::Result<()> {
             println!("  Executing onboarding steps...");
             println!();
 
-            let mut executor = OnboardingExecutor::new(current_dir)
-                .auto_yes(true);
+            let mut executor = OnboardingExecutor::new(current_dir).auto_yes(true);
             let result = executor.execute(&onboarding);
 
             println!();
@@ -2586,7 +2710,9 @@ fn handle_plugin_install(name: &str, yes: bool) -> allbeads::Result<()> {
         }
     } else if plugin.has_onboarding {
         println!("  This plugin supports onboarding but no protocol found in current directory.");
-        println!("  The plugin may install its onboarding protocol after marketplace installation.");
+        println!(
+            "  The plugin may install its onboarding protocol after marketplace installation."
+        );
     }
 
     Ok(())
@@ -2613,8 +2739,7 @@ fn handle_plugin_uninstall(name: &str, yes: bool) -> allbeads::Result<()> {
                 println!("  Executing uninstall steps...");
                 println!();
 
-                let mut executor = OnboardingExecutor::new(current_dir)
-                    .auto_yes(true);
+                let mut executor = OnboardingExecutor::new(current_dir).auto_yes(true);
                 let result = executor.execute_uninstall(&onboarding);
 
                 println!();
@@ -2645,12 +2770,14 @@ fn handle_plugin_uninstall(name: &str, yes: bool) -> allbeads::Result<()> {
 }
 
 fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<()> {
-    use allbeads::plugin::{check_prerequisites, load_onboarding, OnboardingExecutor, PluginRegistry};
+    use allbeads::plugin::{
+        check_prerequisites, load_onboarding, OnboardingExecutor, PluginRegistry,
+    };
     use std::path::Path;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     let registry = PluginRegistry::builtin();
     let plugin = registry.find(name).ok_or_else(|| {
@@ -2660,7 +2787,10 @@ fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<
     println!();
     println!("{}", style::header(&format!("Onboard: {}", name)));
     println!();
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
     if !plugin.has_onboarding {
@@ -2694,7 +2824,10 @@ fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<
             println!();
 
             if !all_satisfied && yes {
-                println!("  {} Install missing prerequisites first.", style::warning("!"));
+                println!(
+                    "  {} Install missing prerequisites first.",
+                    style::warning("!")
+                );
                 return Ok(());
             }
         }
@@ -2716,8 +2849,7 @@ fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<
             println!("  Executing onboarding steps...");
             println!();
 
-            let mut executor = OnboardingExecutor::new(project_path)
-                .auto_yes(true);
+            let mut executor = OnboardingExecutor::new(project_path).auto_yes(true);
             let result = executor.execute(&onboarding);
 
             println!();
@@ -2752,14 +2884,12 @@ fn handle_plugin_onboard(name: &str, path: &str, yes: bool) -> allbeads::Result<
 }
 
 fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
-    use allbeads::plugin::{
-        analyze_project, recommend_plugins, ClaudePluginState, PluginRegistry,
-    };
+    use allbeads::plugin::{analyze_project, recommend_plugins, ClaudePluginState, PluginRegistry};
     use std::path::Path;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     println!();
     println!("{}", style::header("Plugin Recommendations"));
@@ -2851,7 +2981,8 @@ fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
         }
 
         println!();
-        println!("  Legend: {} configured  {} installed  {} not installed",
+        println!(
+            "  Legend: {} configured  {} installed  {} not installed",
             style::success("✓"),
             style::warning("○"),
             style::dim("·")
@@ -2914,7 +3045,11 @@ fn handle_marketplace_list(json: bool) -> allbeads::Result<()> {
             MarketplaceSource::Git { url } => url.clone(),
         };
 
-        println!("  {} {}", style::highlight(name), style::dim(&format!("({})", source_str)));
+        println!(
+            "  {} {}",
+            style::highlight(name),
+            style::dim(&format!("({})", source_str))
+        );
 
         // Try to load metadata
         let install_path = if marketplace.install_location.starts_with('~') {
@@ -2970,7 +3105,10 @@ fn handle_marketplace_add(source: &str, name: Option<&str>) -> allbeads::Result<
             .last()
             .unwrap_or("marketplace")
             .trim_end_matches(".git");
-        (source.to_string(), name.unwrap_or(inferred_name).to_string())
+        (
+            source.to_string(),
+            name.unwrap_or(inferred_name).to_string(),
+        )
     } else {
         return Err(allbeads::AllBeadsError::Config(
             "Invalid source. Use GitHub shorthand (owner/repo) or full URL.".to_string(),
@@ -2984,7 +3122,10 @@ fn handle_marketplace_add(source: &str, name: Option<&str>) -> allbeads::Result<
     // Delegate to claude plugin marketplace add
     println!("  To register this marketplace with Claude, run:");
     println!();
-    println!("    claude plugin marketplace add {} {}", marketplace_name, marketplace_url);
+    println!(
+        "    claude plugin marketplace add {} {}",
+        marketplace_name, marketplace_url
+    );
     println!();
     println!("  After registration, plugins from this marketplace can be installed with:");
     println!("    claude plugin install {}/PLUGIN_NAME", marketplace_name);
@@ -3037,7 +3178,11 @@ fn handle_marketplace_sync(name: Option<&str>) -> allbeads::Result<()> {
                 println!("    {} Synced", style::success("✓"));
             }
             Ok(_) => {
-                println!("    {} Sync failed (try 'claude plugin marketplace sync {}')", style::warning("!"), mkt_name);
+                println!(
+                    "    {} Sync failed (try 'claude plugin marketplace sync {}')",
+                    style::warning("!"),
+                    mkt_name
+                );
             }
             Err(_) => {
                 println!("    {} 'claude' command not found", style::error("✗"));
@@ -3069,21 +3214,27 @@ fn handle_agent_list(path: &str, json: bool) -> allbeads::Result<()> {
     use allbeads::coding_agent::detect_agents;
     use std::path::Path;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     let agents = detect_agents(&project_path);
 
     if json {
-        println!("{}", serde_json::to_string_pretty(&agents).unwrap_or_default());
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&agents).unwrap_or_default()
+        );
         return Ok(());
     }
 
     println!();
     println!("{}", style::header("Coding Agents"));
     println!();
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
     let configured: Vec<_> = agents.iter().filter(|a| a.configured).collect();
@@ -3105,7 +3256,10 @@ fn handle_agent_list(path: &str, json: bool) -> allbeads::Result<()> {
                 "  {} {} {}",
                 sync_icon,
                 style::highlight(status.agent.display_name()),
-                style::dim(&format!("({})", status.config_path.as_deref().unwrap_or("")))
+                style::dim(&format!(
+                    "({})",
+                    status.config_path.as_deref().unwrap_or("")
+                ))
             );
         }
         println!();
@@ -3125,7 +3279,8 @@ fn handle_agent_list(path: &str, json: bool) -> allbeads::Result<()> {
         println!();
     }
 
-    println!("  Legend: {} synced  {} not synced  {} not configured",
+    println!(
+        "  Legend: {} synced  {} not synced  {} not configured",
         style::success("✓"),
         style::dim("○"),
         style::dim("·")
@@ -3148,20 +3303,27 @@ fn handle_agent_init(agent_name: &str, path: &str, yes: bool) -> allbeads::Resul
         ))
     })?;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     println!();
     println!("{}", style::header("Initialize Agent"));
     println!();
     println!("  Agent: {}", style::highlight(agent.display_name()));
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
     match init_agent(agent, &project_path, yes) {
         Ok(config_path) => {
-            println!("  {} Created {}", style::success("✓"), style::path(&config_path.display().to_string()));
+            println!(
+                "  {} Created {}",
+                style::success("✓"),
+                style::path(&config_path.display().to_string())
+            );
             println!();
             println!("  Edit this file to customize the agent's behavior.");
             println!("  Use 'ab agent sync' to add AllBeads context.");
@@ -3179,14 +3341,17 @@ fn handle_agent_sync(path: &str, agent_filter: Option<&str>) -> allbeads::Result
     use allbeads::plugin::analyze_project;
     use std::path::Path;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     println!();
     println!("{}", style::header("Sync Agent Context"));
     println!();
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
     // Analyze project
@@ -3206,14 +3371,24 @@ fn handle_agent_sync(path: &str, agent_filter: Option<&str>) -> allbeads::Result
             .args(["list", "--status=open"])
             .current_dir(&project_path)
             .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count().saturating_sub(1))
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .count()
+                    .saturating_sub(1)
+            })
             .unwrap_or(0);
 
         let ready = std::process::Command::new("bd")
             .args(["ready"])
             .current_dir(&project_path)
             .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).lines().count().saturating_sub(1))
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .count()
+                    .saturating_sub(1)
+            })
             .unwrap_or(0);
 
         // Try to get prefix from config
@@ -3252,7 +3427,11 @@ fn handle_agent_sync(path: &str, agent_filter: Option<&str>) -> allbeads::Result
     // Filter if specified
     let to_sync: Vec<_> = if let Some(filter) = agent_filter {
         if let Some(agent) = CodingAgent::from_str(filter) {
-            configured.iter().filter(|s| s.agent == agent).cloned().collect()
+            configured
+                .iter()
+                .filter(|s| s.agent == agent)
+                .cloned()
+                .collect()
         } else {
             return Err(allbeads::AllBeadsError::Config(format!(
                 "Unknown agent '{}'",
@@ -3264,7 +3443,10 @@ fn handle_agent_sync(path: &str, agent_filter: Option<&str>) -> allbeads::Result
     };
 
     for status in to_sync {
-        print!("  Syncing {}...", style::highlight(status.agent.display_name()));
+        print!(
+            "  Syncing {}...",
+            style::highlight(status.agent.display_name())
+        );
         match sync_agent_context(status.agent, &project_path, &context) {
             Ok(()) => println!(" {}", style::success("✓")),
             Err(e) => println!(" {} {}", style::error("✗"), e),
@@ -3293,12 +3475,15 @@ fn handle_agent_preview(agent_name: &str, path: &str) -> allbeads::Result<()> {
         ))
     })?;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     println!();
-    println!("{}", style::header(&format!("{} Configuration Preview", agent.display_name())));
+    println!(
+        "{}",
+        style::header(&format!("{} Configuration Preview", agent.display_name()))
+    );
     println!();
 
     match preview_agent_config(agent, &project_path) {
@@ -3320,14 +3505,17 @@ fn handle_agent_detect(path: &str) -> allbeads::Result<()> {
     use allbeads::coding_agent::detect_agents;
     use std::path::Path;
 
-    let project_path = Path::new(path).canonicalize().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-    })?;
+    let project_path = Path::new(path)
+        .canonicalize()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e)))?;
 
     println!();
     println!("{}", style::header("Agent Detection"));
     println!();
-    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!(
+        "  Project: {}",
+        style::path(&project_path.display().to_string())
+    );
     println!();
 
     let agents = detect_agents(&project_path);
@@ -3386,12 +3574,18 @@ fn handle_sync_command(
     let config_dir = if let Some(path) = config_path {
         PathBuf::from(path).parent().unwrap().to_path_buf()
     } else {
-        AllBeadsConfig::default_path().parent().unwrap().to_path_buf()
+        AllBeadsConfig::default_path()
+            .parent()
+            .unwrap()
+            .to_path_buf()
     };
 
     if status {
         // Show sync status only
-        println!("  Config directory: {}", style::path(&config_dir.display().to_string()));
+        println!(
+            "  Config directory: {}",
+            style::path(&config_dir.display().to_string())
+        );
 
         // Check if config dir is a git repo
         if config_dir.join(".git").exists() {
@@ -3400,7 +3594,10 @@ fn handle_sync_command(
                     let statuses = repo.statuses(None).ok();
                     let changes = statuses.map(|s| s.len()).unwrap_or(0);
                     if changes > 0 {
-                        println!("  Config status: {} uncommitted changes", style::warning(&changes.to_string()));
+                        println!(
+                            "  Config status: {} uncommitted changes",
+                            style::warning(&changes.to_string())
+                        );
                     } else {
                         println!("  Config status: {}", style::success("clean"));
                     }
@@ -3426,9 +3623,19 @@ fn handle_sync_command(
                     } else {
                         style::dim("no beads")
                     };
-                    println!("    {} {} - {}", status, style::highlight(&ctx.name), path.display());
+                    println!(
+                        "    {} {} - {}",
+                        status,
+                        style::highlight(&ctx.name),
+                        path.display()
+                    );
                 } else {
-                    println!("    {} {} - {}", style::dim("?"), style::highlight(&ctx.name), style::dim("(no local path)"));
+                    println!(
+                        "    {} {} - {}",
+                        style::dim("?"),
+                        style::highlight(&ctx.name),
+                        style::dim("(no local path)")
+                    );
                 }
             }
         }
@@ -3487,11 +3694,18 @@ fn handle_sync_command(
                             Ok(output) => {
                                 let stderr = String::from_utf8_lossy(&output.stderr);
                                 if !stderr.contains("up to date") {
-                                    println!("    {} Pull warning: {}", style::warning("!"), stderr.trim());
+                                    println!(
+                                        "    {} Pull warning: {}",
+                                        style::warning("!"),
+                                        stderr.trim()
+                                    );
                                 }
                             }
                             Err(_) => {
-                                println!("    {} Could not pull (git command failed)", style::dim("○"));
+                                println!(
+                                    "    {} Could not pull (git command failed)",
+                                    style::dim("○")
+                                );
                             }
                         }
 
@@ -3506,10 +3720,16 @@ fn handle_sync_command(
                                 println!("    {} Pushed to remote", style::success("✓"));
                             }
                             Ok(_) => {
-                                println!("    {} Could not push (may need to pull first)", style::warning("!"));
+                                println!(
+                                    "    {} Could not push (may need to pull first)",
+                                    style::warning("!")
+                                );
                             }
                             Err(_) => {
-                                println!("    {} Could not push (git command failed)", style::dim("○"));
+                                println!(
+                                    "    {} Could not push (git command failed)",
+                                    style::dim("○")
+                                );
                             }
                         }
                     }
@@ -3584,7 +3804,10 @@ fn handle_sync_command(
                         }
                     }
                     Err(_) => {
-                        println!("    {} 'bd' command not found - install beads CLI", style::error("✗"));
+                        println!(
+                            "    {} 'bd' command not found - install beads CLI",
+                            style::error("✗")
+                        );
                     }
                 }
             }
@@ -3915,7 +4138,11 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
                 let filter_status = FolderStatus::from_str(status_str).ok_or_else(|| {
                     allbeads::AllBeadsError::Config(format!("Invalid status: {}", status_str))
                 })?;
-                context.folders.iter().filter(|f| f.status == filter_status).collect()
+                context
+                    .folders
+                    .iter()
+                    .filter(|f| f.status == filter_status)
+                    .collect()
             } else {
                 context.folders.iter().collect()
             };
@@ -3966,10 +4193,7 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
                 let status_text = style::folder_status(folder.status.short_name());
                 let path_display = folder.display_path();
 
-                print!(
-                    "  {} {:8} {}",
-                    status_icon, status_text, path_display
-                );
+                print!("  {} {:8} {}", status_icon, status_text, path_display);
 
                 if let Some(ref config) = folder.config {
                     if let Some(ref prefix) = config.prefix {
@@ -3999,10 +4223,7 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
         FolderCommands::Remove { path, clean: _ } => {
             // Resolve path
             let abs_path = std::fs::canonicalize(path).map_err(|e| {
-                allbeads::AllBeadsError::Config(format!(
-                    "Failed to resolve path '{}': {}",
-                    path, e
-                ))
+                allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
             })?;
 
             if context.remove_folder(&abs_path).is_some() {
@@ -4026,10 +4247,7 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
         FolderCommands::Status { path } => {
             // Resolve path
             let abs_path = std::fs::canonicalize(path).map_err(|e| {
-                allbeads::AllBeadsError::Config(format!(
-                    "Failed to resolve path '{}': {}",
-                    path, e
-                ))
+                allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
             })?;
 
             let status = detect_folder_status(&abs_path);
@@ -4037,10 +4255,7 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
             println!();
             println!("{}", style::header("Folder Status"));
             println!();
-            println!(
-                "  Path:   {}",
-                style::path(&abs_path.display().to_string())
-            );
+            println!("  Path:   {}", style::path(&abs_path.display().to_string()));
             println!(
                 "  Status: {} {}",
                 style::folder_status_indicator(status.short_name()),
@@ -4050,11 +4265,17 @@ fn handle_folder_command(cmd: &FolderCommands) -> allbeads::Result<()> {
             // Show what's missing to reach next level
             if let Some(next) = status.next() {
                 println!();
-                println!("  {} To reach '{}' status:", style::dim("→"), next.short_name());
+                println!(
+                    "  {} To reach '{}' status:",
+                    style::dim("→"),
+                    next.short_name()
+                );
                 match next {
                     FolderStatus::Git => println!("      Run: git init"),
                     FolderStatus::Beads => println!("      Run: bd init"),
-                    FolderStatus::Configured => println!("      Run: ab folder add {} --prefix=<name>", path),
+                    FolderStatus::Configured => {
+                        println!("      Run: ab folder add {} --prefix=<name>", path)
+                    }
                     FolderStatus::Wet => println!("      Enable sync in config"),
                     _ => {}
                 }
@@ -4151,7 +4372,9 @@ fn handle_worktree_command(cmd: &WorktreeCommands) -> allbeads::Result<()> {
                 let branch_display = if is_bare {
                     "(bare)".to_string()
                 } else {
-                    wt.branch.clone().unwrap_or_else(|| "(detached)".to_string())
+                    wt.branch
+                        .clone()
+                        .unwrap_or_else(|| "(detached)".to_string())
                 };
 
                 println!(
@@ -4239,9 +4462,9 @@ fn parse_worktree_list(output: &str) -> Vec<WorktreeInfo> {
             });
         } else if line.starts_with("branch ") {
             if let Some(ref mut wt) = current {
-                let branch = line.strip_prefix("branch refs/heads/").unwrap_or(
-                    line.strip_prefix("branch ").unwrap_or("")
-                );
+                let branch = line
+                    .strip_prefix("branch refs/heads/")
+                    .unwrap_or(line.strip_prefix("branch ").unwrap_or(""));
                 wt.branch = Some(branch.to_string());
             }
         } else if line == "bare" {
@@ -4316,7 +4539,10 @@ fn handle_monorepo_command(path: &str) -> allbeads::Result<()> {
             println!();
         }
     } else {
-        println!("  Type:      {}", style::dim("Single project (not a monorepo)"));
+        println!(
+            "  Type:      {}",
+            style::dim("Single project (not a monorepo)")
+        );
     }
 
     Ok(())
@@ -4469,7 +4695,12 @@ fn detect_worktree_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
 
             // Get current branch for worktree
             if let Ok(output) = std::process::Command::new("git")
-                .args(["-C", path.to_str().unwrap_or("."), "branch", "--show-current"])
+                .args([
+                    "-C",
+                    path.to_str().unwrap_or("."),
+                    "branch",
+                    "--show-current",
+                ])
                 .output()
             {
                 if output.status.success() {
@@ -4551,15 +4782,20 @@ struct TemplateFile {
 
 /// Get the templates directory path
 fn get_templates_dir() -> allbeads::Result<PathBuf> {
-    let config_dir = dirs::config_dir()
-        .ok_or_else(|| allbeads::AllBeadsError::Config("Could not determine config directory".to_string()))?;
+    let config_dir = dirs::config_dir().ok_or_else(|| {
+        allbeads::AllBeadsError::Config("Could not determine config directory".to_string())
+    })?;
     Ok(config_dir.join("allbeads").join("templates"))
 }
 
 /// Handle template subcommands
 fn handle_template_command(cmd: &TemplateCommands) -> allbeads::Result<()> {
     match cmd {
-        TemplateCommands::Create { name, from, description } => {
+        TemplateCommands::Create {
+            name,
+            from,
+            description,
+        } => {
             handle_template_create(name, from, description.as_deref())?;
         }
         TemplateCommands::Apply { name, path, yes } => {
@@ -4579,7 +4815,11 @@ fn handle_template_command(cmd: &TemplateCommands) -> allbeads::Result<()> {
 }
 
 /// Create a template from an existing project
-fn handle_template_create(name: &str, from: &str, description: Option<&str>) -> allbeads::Result<()> {
+fn handle_template_create(
+    name: &str,
+    from: &str,
+    description: Option<&str>,
+) -> allbeads::Result<()> {
     use dialoguer::Confirm;
 
     let source_path = std::fs::canonicalize(from).map_err(|e| {
@@ -4590,7 +4830,10 @@ fn handle_template_create(name: &str, from: &str, description: Option<&str>) -> 
     println!("{}", style::header("Create Template"));
     println!();
     println!("  Name:   {}", style::highlight(name));
-    println!("  Source: {}", style::path(&source_path.display().to_string()));
+    println!(
+        "  Source: {}",
+        style::path(&source_path.display().to_string())
+    );
     println!();
 
     // Detect project characteristics
@@ -4632,12 +4875,24 @@ fn handle_template_create(name: &str, from: &str, description: Option<&str>) -> 
     // Collect files to include
     let include_files = vec![
         ("CLAUDE.md", has_claude),
-        (".cargo/config.toml", source_path.join(".cargo/config.toml").exists()),
-        ("rust-toolchain.toml", source_path.join("rust-toolchain.toml").exists()),
+        (
+            ".cargo/config.toml",
+            source_path.join(".cargo/config.toml").exists(),
+        ),
+        (
+            "rust-toolchain.toml",
+            source_path.join("rust-toolchain.toml").exists(),
+        ),
         (".prettierrc", source_path.join(".prettierrc").exists()),
-        (".eslintrc.json", source_path.join(".eslintrc.json").exists()),
+        (
+            ".eslintrc.json",
+            source_path.join(".eslintrc.json").exists(),
+        ),
         ("tsconfig.json", source_path.join("tsconfig.json").exists()),
-        ("pyproject.toml", source_path.join("pyproject.toml").exists()),
+        (
+            "pyproject.toml",
+            source_path.join("pyproject.toml").exists(),
+        ),
     ];
 
     for (file, exists) in include_files {
@@ -4650,11 +4905,21 @@ fn handle_template_create(name: &str, from: &str, description: Option<&str>) -> 
     }
 
     println!("  Detected:");
-    if has_git { println!("    {} Git repository", style::success("✓")); }
-    if has_beads { println!("    {} Beads initialized", style::success("✓")); }
-    if has_claude { println!("    {} CLAUDE.md present", style::success("✓")); }
+    if has_git {
+        println!("    {} Git repository", style::success("✓"));
+    }
+    if has_beads {
+        println!("    {} Beads initialized", style::success("✓"));
+    }
+    if has_claude {
+        println!("    {} CLAUDE.md present", style::success("✓"));
+    }
     if !detected.languages.is_empty() {
-        println!("    {} Languages: {:?}", style::success("✓"), detected.languages);
+        println!(
+            "    {} Languages: {:?}",
+            style::success("✓"),
+            detected.languages
+        );
     }
     println!();
     println!("  Files to include: {}", template.files.len());
@@ -4719,7 +4984,10 @@ fn handle_template_create(name: &str, from: &str, description: Option<&str>) -> 
 
     println!();
     println!("  {} Template '{}' created!", style::success("✓"), name);
-    println!("  Location: {}", style::path(&template_dir.display().to_string()));
+    println!(
+        "  Location: {}",
+        style::path(&template_dir.display().to_string())
+    );
     println!();
 
     Ok(())
@@ -4741,12 +5009,10 @@ fn handle_template_apply(name: &str, path: &str, yes: bool) -> allbeads::Result<
     }
 
     // Load template
-    let content = std::fs::read_to_string(&template_yaml).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to read template: {}", e))
-    })?;
-    let template: ProjectTemplate = serde_yaml::from_str(&content).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to parse template: {}", e))
-    })?;
+    let content = std::fs::read_to_string(&template_yaml)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to read template: {}", e)))?;
+    let template: ProjectTemplate = serde_yaml::from_str(&content)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to parse template: {}", e)))?;
 
     let target_path = std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path));
 
@@ -4757,7 +5023,10 @@ fn handle_template_apply(name: &str, path: &str, yes: bool) -> allbeads::Result<
     if !template.description.is_empty() {
         println!("  Desc:     {}", style::dim(&template.description));
     }
-    println!("  Target:   {}", style::path(&target_path.display().to_string()));
+    println!(
+        "  Target:   {}",
+        style::path(&target_path.display().to_string())
+    );
     println!();
 
     println!("  Actions:");
@@ -4863,9 +5132,8 @@ fn handle_template_list(json: bool) -> allbeads::Result<()> {
     for entry in std::fs::read_dir(&templates_dir).map_err(|e| {
         allbeads::AllBeadsError::Config(format!("Failed to read templates directory: {}", e))
     })? {
-        let entry = entry.map_err(|e| {
-            allbeads::AllBeadsError::Config(format!("Failed to read entry: {}", e))
-        })?;
+        let entry = entry
+            .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to read entry: {}", e)))?;
 
         let template_yaml = entry.path().join("template.yaml");
         if template_yaml.exists() {
@@ -4892,12 +5160,28 @@ fn handle_template_list(json: bool) -> allbeads::Result<()> {
             println!("  Use 'ab folder template create <name> --from=<path>' to create one");
         } else {
             for template in &templates {
-                println!("  {} {}", style::highlight(&template.name),
-                    if template.description.is_empty() { "".to_string() } else { format!("- {}", style::dim(&template.description)) });
-                println!("    Files: {}  Git: {}  Beads: {}",
+                println!(
+                    "  {} {}",
+                    style::highlight(&template.name),
+                    if template.description.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!("- {}", style::dim(&template.description))
+                    }
+                );
+                println!(
+                    "    Files: {}  Git: {}  Beads: {}",
                     template.files.len(),
-                    if template.init.git { style::success("✓") } else { style::dim("-") },
-                    if template.init.beads { style::success("✓") } else { style::dim("-") }
+                    if template.init.git {
+                        style::success("✓")
+                    } else {
+                        style::dim("-")
+                    },
+                    if template.init.beads {
+                        style::success("✓")
+                    } else {
+                        style::dim("-")
+                    }
                 );
             }
         }
@@ -4919,12 +5203,10 @@ fn handle_template_show(name: &str) -> allbeads::Result<()> {
         )));
     }
 
-    let content = std::fs::read_to_string(&template_yaml).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to read template: {}", e))
-    })?;
-    let template: ProjectTemplate = serde_yaml::from_str(&content).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to parse template: {}", e))
-    })?;
+    let content = std::fs::read_to_string(&template_yaml)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to read template: {}", e)))?;
+    let template: ProjectTemplate = serde_yaml::from_str(&content)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to parse template: {}", e)))?;
 
     println!();
     println!("{}", style::header(&format!("Template: {}", template.name)));
@@ -4942,9 +5224,18 @@ fn handle_template_show(name: &str) -> allbeads::Result<()> {
     println!();
 
     println!("  Init:");
-    println!("    Git:    {}", if template.init.git { "Yes" } else { "No" });
-    println!("    Beads:  {}", if template.init.beads { "Yes" } else { "No" });
-    println!("    Claude: {}", if template.init.claude { "Yes" } else { "No" });
+    println!(
+        "    Git:    {}",
+        if template.init.git { "Yes" } else { "No" }
+    );
+    println!(
+        "    Beads:  {}",
+        if template.init.beads { "Yes" } else { "No" }
+    );
+    println!(
+        "    Claude: {}",
+        if template.init.claude { "Yes" } else { "No" }
+    );
     println!();
 
     println!("  Beads Config:");
@@ -4989,7 +5280,10 @@ fn handle_template_delete(name: &str, yes: bool) -> allbeads::Result<()> {
     println!("{}", style::header("Delete Template"));
     println!();
     println!("  Template: {}", style::highlight(name));
-    println!("  Location: {}", style::path(&template_dir.display().to_string()));
+    println!(
+        "  Location: {}",
+        style::path(&template_dir.display().to_string())
+    );
     println!();
 
     let proceed = if yes {
@@ -5037,10 +5331,7 @@ fn handle_folder_setup(
     println!();
     println!("{}", style::header("Folder Setup Wizard"));
     println!();
-    println!(
-        "  Path:   {}",
-        style::path(&abs_path.display().to_string())
-    );
+    println!("  Path:   {}", style::path(&abs_path.display().to_string()));
     println!(
         "  Status: {} {}",
         style::folder_status_indicator(current_status.short_name()),
@@ -5091,10 +5382,7 @@ fn handle_folder_setup(
                 println!("  {} Initialized git repository", style::success("✓"));
                 new_status = FolderStatus::Git;
             } else {
-                println!(
-                    "  {} Failed to initialize git",
-                    style::error("✗")
-                );
+                println!("  {} Failed to initialize git", style::error("✗"));
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 if !stderr.is_empty() {
                     println!("    {}", style::dim(&stderr.trim().to_string()));
@@ -5144,7 +5432,11 @@ fn handle_folder_setup(
             folder_config.prefix = Some(prefix.clone());
 
             // Beads mode selection
-            let mode_options = &["Standard (SQLite + JSONL)", "JSONL-only", "Sync branch mode"];
+            let mode_options = &[
+                "Standard (SQLite + JSONL)",
+                "JSONL-only",
+                "Sync branch mode",
+            ];
             let mode_idx = if yes {
                 0
             } else {
@@ -5572,7 +5864,13 @@ fn detect_project_info(path: &PathBuf) -> allbeads::context::DetectedInfo {
     // Git remote
     if path.join(".git").exists() {
         if let Ok(output) = std::process::Command::new("git")
-            .args(["-C", path.to_str().unwrap_or("."), "remote", "get-url", "origin"])
+            .args([
+                "-C",
+                path.to_str().unwrap_or("."),
+                "remote",
+                "get-url",
+                "origin",
+            ])
             .output()
         {
             if output.status.success() {
@@ -6099,11 +6397,23 @@ fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Res
     println!();
     println!("{}", style::subheader("Summary"));
     println!();
-    println!("  Total beads:    {}", style::count_normal(stats.total_beads));
+    println!(
+        "  Total beads:    {}",
+        style::count_normal(stats.total_beads)
+    );
     println!("  Open:           {}", style::count_ready(stats.open_beads));
-    println!("  In Progress:    {}", style::count_in_progress(stats.in_progress_beads));
-    println!("  Blocked:        {}", style::count_blocked(stats.blocked_beads));
-    println!("  Closed:         {}", style::dim(&stats.closed_beads.to_string()));
+    println!(
+        "  In Progress:    {}",
+        style::count_in_progress(stats.in_progress_beads)
+    );
+    println!(
+        "  Blocked:        {}",
+        style::count_blocked(stats.blocked_beads)
+    );
+    println!(
+        "  Closed:         {}",
+        style::dim(&stats.closed_beads.to_string())
+    );
     println!("  Ready to work:  {}", style::count_ready(ready_count));
     println!();
 
@@ -6163,7 +6473,10 @@ fn handle_info_command(graph: &allbeads::graph::FederatedGraph) -> allbeads::Res
     println!("  {} View ready work:    ab ready", style::dim("○"));
     println!("  {} View blocked work:  ab blocked", style::dim("●"));
     println!("  {} Launch TUI:         ab tui", style::dim("□"));
-    println!("  {} Search beads:       ab search \"query\"", style::dim("?"));
+    println!(
+        "  {} Search beads:       ab search \"query\"",
+        style::dim("?")
+    );
 
     Ok(())
 }

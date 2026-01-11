@@ -188,20 +188,14 @@ impl TrackedFolder {
 
     /// Get the folder name (last path component)
     pub fn name(&self) -> &str {
-        self.path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
+        self.path.file_name().and_then(|n| n.to_str()).unwrap_or("")
     }
 
     /// Get the display path (with ~ substitution for home)
     pub fn display_path(&self) -> String {
         if let Some(home) = dirs::home_dir() {
             if self.path.starts_with(&home) {
-                return format!(
-                    "~{}",
-                    self.path.strip_prefix(&home).unwrap().display()
-                );
+                return format!("~{}", self.path.strip_prefix(&home).unwrap().display());
             }
         }
         self.path.display().to_string()

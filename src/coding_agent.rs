@@ -294,8 +294,7 @@ pub fn init_agent(
 
     // Generate and write config
     let content = agent.initial_config(project_name);
-    std::fs::write(&config_path, content)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
+    std::fs::write(&config_path, content).map_err(|e| format!("Failed to write config: {}", e))?;
 
     Ok(config_path)
 }
@@ -388,8 +387,7 @@ pub fn preview_agent_config(agent: CodingAgent, project_path: &PathBuf) -> Resul
     let config_path = project_path.join(agent.primary_config());
 
     if config_path.exists() {
-        std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("Failed to read config: {}", e))
+        std::fs::read_to_string(&config_path).map_err(|e| format!("Failed to read config: {}", e))
     } else {
         let project_name = project_path
             .file_name()

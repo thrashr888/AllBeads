@@ -164,8 +164,14 @@ mod tests {
     fn test_from_str() {
         assert_eq!(FolderStatus::from_str("dry"), Some(FolderStatus::Dry));
         assert_eq!(FolderStatus::from_str("WET"), Some(FolderStatus::Wet));
-        assert_eq!(FolderStatus::from_str("config"), Some(FolderStatus::Configured));
-        assert_eq!(FolderStatus::from_str("configured"), Some(FolderStatus::Configured));
+        assert_eq!(
+            FolderStatus::from_str("config"),
+            Some(FolderStatus::Configured)
+        );
+        assert_eq!(
+            FolderStatus::from_str("configured"),
+            Some(FolderStatus::Configured)
+        );
         assert_eq!(FolderStatus::from_str("unknown"), None);
     }
 

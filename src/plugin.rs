@@ -340,7 +340,11 @@ impl PluginRegistry {
                     has_onboarding: false,
                     relevance: PluginRelevance {
                         languages: vec!["javascript".to_string(), "typescript".to_string()],
-                        files: vec![".eslintrc".to_string(), ".eslintrc.json".to_string(), "eslint.config.js".to_string()],
+                        files: vec![
+                            ".eslintrc".to_string(),
+                            ".eslintrc.json".to_string(),
+                            "eslint.config.js".to_string(),
+                        ],
                         ..Default::default()
                     },
                 },
@@ -390,7 +394,10 @@ impl PluginRegistry {
                 }
                 // Check language match
                 for lang in &p.relevance.languages {
-                    if languages.iter().any(|l| l.to_lowercase() == lang.to_lowercase()) {
+                    if languages
+                        .iter()
+                        .any(|l| l.to_lowercase() == lang.to_lowercase())
+                    {
                         return true;
                     }
                 }
@@ -447,7 +454,9 @@ impl ClaudePluginState {
             let settings_path = home.join(".claude").join("settings.json");
             if settings_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&settings_path) {
-                    if let Ok(settings) = serde_json::from_str::<HashMap<String, serde_json::Value>>(&content) {
+                    if let Ok(settings) =
+                        serde_json::from_str::<HashMap<String, serde_json::Value>>(&content)
+                    {
                         if let Some(enabled) = settings.get("enabledPlugins") {
                             if let Some(arr) = enabled.as_array() {
                                 state.enabled_plugins = arr
@@ -550,9 +559,7 @@ pub fn load_known_marketplaces() -> HashMap<String, RegisteredMarketplace> {
 /// Load marketplace metadata from a cloned marketplace directory
 pub fn load_marketplace_metadata(install_path: &PathBuf) -> Option<MarketplaceMetadata> {
     // Look for .claude-plugin/marketplace.json
-    let marketplace_json = install_path
-        .join(".claude-plugin")
-        .join("marketplace.json");
+    let marketplace_json = install_path.join(".claude-plugin").join("marketplace.json");
 
     if marketplace_json.exists() {
         if let Ok(content) = std::fs::read_to_string(&marketplace_json) {
@@ -966,10 +973,26 @@ pub fn check_prerequisites(
                 let hint = if !success {
                     // Build install hint
                     let methods: Vec<String> = [
-                        prereq.install.cargo.as_ref().map(|c| format!("cargo install {}", c)),
-                        prereq.install.brew.as_ref().map(|b| format!("brew install {}", b)),
-                        prereq.install.npm.as_ref().map(|n| format!("npm install -g {}", n)),
-                        prereq.install.pip.as_ref().map(|p| format!("pip install {}", p)),
+                        prereq
+                            .install
+                            .cargo
+                            .as_ref()
+                            .map(|c| format!("cargo install {}", c)),
+                        prereq
+                            .install
+                            .brew
+                            .as_ref()
+                            .map(|b| format!("brew install {}", b)),
+                        prereq
+                            .install
+                            .npm
+                            .as_ref()
+                            .map(|n| format!("npm install -g {}", n)),
+                        prereq
+                            .install
+                            .pip
+                            .as_ref()
+                            .map(|p| format!("pip install {}", p)),
                         prereq.install.manual.clone(),
                     ]
                     .into_iter()
@@ -1103,7 +1126,10 @@ pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
         ("rust", vec!["Cargo.toml", "*.rs"]),
         ("typescript", vec!["tsconfig.json", "*.ts", "*.tsx"]),
         ("javascript", vec!["package.json", "*.js", "*.jsx"]),
-        ("python", vec!["pyproject.toml", "setup.py", "requirements.txt", "*.py"]),
+        (
+            "python",
+            vec!["pyproject.toml", "setup.py", "requirements.txt", "*.py"],
+        ),
         ("go", vec!["go.mod", "go.sum", "*.go"]),
         ("java", vec!["pom.xml", "build.gradle", "*.java"]),
         ("ruby", vec!["Gemfile", "*.rb"]),
@@ -1141,7 +1167,11 @@ pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
     // Framework detection
     let framework_patterns = [
         ("react", vec!["package.json"], Some("react")),
-        ("next", vec!["next.config.js", "next.config.mjs", "next.config.ts"], None),
+        (
+            "next",
+            vec!["next.config.js", "next.config.mjs", "next.config.ts"],
+            None,
+        ),
         ("vue", vec!["vue.config.js"], None),
         ("angular", vec!["angular.json"], None),
         ("svelte", vec!["svelte.config.js"], None),
@@ -1175,14 +1205,24 @@ pub fn analyze_project(path: &PathBuf) -> ProjectAnalysis {
 
     // Config file detection
     let config_files = [
-        ".prettierrc", ".prettierrc.json", "prettier.config.js",
-        ".eslintrc", ".eslintrc.json", "eslint.config.js",
-        "jest.config.js", "jest.config.ts",
-        "pytest.ini", "setup.cfg",
-        ".github/workflows", ".gitlab-ci.yml",
-        "Dockerfile", "docker-compose.yml",
-        "terraform", ".terraform",
-        "kubernetes", "k8s",
+        ".prettierrc",
+        ".prettierrc.json",
+        "prettier.config.js",
+        ".eslintrc",
+        ".eslintrc.json",
+        "eslint.config.js",
+        "jest.config.js",
+        "jest.config.ts",
+        "pytest.ini",
+        "setup.cfg",
+        ".github/workflows",
+        ".gitlab-ci.yml",
+        "Dockerfile",
+        "docker-compose.yml",
+        "terraform",
+        ".terraform",
+        "kubernetes",
+        "k8s",
     ];
 
     for config in config_files {
@@ -1267,14 +1307,22 @@ pub fn recommend_plugins(
 
         // Check language matches
         for lang in &plugin.relevance.languages {
-            if analysis.languages.iter().any(|l| l.eq_ignore_ascii_case(lang)) {
+            if analysis
+                .languages
+                .iter()
+                .any(|l| l.eq_ignore_ascii_case(lang))
+            {
                 reasons.push(RecommendationReason::LanguageMatch(lang.clone()));
             }
         }
 
         // Check framework matches
         for fw in &plugin.relevance.frameworks {
-            if analysis.frameworks.iter().any(|f| f.eq_ignore_ascii_case(fw)) {
+            if analysis
+                .frameworks
+                .iter()
+                .any(|f| f.eq_ignore_ascii_case(fw))
+            {
                 reasons.push(RecommendationReason::FrameworkMatch(fw.clone()));
             }
         }
@@ -1306,7 +1354,11 @@ pub fn recommend_plugins(
     }
 
     // Sort by confidence (highest first)
-    recommendations.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    recommendations.sort_by(|a, b| {
+        b.confidence
+            .partial_cmp(&a.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     recommendations
 }

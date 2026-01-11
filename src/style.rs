@@ -160,11 +160,11 @@ pub fn folder_status(status: &str) -> StyledContent<String> {
 /// Folder status indicator with emoji (minimal use)
 pub fn folder_status_indicator(status: &str) -> &'static str {
     match status.to_lowercase().as_str() {
-        "dry" => "○",      // Empty circle
-        "git" => "◔",      // Quarter filled
-        "beads" => "◑",    // Half filled
+        "dry" => "○",                   // Empty circle
+        "git" => "◔",                   // Quarter filled
+        "beads" => "◑",                 // Half filled
         "configured" | "config" => "◕", // Three-quarter filled
-        "wet" => "●",      // Full circle
+        "wet" => "●",                   // Full circle
         _ => "○",
     }
 }
