@@ -75,6 +75,11 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         return handle_config_command(config_cmd);
     }
 
+    // Handle plugin commands (don't need graph)
+    if let Commands::Plugin(ref plugin_cmd) = cli.command {
+        return handle_plugin_command(plugin_cmd);
+    }
+
     // Handle agent commands that don't need graph
     if let Commands::Quickstart = cli.command {
         return handle_quickstart_command();
@@ -730,9 +735,10 @@ fn run(cli: Cli) -> allbeads::Result<()> {
         | Commands::Config(_)
         | Commands::Quickstart
         | Commands::Setup
-        | Commands::Human { .. } => {
+        | Commands::Human { .. }
+        | Commands::Plugin(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Quickstart, Setup, and Human commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Quickstart, Setup, and Human commands should be handled before aggregation")
         }
     }
 
@@ -2133,6 +2139,503 @@ fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<(
     println!();
     println!("  Your configuration is now synced from the remote.");
     println!("  Use 'ab config pull' to get updates.");
+
+    Ok(())
+}
+
+// ============================================================================
+// Plugin Commands
+// ============================================================================
+
+fn handle_plugin_command(cmd: &PluginCommands) -> allbeads::Result<()> {
+    match cmd {
+        PluginCommands::List { all, category, json } => {
+            handle_plugin_list(*all, category.as_deref(), *json)
+        }
+        PluginCommands::Info { name } => handle_plugin_info(name),
+        PluginCommands::Status { name } => handle_plugin_status(name.as_deref()),
+        PluginCommands::Detect { path, verbose } => handle_plugin_detect(path, *verbose),
+        PluginCommands::Install { name, yes } => handle_plugin_install(name, *yes),
+        PluginCommands::Uninstall { name, yes } => handle_plugin_uninstall(name, *yes),
+        PluginCommands::Onboard { name, path, yes } => handle_plugin_onboard(name, path, *yes),
+        PluginCommands::Recommend { path } => handle_plugin_recommend(path),
+    }
+}
+
+fn handle_plugin_list(all: bool, category: Option<&str>, json: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::{ClaudePluginState, PluginCategory, PluginRegistry};
+
+    let registry = PluginRegistry::builtin();
+    let claude_state = ClaudePluginState::load();
+
+    // Filter by category if specified
+    let plugins: Vec<_> = registry
+        .plugins
+        .iter()
+        .filter(|p| {
+            if let Some(cat) = category {
+                let cat_lower = cat.to_lowercase();
+                match &p.category {
+                    PluginCategory::Claude => cat_lower == "claude",
+                    PluginCategory::Beads => cat_lower == "beads",
+                    PluginCategory::Prose => cat_lower == "prose",
+                    PluginCategory::DevTools => cat_lower == "devtools" || cat_lower == "dev",
+                    PluginCategory::Testing => cat_lower == "testing" || cat_lower == "test",
+                    PluginCategory::Other => cat_lower == "other",
+                }
+            } else {
+                true
+            }
+        })
+        .filter(|p| all || claude_state.is_installed(&p.name) || p.relevance.always_suggest)
+        .collect();
+
+    if json {
+        let output: Vec<_> = plugins
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "name": p.name,
+                    "description": p.description,
+                    "category": format!("{:?}", p.category),
+                    "installed": claude_state.is_installed(&p.name),
+                    "enabled": claude_state.is_enabled(&p.name),
+                    "has_onboarding": p.has_onboarding,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", style::header("Plugins"));
+    println!();
+
+    if plugins.is_empty() {
+        println!("  No plugins found. Use --all to see available plugins.");
+        return Ok(());
+    }
+
+    for plugin in plugins {
+        let installed = claude_state.is_installed(&plugin.name);
+        let enabled = claude_state.is_enabled(&plugin.name);
+
+        let status = if enabled {
+            style::success("●")
+        } else if installed {
+            style::warning("○")
+        } else {
+            style::dim("○")
+        };
+
+        let category = format!("{:?}", plugin.category).to_lowercase();
+        println!(
+            "  {} {} {} - {}",
+            status,
+            style::highlight(&plugin.name),
+            style::dim(&format!("[{}]", category)),
+            plugin.description
+        );
+    }
+
+    println!();
+    println!(
+        "  {} = enabled, {} = installed, {} = available",
+        style::success("●"),
+        style::warning("○"),
+        style::dim("○")
+    );
+
+    Ok(())
+}
+
+fn handle_plugin_info(name: &str) -> allbeads::Result<()> {
+    use allbeads::plugin::{ClaudePluginState, PluginRegistry};
+
+    let registry = PluginRegistry::builtin();
+    let claude_state = ClaudePluginState::load();
+
+    let plugin = registry.find(name).ok_or_else(|| {
+        allbeads::AllBeadsError::Config(format!("Plugin '{}' not found in registry", name))
+    })?;
+
+    println!();
+    println!("{}", style::header(&format!("Plugin: {}", plugin.name)));
+    println!();
+    println!("  Description: {}", plugin.description);
+    println!("  Category:    {:?}", plugin.category);
+
+    if let Some(ref marketplace) = plugin.marketplace {
+        println!("  Marketplace: {}", marketplace);
+    }
+    if let Some(ref repository) = plugin.repository {
+        println!("  Repository:  {}", repository);
+    }
+
+    println!();
+    println!("  Status:");
+    println!(
+        "    Installed: {}",
+        if claude_state.is_installed(name) {
+            style::success("Yes")
+        } else {
+            style::dim("No")
+        }
+    );
+    println!(
+        "    Enabled:   {}",
+        if claude_state.is_enabled(name) {
+            style::success("Yes")
+        } else {
+            style::dim("No")
+        }
+    );
+    println!(
+        "    Onboarding: {}",
+        if plugin.has_onboarding {
+            style::success("Available")
+        } else {
+            style::dim("Not available")
+        }
+    );
+
+    if !plugin.relevance.languages.is_empty() {
+        println!();
+        println!("  Relevant for languages:");
+        for lang in &plugin.relevance.languages {
+            println!("    - {}", lang);
+        }
+    }
+
+    if !plugin.relevance.files.is_empty() {
+        println!();
+        println!("  Detection files:");
+        for file in &plugin.relevance.files {
+            println!("    - {}", file);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_plugin_status(name: Option<&str>) -> allbeads::Result<()> {
+    use allbeads::plugin::{ClaudePluginState, PluginRegistry};
+
+    let registry = PluginRegistry::builtin();
+    let claude_state = ClaudePluginState::load();
+
+    println!();
+    println!("{}", style::header("Plugin Status"));
+    println!();
+
+    if let Some(name) = name {
+        // Show status for specific plugin
+        let plugin = registry.find(name);
+        let installed = claude_state.is_installed(name);
+        let enabled = claude_state.is_enabled(name);
+
+        println!("  Plugin: {}", style::highlight(name));
+        println!(
+            "  In registry: {}",
+            if plugin.is_some() {
+                style::success("Yes")
+            } else {
+                style::dim("No")
+            }
+        );
+        println!(
+            "  Installed:   {}",
+            if installed {
+                style::success("Yes")
+            } else {
+                style::dim("No")
+            }
+        );
+        println!(
+            "  Enabled:     {}",
+            if enabled {
+                style::success("Yes")
+            } else {
+                style::dim("No")
+            }
+        );
+    } else {
+        // Show summary
+        let installed_count = claude_state.installed_plugins.len();
+        let enabled_count = claude_state.enabled_plugins.len();
+        let registry_count = registry.plugins.len();
+
+        println!("  Installed plugins: {}", installed_count);
+        println!("  Enabled plugins:   {}", enabled_count);
+        println!("  Available in registry: {}", registry_count);
+
+        if !claude_state.installed_plugins.is_empty() {
+            println!();
+            println!("  Installed:");
+            for plugin in &claude_state.installed_plugins {
+                let status = if claude_state.is_enabled(&plugin.name) {
+                    style::success("●")
+                } else {
+                    style::warning("○")
+                };
+                println!("    {} {}", status, plugin.name);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_plugin_detect(path: &str, verbose: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::PluginRegistry;
+    use std::path::Path;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    println!();
+    println!("{}", style::header("Plugin Detection"));
+    println!();
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    // Detect languages and files
+    let mut languages = Vec::new();
+    let mut detected_files = Vec::new();
+
+    // Check for common files
+    let checks = [
+        ("package.json", "javascript"),
+        ("tsconfig.json", "typescript"),
+        ("Cargo.toml", "rust"),
+        ("go.mod", "go"),
+        ("pyproject.toml", "python"),
+        ("requirements.txt", "python"),
+        ("Gemfile", "ruby"),
+        ("pom.xml", "java"),
+        ("build.gradle", "java"),
+    ];
+
+    for (file, lang) in checks {
+        if project_path.join(file).exists() {
+            detected_files.push(file.to_string());
+            if !languages.contains(&lang.to_string()) {
+                languages.push(lang.to_string());
+            }
+        }
+    }
+
+    // Check for .github
+    if project_path.join(".github").exists() {
+        detected_files.push(".github".to_string());
+    }
+
+    // Check for beads
+    if project_path.join(".beads").exists() {
+        detected_files.push(".beads".to_string());
+    }
+
+    if verbose {
+        println!("  Detected languages:");
+        for lang in &languages {
+            println!("    - {}", lang);
+        }
+        println!();
+        println!("  Detected files:");
+        for file in &detected_files {
+            println!("    - {}", file);
+        }
+        println!();
+    }
+
+    // Get recommendations
+    let registry = PluginRegistry::builtin();
+    let recommended = registry.recommend(&languages, &detected_files);
+
+    println!("  Recommended plugins:");
+    if recommended.is_empty() {
+        println!("    (none detected based on project files)");
+    } else {
+        for plugin in recommended {
+            println!(
+                "    {} {} - {}",
+                style::success("→"),
+                style::highlight(&plugin.name),
+                plugin.description
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_plugin_install(name: &str, _yes: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::PluginRegistry;
+
+    let registry = PluginRegistry::builtin();
+    let plugin = registry.find(name);
+
+    println!();
+    println!("{}", style::header(&format!("Install Plugin: {}", name)));
+    println!();
+
+    if let Some(plugin) = plugin {
+        if let Some(ref marketplace) = plugin.marketplace {
+            println!("  To install this plugin, run:");
+            println!();
+            println!("    claude plugin install {}", marketplace);
+            println!();
+        } else {
+            println!(
+                "  This plugin does not have a marketplace entry."
+            );
+            if let Some(ref repo) = plugin.repository {
+                println!("  Manual installation from: {}", repo);
+            }
+        }
+    } else {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Plugin '{}' not found in registry. Use 'ab plugin list --all' to see available plugins.",
+            name
+        )));
+    }
+
+    Ok(())
+}
+
+fn handle_plugin_uninstall(name: &str, _yes: bool) -> allbeads::Result<()> {
+    println!();
+    println!("{}", style::header(&format!("Uninstall Plugin: {}", name)));
+    println!();
+    println!("  To uninstall this plugin, run:");
+    println!();
+    println!("    claude plugin uninstall {}", name);
+    println!();
+
+    Ok(())
+}
+
+fn handle_plugin_onboard(name: &str, path: &str, _yes: bool) -> allbeads::Result<()> {
+    use allbeads::plugin::{load_onboarding, PluginRegistry};
+    use std::path::Path;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    let registry = PluginRegistry::builtin();
+    let plugin = registry.find(name).ok_or_else(|| {
+        allbeads::AllBeadsError::Config(format!("Plugin '{}' not found in registry", name))
+    })?;
+
+    println!();
+    println!("{}", style::header(&format!("Onboard: {}", name)));
+    println!();
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    if !plugin.has_onboarding {
+        println!("  This plugin does not have an onboarding protocol.");
+        println!("  Please refer to the plugin documentation for setup instructions.");
+        return Ok(());
+    }
+
+    // Try to load onboarding from project
+    if let Some(onboarding) = load_onboarding(&project_path) {
+        println!("  Found onboarding protocol: {}", onboarding.plugin);
+        println!("  Version: {}", onboarding.version);
+        println!();
+        println!("  Steps:");
+        for (i, step) in onboarding.onboard.steps.iter().enumerate() {
+            let step_name = match step {
+                allbeads::plugin::OnboardingStep::Command { name, .. } => name,
+                allbeads::plugin::OnboardingStep::Interactive { name, .. } => name,
+                allbeads::plugin::OnboardingStep::Template { name, .. } => name,
+                allbeads::plugin::OnboardingStep::Append { name, .. } => name,
+            };
+            println!("    {}. {}", i + 1, step_name);
+        }
+        println!();
+        println!("  Run with --yes to execute these steps automatically.");
+    } else {
+        println!("  No onboarding protocol found in project.");
+        println!("  Looking for: .claude-plugin/allbeads-onboarding.yaml");
+    }
+
+    Ok(())
+}
+
+fn handle_plugin_recommend(path: &str) -> allbeads::Result<()> {
+    use allbeads::plugin::PluginRegistry;
+    use std::path::Path;
+
+    let project_path = Path::new(path).canonicalize().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+    })?;
+
+    println!();
+    println!("{}", style::header("Plugin Recommendations"));
+    println!();
+    println!("  Project: {}", style::path(&project_path.display().to_string()));
+    println!();
+
+    // Detect project characteristics
+    let mut languages = Vec::new();
+    let mut files = Vec::new();
+
+    let checks = [
+        ("package.json", "javascript"),
+        ("tsconfig.json", "typescript"),
+        ("Cargo.toml", "rust"),
+        ("go.mod", "go"),
+        ("pyproject.toml", "python"),
+        (".github", ""),
+        (".beads", ""),
+    ];
+
+    for (file, lang) in checks {
+        if project_path.join(file).exists() {
+            files.push(file.to_string());
+            if !lang.is_empty() && !languages.contains(&lang.to_string()) {
+                languages.push(lang.to_string());
+            }
+        }
+    }
+
+    let registry = PluginRegistry::builtin();
+    let recommended = registry.recommend(&languages, &files);
+
+    if recommended.is_empty() {
+        println!("  No specific plugins recommended for this project.");
+        println!("  Use 'ab plugin list --all' to browse available plugins.");
+    } else {
+        println!("  Based on your project, we recommend:");
+        println!();
+        for plugin in recommended {
+            let reason = if plugin.relevance.always_suggest {
+                "always recommended".to_string()
+            } else if plugin
+                .relevance
+                .languages
+                .iter()
+                .any(|l| languages.contains(l))
+            {
+                format!("for {}", languages.join(", "))
+            } else {
+                "based on project files".to_string()
+            };
+
+            println!(
+                "  {} {} - {}",
+                style::success("→"),
+                style::highlight(&plugin.name),
+                plugin.description
+            );
+            println!("      {}", style::dim(&format!("({})", reason)));
+        }
+    }
 
     Ok(())
 }

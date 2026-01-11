@@ -201,6 +201,11 @@ pub enum Commands {
     #[command(subcommand)]
     Config(ConfigCommands),
 
+    // === Plugin System ===
+    /// Manage plugins and onboarding
+    #[command(subcommand)]
+    Plugin(PluginCommands),
+
     // === Daemons & Sync ===
     /// Run the Sheriff daemon (background sync)
     Sheriff {
@@ -401,6 +406,88 @@ pub enum ConfigCommands {
         /// Target directory (default: ~/.config/allbeads)
         #[arg(short, long)]
         target: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PluginCommands {
+    /// List installed and available plugins
+    List {
+        /// Show all available plugins (not just installed)
+        #[arg(short, long)]
+        all: bool,
+
+        /// Filter by category (claude, beads, prose, etc.)
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show detailed plugin information
+    Info {
+        /// Plugin name
+        name: String,
+    },
+
+    /// Show plugin status for current project
+    Status {
+        /// Plugin name (optional, shows all if not specified)
+        name: Option<String>,
+    },
+
+    /// Detect plugins from Claude settings and project
+    Detect {
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Show verbose detection output
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Install a plugin
+    Install {
+        /// Plugin name
+        name: String,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Uninstall a plugin
+    Uninstall {
+        /// Plugin name
+        name: String,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Run plugin onboarding for current project
+    Onboard {
+        /// Plugin name
+        name: String,
+
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Recommend plugins for current project
+    Recommend {
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
     },
 }
 

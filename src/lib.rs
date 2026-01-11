@@ -34,6 +34,7 @@ pub mod boss_board;
 pub mod integrations;
 pub mod mail;
 pub mod manifest;
+pub mod plugin;
 pub mod sheriff;
 pub mod swarm;
 
