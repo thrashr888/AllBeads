@@ -1434,6 +1434,10 @@ fn scan_for_security_patterns(
                                 .to_string_lossy()
                                 .to_string();
                             for (line_num, line) in content.lines().enumerate() {
+                                // Skip lines that are pattern definitions (avoid self-detection)
+                                if line.contains("r#\"") || line.contains("name == &\"") {
+                                    continue;
+                                }
                                 for (name, _pattern) in patterns {
                                     // Simple substring check (regex would be better but adds dependency)
                                     let line_lower = line.to_lowercase();
