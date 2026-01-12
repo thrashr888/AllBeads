@@ -3,6 +3,9 @@
 //! Background synchronization daemon that federates beads across repositories.
 //! Runs as a tokio async event loop with configurable poll intervals.
 
+use crate::governance::checker::CheckSummary;
+use crate::governance::rules::CheckResult;
+use crate::governance::{Policy, PolicyChecker, PolicyStorage};
 use crate::graph::{RigId, ShadowBead};
 use crate::mail::Postmaster;
 use crate::manifest::Manifest;
@@ -135,6 +138,14 @@ pub enum SheriffEvent {
 
     /// Shadow bead deleted
     ShadowDeleted(RigId, String),
+
+    /// Policy check completed
+    PolicyChecked {
+        /// Summary of check results
+        summary: CheckSummary,
+        /// Individual check results
+        results: Vec<CheckResult>,
+    },
 }
 
 /// Commands that can be sent to the Sheriff daemon
@@ -151,6 +162,12 @@ pub enum SheriffCommand {
 
     /// Set poll interval
     SetPollInterval(Duration),
+
+    /// Reload policies
+    ReloadPolicies,
+
+    /// Run policy checks immediately
+    CheckPolicies,
 }
 
 /// Rig state tracked by the daemon
@@ -190,6 +207,12 @@ pub struct Sheriff {
     /// Postmaster for mail delivery
     postmaster: Option<Arc<Mutex<Postmaster>>>,
 
+    /// Policy checker for governance
+    policy_checker: PolicyChecker,
+
+    /// Policy storage (for persistence)
+    policy_storage: Option<PolicyStorage>,
+
     /// Event sender
     event_tx: broadcast::Sender<SheriffEvent>,
 
@@ -209,17 +232,32 @@ impl Sheriff {
         let (event_tx, _) = broadcast::channel(100);
         let (command_tx, command_rx) = mpsc::channel(10);
 
+        // Initialize policy checker with defaults
+        let policy_checker = PolicyChecker::with_defaults();
+
         Ok(Self {
             config,
             manifest: None,
             rigs: HashMap::new(),
             shadows: Vec::new(),
             postmaster: None,
+            policy_checker,
+            policy_storage: None,
             event_tx,
             command_rx: Some(command_rx),
             command_tx,
             running: false,
         })
+    }
+
+    /// Set custom policies for the checker
+    pub fn set_policies(&mut self, policies: Vec<Policy>) {
+        self.policy_checker.set_policies(policies);
+    }
+
+    /// Get current policies
+    pub fn policies(&self) -> &[Policy] {
+        self.policy_checker.policies()
     }
 
     /// Get an event subscriber
@@ -333,6 +371,12 @@ impl Sheriff {
                             interval = tokio::time::interval(duration);
                             self.config.poll_interval = duration;
                         }
+                        SheriffCommand::ReloadPolicies => {
+                            self.reload_policies();
+                        }
+                        SheriffCommand::CheckPolicies => {
+                            self.run_policy_checks();
+                        }
                     }
                 }
             }
@@ -382,6 +426,80 @@ impl Sheriff {
         if let Some(ref postmaster) = self.postmaster {
             if let Ok(mut pm) = postmaster.try_lock() {
                 pm.cleanup_expired_locks();
+            }
+        }
+
+        // Run policy checks
+        self.run_policy_checks();
+    }
+
+    /// Run policy checks against the current state
+    fn run_policy_checks(&mut self) {
+        // Create a temporary graph from shadows for policy checking
+        let graph = self.create_graph_from_shadows();
+
+        // Run policy checks
+        let results = self.policy_checker.check_graph(&graph);
+        let summary = PolicyChecker::summarize(&results);
+
+        // Store results if storage is available
+        if let Some(ref storage) = self.policy_storage {
+            for result in &results {
+                let _ = storage.save_result(result);
+            }
+        }
+
+        // Emit policy check event
+        let _ = self.event_tx.send(SheriffEvent::PolicyChecked {
+            summary,
+            results,
+        });
+    }
+
+    /// Create a FederatedGraph from shadow beads for policy checking
+    fn create_graph_from_shadows(&self) -> crate::graph::FederatedGraph {
+        use crate::graph::{Bead, FederatedGraph, IssueType, Priority};
+
+        let mut graph = FederatedGraph::new();
+
+        for shadow in &self.shadows {
+            // Convert shadow bead to regular bead for policy checking
+            let bead = Bead {
+                id: shadow.id.clone(),
+                title: shadow.summary.clone(),
+                description: shadow.notes.clone(),
+                status: shadow.status,
+                priority: Priority::P2, // Default priority for shadows
+                labels: shadow.labels.clone(),
+                dependencies: shadow
+                    .cross_repo_dependencies
+                    .iter()
+                    .filter_map(|uri| uri.bead_id())
+                    .collect(),
+                blocks: shadow
+                    .cross_repo_blocks
+                    .iter()
+                    .filter_map(|uri| uri.bead_id())
+                    .collect(),
+                created_at: shadow.last_synced.clone(),
+                updated_at: shadow.last_synced.clone(),
+                created_by: "shadow".to_string(),
+                assignee: None,
+                issue_type: IssueType::Task,
+                notes: None,
+            };
+
+            graph.beads.insert(bead.id.clone(), bead);
+        }
+
+        graph
+    }
+
+    /// Reload policies from storage
+    fn reload_policies(&mut self) {
+        if let Some(ref storage) = self.policy_storage {
+            if let Ok(policies) = storage.load_policies() {
+                self.policy_checker.set_policies(policies);
             }
         }
     }
