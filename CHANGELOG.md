@@ -5,6 +5,12 @@ All notable changes to AllBeads will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-01-12
+
+### Fixed
+
+- **P0: `ab close` not working for newly created beads** - The close command relied on finding beads in the federated graph to determine their context, but newly created beads aren't in the graph until `bd sync` exports them to `issues.jsonl`. Now extracts the prefix from the bead ID and finds the matching context by reading each context's `.beads/config.yaml` issue-prefix setting. This allows `ab close` to work immediately after `ab create` without requiring a sync.
+
 ## [0.3.0] - 2026-01-12
 
 ### Added
@@ -80,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ab init --remote` for existing repositories
 - FederatedGraph for cross-repo dependency tracking
 
+[0.3.1]: https://github.com/thrashr888/AllBeads/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/thrashr888/AllBeads/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thrashr888/AllBeads/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/thrashr888/AllBeads/releases/tag/v0.1.0
