@@ -9,13 +9,13 @@ pub fn custom_help() -> String {
     // ANSI codes for cyan (like bd uses)
     let cyan = "\x1b[36m";
     let reset = "\x1b[0m";
-    let bold = "\x1b[1m";
 
     format!(
-        r#"{bold}AllBeads{reset} - Multi-context bead aggregator and orchestrator
+        r#"Multi-context bead aggregator and orchestrator
 
-{bold}Usage:{reset}
-  ab [options] [command]
+Usage:
+  ab [flags]
+  ab [command]
 
 {cyan}Aggregation:{reset}
   list               List beads with optional filters
@@ -69,15 +69,14 @@ pub fn custom_help() -> String {
 {cyan}Additional Commands:{reset}
   help               Help about any command
 
-{bold}Global Options:{reset}
-  -c, --config       Path to config file (default: ~/.config/allbeads/config.yaml)
-  -C, --contexts     Filter to specific contexts (comma-separated)
-      --cached       Use cached data only (don't fetch updates)
-  -h, --help         Print help
-  -V, --version      Print version
+Flags:
+  -c, --config string      Path to config file (default: ~/.config/allbeads/config.yaml)
+  -C, --contexts string    Filter to specific contexts (comma-separated)
+      --cached             Use cached data only (don't fetch updates)
+  -h, --help               help for ab
+  -V, --version            Print version information
 
 Use "ab [command] --help" for more information about a command."#,
-        bold = bold,
         reset = reset,
         cyan = cyan
     )
