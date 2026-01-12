@@ -4,33 +4,89 @@
 
 use clap::{Parser, Subcommand};
 
-/// Short grouped command reference shown at the end of -h
-const COMMAND_GROUPS_SHORT: &str = "\
-Groups: Aggregation | Wrapper | Context | Integration | Daemon | Agent | Analysis | UI | Config
-Use --help for grouped command reference.";
+/// Generate the custom help output matching bd's style
+pub fn custom_help() -> String {
+    // ANSI codes for cyan (like bd uses)
+    let cyan = "\x1b[36m";
+    let reset = "\x1b[0m";
+    let bold = "\x1b[1m";
 
-/// Grouped command reference shown at the end of --help
-const COMMAND_GROUPS: &str = "\
-Command Groups:
-  Aggregation:  list, show, ready, blocked, search, duplicates, stats
-  Wrapper:      create, update, close
-  Context:      init, setup, quickstart, context, folder, clear-cache
-  Integration:  jira, github, plugin
-  Daemon:       sync, sheriff, mail
-  Agent:        info, prime, onboard, human, swarm, agent
-  Analysis:     janitor
-  UI:           tui
-  Config:       config
+    format!(
+        r#"{bold}AllBeads{reset} - Multi-context bead aggregator and orchestrator
 
-See 'ab <command> --help' for more information on a specific command.";
+{bold}Usage:{reset}
+  ab [options] [command]
+
+{cyan}Aggregation:{reset}
+  list               List beads with optional filters
+  show               Show detailed information about a bead
+  ready              Show beads that are ready to work on (no blockers)
+  blocked            Show all blocked beads
+  search             Search beads by text (title, description, notes)
+  duplicates         Find potential duplicate beads
+  stats              Show aggregated statistics
+
+{cyan}Wrapper Commands:{reset}
+  create             Create a bead in a specific context (delegates to bd)
+  update             Update a bead (delegates to bd in the bead's context)
+  close              Close a bead (delegates to bd in the bead's context)
+
+{cyan}Context Management:{reset}
+  init               Initialize AllBeads configuration or clone a remote repo
+  setup              Setup wizard for configuration
+  quickstart         Quickstart guide for AllBeads
+  context            Manage contexts (Boss repositories)
+  folder             Manage tracked folders (Dry→Wet progression)
+  clear-cache        Clear the local cache
+
+{cyan}Integrations:{reset}
+  jira               JIRA integration commands
+  github             GitHub integration commands
+  plugin             Manage plugins and onboarding
+
+{cyan}Daemon & Sync:{reset}
+  sync               Sync AllBeads state (config and/or context beads)
+  sheriff            Run the Sheriff daemon (background sync)
+  mail               Agent Mail commands
+
+{cyan}Agent Support:{reset}
+  info               Show project info and status for AI agents
+  prime              Prime agent memory with project context
+  onboard            Onboard to a project (for AI agents)
+  human              Send a message to human operator
+  swarm              Agent swarm management commands
+  agent              Coding agent configuration (Claude Code, Cursor, etc.)
+
+{cyan}Analysis:{reset}
+  janitor            Run janitor analysis on a repository
+
+{cyan}UI:{reset}
+  tui                Launch Terminal UI (Kanban + Mail + Graph + Swarm)
+
+{cyan}Configuration:{reset}
+  config             Manage distributed configuration sync
+
+{cyan}Additional Commands:{reset}
+  help               Help about any command
+
+{bold}Global Options:{reset}
+  -c, --config       Path to config file (default: ~/.config/allbeads/config.yaml)
+  -C, --contexts     Filter to specific contexts (comma-separated)
+      --cached       Use cached data only (don't fetch updates)
+  -h, --help         Print help
+  -V, --version      Print version
+
+Use "ab [command] --help" for more information about a command."#,
+        bold = bold,
+        reset = reset,
+        cyan = cyan
+    )
+}
 
 /// AllBeads - Multi-context task aggregator and orchestrator
 #[derive(Parser, Debug)]
 #[command(name = "allbeads")]
 #[command(version, about, long_about = None)]
-#[command(arg_required_else_help = true)]
-#[command(after_help = COMMAND_GROUPS_SHORT)]
-#[command(after_long_help = COMMAND_GROUPS)]
 pub struct Cli {
     /// Path to config file (default: ~/.config/allbeads/config.yaml)
     #[arg(short, long)]
@@ -54,8 +110,7 @@ pub enum Commands {
     // AGGREGATION COMMANDS - View beads across all contexts
     // =========================================================================
     /// List beads with optional filters
-    #[command(next_help_heading = "Aggregation Commands")]
-    List {
+        List {
         /// Filter by status (open, in_progress, blocked, closed)
         #[arg(short, long)]
         status: Option<String>,
@@ -74,23 +129,19 @@ pub enum Commands {
     },
 
     /// Show detailed information about a bead
-    #[command(next_help_heading = "Aggregation Commands")]
-    Show {
+        Show {
         /// Bead ID (e.g., ab-123)
         id: String,
     },
 
     /// Show beads that are ready to work on (no blockers)
-    #[command(next_help_heading = "Aggregation Commands")]
-    Ready,
+        Ready,
 
     /// Show all blocked beads
-    #[command(next_help_heading = "Aggregation Commands")]
-    Blocked,
+        Blocked,
 
     /// Search beads by text (title, description, notes)
-    #[command(next_help_heading = "Aggregation Commands")]
-    Search {
+        Search {
         /// Search query (optional with filters)
         query: Option<String>,
 
@@ -136,8 +187,7 @@ pub enum Commands {
     },
 
     /// Find potential duplicate beads
-    #[command(next_help_heading = "Aggregation Commands")]
-    Duplicates {
+        Duplicates {
         /// Similarity threshold (0.0-1.0, default: 0.8)
         #[arg(short, long, default_value = "0.8")]
         threshold: f64,
@@ -148,14 +198,13 @@ pub enum Commands {
     },
 
     /// Show aggregated statistics
-    #[command(next_help_heading = "Aggregation Commands")]
-    Stats,
+        Stats,
 
     // =========================================================================
     // WRAPPER COMMANDS - Delegate to bd in the correct context
     // =========================================================================
     /// Create a bead in a specific context (delegates to bd)
-    #[command(next_help_heading = "Wrapper Commands")]
+    
     Create {
         /// Title of the new bead
         #[arg(short, long)]
@@ -175,7 +224,7 @@ pub enum Commands {
     },
 
     /// Update a bead (delegates to bd in the bead's context)
-    #[command(next_help_heading = "Wrapper Commands")]
+    
     Update {
         /// Bead ID (e.g., ab-123, rk-456)
         id: String,
@@ -194,7 +243,7 @@ pub enum Commands {
     },
 
     /// Close a bead (delegates to bd in the bead's context)
-    #[command(next_help_heading = "Wrapper Commands")]
+    
     Close {
         /// Bead ID(s) to close
         ids: Vec<String>,
@@ -208,7 +257,7 @@ pub enum Commands {
     // CONTEXT COMMANDS - Manage Boss repositories
     // =========================================================================
     /// Initialize AllBeads configuration or clone a remote repo
-    #[command(next_help_heading = "Context Commands")]
+    
     Init {
         /// Remote repository URL to clone and initialize
         #[arg(short, long)]
@@ -224,45 +273,45 @@ pub enum Commands {
     },
 
     /// Setup wizard for configuration
-    #[command(next_help_heading = "Context Commands")]
+    
     Setup,
 
     /// Quickstart guide for AllBeads
-    #[command(next_help_heading = "Context Commands")]
+    
     Quickstart,
 
     /// Manage contexts (Boss repositories)
-    #[command(subcommand, next_help_heading = "Context Commands")]
+    #[command(subcommand)]
     Context(ContextCommands),
 
     /// Manage tracked folders (Dry→Wet progression)
-    #[command(subcommand, next_help_heading = "Context Commands")]
+    #[command(subcommand)]
     Folder(FolderCommands),
 
     /// Clear the local cache
-    #[command(next_help_heading = "Context Commands")]
+    
     ClearCache,
 
     // =========================================================================
     // INTEGRATION COMMANDS - External systems
     // =========================================================================
     /// JIRA integration commands
-    #[command(subcommand, next_help_heading = "Integration Commands")]
+    #[command(subcommand)]
     Jira(JiraCommands),
 
     /// GitHub integration commands
-    #[command(subcommand, name = "github", next_help_heading = "Integration Commands")]
+    #[command(subcommand, name = "github")]
     GitHub(GitHubCommands),
 
     /// Manage plugins and onboarding
-    #[command(subcommand, next_help_heading = "Integration Commands")]
+    #[command(subcommand)]
     Plugin(PluginCommands),
 
     // =========================================================================
     // DAEMON COMMANDS - Background services
     // =========================================================================
     /// Sync AllBeads state (config and/or context beads)
-    #[command(next_help_heading = "Daemon Commands")]
+    
     Sync {
         /// Sync all contexts' beads (runs bd sync in each context)
         #[arg(long)]
@@ -281,7 +330,7 @@ pub enum Commands {
     },
 
     /// Run the Sheriff daemon (background sync)
-    #[command(next_help_heading = "Daemon Commands")]
+    
     Sheriff {
         /// Path to manifest file (manifests/default.xml)
         #[arg(short, long)]
@@ -297,22 +346,22 @@ pub enum Commands {
     },
 
     /// Agent Mail commands
-    #[command(subcommand, next_help_heading = "Daemon Commands")]
+    #[command(subcommand)]
     Mail(MailCommands),
 
     // =========================================================================
     // AGENT COMMANDS - AI agent integration
     // =========================================================================
     /// Show project info and status for AI agents
-    #[command(next_help_heading = "Agent Commands")]
+    
     Info,
 
     /// Prime agent memory with project context
-    #[command(next_help_heading = "Agent Commands")]
+    
     Prime,
 
     /// Onboard to a project (for AI agents)
-    #[command(next_help_heading = "Agent Commands")]
+    
     Onboard {
         /// Show detailed workflow guide
         #[arg(long)]
@@ -320,25 +369,25 @@ pub enum Commands {
     },
 
     /// Send a message to human operator
-    #[command(next_help_heading = "Agent Commands")]
+    
     Human {
         /// Message to send to human
         message: Option<String>,
     },
 
     /// Agent swarm management commands
-    #[command(subcommand, next_help_heading = "Agent Commands")]
+    #[command(subcommand)]
     Swarm(SwarmCommands),
 
     /// Coding agent configuration (Claude Code, Cursor, Copilot, etc.)
-    #[command(subcommand, name = "agent", next_help_heading = "Agent Commands")]
+    #[command(subcommand, name = "agent")]
     CodingAgent(CodingAgentCommands),
 
     // =========================================================================
     // ANALYSIS COMMANDS - Code and repository analysis
     // =========================================================================
     /// Run janitor analysis on a repository
-    #[command(next_help_heading = "Analysis Commands")]
+    
     Janitor {
         /// Path to repository (default: current directory)
         #[arg(default_value = ".")]
@@ -357,14 +406,14 @@ pub enum Commands {
     // UI COMMANDS - User interface
     // =========================================================================
     /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
-    #[command(next_help_heading = "UI Commands")]
+    
     Tui,
 
     // =========================================================================
     // CONFIG COMMANDS - Distributed configuration
     // =========================================================================
     /// Manage distributed configuration sync
-    #[command(subcommand, next_help_heading = "Config Commands")]
+    #[command(subcommand)]
     Config(ConfigCommands),
 }
 

@@ -9,7 +9,7 @@ use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, IssueType, Priority, Status};
 use allbeads::style;
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use commands::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -21,14 +21,16 @@ fn main() {
         eprintln!("Failed to initialize logging: {}", e);
     }
 
-    let cli = Cli::parse();
-
-    // If no command provided, print help
-    if cli.command.is_none() {
-        Cli::command().print_help().ok();
-        println!();
+    // Check for help BEFORE clap parsing for main command only
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() == 1
+        || (args.len() == 2 && (args[1] == "--help" || args[1] == "-h" || args[1] == "help"))
+    {
+        println!("{}", custom_help());
         return;
     }
+
+    let cli = Cli::parse();
 
     if let Err(e) = run(cli) {
         eprintln!("Error: {}", e);
@@ -37,8 +39,14 @@ fn main() {
 }
 
 fn run(mut cli: Cli) -> allbeads::Result<()> {
-    // Take command - we know it's Some because we checked in main()
-    let command = cli.command.take().unwrap();
+    // Take command - if None, show help
+    let command = match cli.command.take() {
+        Some(cmd) => cmd,
+        None => {
+            println!("{}", custom_help());
+            return Ok(());
+        }
+    };
 
     // Handle init command first (creates config)
     if let Commands::Init {
