@@ -157,12 +157,30 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
     tracing::info!(contexts = config.contexts.len(), "Configuration loaded");
 
-    // Parse context filter
-    let context_filter: Vec<String> = if let Some(contexts) = cli.contexts {
-        contexts.split(',').map(|s| s.trim().to_string()).collect()
+    // Parse context filter (strip @ prefix if present, normalize to lowercase for comparison)
+    let context_filter: Vec<String> = if let Some(ref contexts) = cli.contexts {
+        contexts
+            .split(',')
+            .map(|s| s.trim().trim_start_matches('@').to_string())
+            .collect()
     } else {
         Vec::new()
     };
+
+    // Validate context filter - ensure all specified contexts exist
+    if !context_filter.is_empty() {
+        let valid_context_names: Vec<&str> = config.contexts.iter().map(|c| c.name.as_str()).collect();
+        for ctx in &context_filter {
+            if !valid_context_names.iter().any(|name| name.eq_ignore_ascii_case(ctx)) {
+                eprintln!(
+                    "Error: Context '{}' not found. Available contexts: {}",
+                    ctx,
+                    valid_context_names.join(", ")
+                );
+                return Ok(());
+            }
+        }
+    }
 
     // Set up aggregator
     let sync_mode = if cli.cached {
@@ -173,7 +191,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
     let agg_config = AggregatorConfig {
         sync_mode,
-        context_filter,
+        context_filter: context_filter.clone(),
         skip_errors: true,
     };
 
@@ -191,7 +209,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
     let cache_config = CacheConfig::default();
     let cache = Cache::new(cache_config)?;
 
-    let graph = if cli.cached || !cache.is_expired()? {
+    let mut graph = if cli.cached || !cache.is_expired()? {
         tracing::debug!("Attempting to load from cache");
         if let Some(cached_graph) = cache.load_graph()? {
             tracing::info!("Using cached graph");
@@ -210,6 +228,19 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         cache.store_graph(&graph)?;
         graph
     };
+
+    // Apply context filter to loaded graph (needed when loading from cache)
+    if !context_filter.is_empty() {
+        graph.beads.retain(|_, bead| {
+            bead.labels.iter().any(|label| {
+                if let Some(ctx_name) = label.strip_prefix('@') {
+                    context_filter.iter().any(|f| f.eq_ignore_ascii_case(ctx_name))
+                } else {
+                    false
+                }
+            })
+        });
+    }
 
     // Execute command
     match command {
@@ -266,7 +297,9 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         }
 
         Commands::Ready => {
-            let ready = graph.ready_beads();
+            let mut ready = graph.ready_beads();
+            // Sort by priority (lower number = higher priority, like bd)
+            ready.sort_by_key(|b| b.priority);
             println!();
             println!(
                 "{} Ready work ({} beads with no blockers):",
