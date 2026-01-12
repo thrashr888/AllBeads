@@ -903,12 +903,38 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         }
 
         Commands::Close { ids, reason } => {
+            // Helper to find context by reading .beads/config.yaml prefix
+            fn find_context_by_prefix<'a>(
+                prefix: &str,
+                contexts: &'a [allbeads::config::BossContext],
+            ) -> Option<&'a allbeads::config::BossContext> {
+                for ctx in contexts {
+                    if let Some(path) = &ctx.path {
+                        let config_path = std::path::Path::new(path).join(".beads/config.yaml");
+                        if let Ok(content) = std::fs::read_to_string(&config_path) {
+                            // Parse issue-prefix from YAML
+                            for line in content.lines() {
+                                if let Some(value) = line.strip_prefix("issue-prefix:") {
+                                    let ctx_prefix = value.trim().trim_matches('"').trim_matches('\'');
+                                    if ctx_prefix.eq_ignore_ascii_case(prefix) {
+                                        return Some(ctx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                None
+            }
+
             // Group beads by context
             let mut by_context: std::collections::HashMap<String, Vec<String>> =
                 std::collections::HashMap::new();
 
             for id in &ids {
                 let bead_id = allbeads::graph::BeadId::from(id.as_str());
+
+                // First try to find in graph
                 if let Some(bead) = graph.beads.get(&bead_id) {
                     if let Some(ctx_name) = bead
                         .labels
@@ -917,8 +943,24 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         .map(|l| l.trim_start_matches('@').to_string())
                     {
                         by_context.entry(ctx_name).or_default().push(id.clone());
+                        continue;
                     }
                 }
+
+                // Fallback: extract prefix from ID and find matching context
+                if let Some(prefix) = id.split('-').next() {
+                    if let Some(ctx) = find_context_by_prefix(prefix, &config_for_commands.contexts) {
+                        by_context.entry(ctx.name.clone()).or_default().push(id.clone());
+                        continue;
+                    }
+                }
+
+                eprintln!("Warning: Could not determine context for bead {}", id);
+            }
+
+            if by_context.is_empty() {
+                eprintln!("No beads to close");
+                return Ok(());
             }
 
             for (ctx_name, bead_ids) in by_context {
