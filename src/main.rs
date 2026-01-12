@@ -967,6 +967,431 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
+        Commands::Reopen { ids } => {
+            // Group beads by context
+            let mut by_context: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+
+            for id in &ids {
+                let bead_id = allbeads::graph::BeadId::from(id.as_str());
+                if let Some(bead) = graph.beads.get(&bead_id) {
+                    if let Some(ctx_name) = bead
+                        .labels
+                        .iter()
+                        .find(|l| l.starts_with('@'))
+                        .map(|l| l.trim_start_matches('@').to_string())
+                    {
+                        by_context.entry(ctx_name).or_default().push(id.clone());
+                    }
+                }
+            }
+
+            for (ctx_name, bead_ids) in by_context {
+                if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx_path) = &ctx.path {
+                        println!(
+                            "Reopening {} bead(s) in context @{}...",
+                            bead_ids.len(),
+                            ctx_name
+                        );
+
+                        let bd = Beads::with_workdir(ctx_path);
+                        let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
+                        match bd.reopen_multiple(&id_refs) {
+                            Ok(output) => {
+                                if output.success {
+                                    println!("{}", output.stdout);
+                                } else {
+                                    eprintln!("{}", output.stderr);
+                                }
+                            }
+                            Err(e) => eprintln!("Error: {}", e),
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Dep(dep_cmd) => {
+            match dep_cmd {
+                DepCommands::Add { issue, depends_on } => {
+                    // Find which context the issue belongs to
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.dep_add(&issue, &depends_on) {
+                                        Ok(output) => println!("{}", output.stdout),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
+                    }
+                }
+                DepCommands::Remove { issue, depends_on } => {
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.dep_remove(&issue, &depends_on) {
+                                        Ok(output) => println!("{}", output.stdout),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
+                    }
+                }
+            }
+        }
+
+        Commands::Label(label_cmd) => {
+            match label_cmd {
+                LabelCommands::Add { issue, label } => {
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.label_add(&issue, &label) {
+                                        Ok(output) => println!("{}", output.stdout),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
+                    }
+                }
+                LabelCommands::Remove { issue, label } => {
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.label_remove(&issue, &label) {
+                                        Ok(output) => println!("{}", output.stdout),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
+                    }
+                }
+                LabelCommands::List => {
+                    // List labels from all contexts
+                    for ctx in &config_for_commands.contexts {
+                        if let Some(ctx_path) = &ctx.path {
+                            let bd = Beads::with_workdir(ctx_path);
+                            println!("Labels in @{}:", ctx.name);
+                            match bd.label_list() {
+                                Ok(output) => println!("{}", output.stdout),
+                                Err(e) => eprintln!("Error: {}", e),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Comments(comment_cmd) => {
+            match comment_cmd {
+                CommentCommands::List { issue } => {
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.comments(&issue) {
+                                        Ok(comments) => {
+                                            if comments.is_empty() {
+                                                println!("No comments on {}", issue);
+                                            } else {
+                                                for comment in comments {
+                                                    println!("--- {} ({}) ---", comment.author, comment.created_at.unwrap_or_default());
+                                                    println!("{}\n", comment.content);
+                                                }
+                                            }
+                                        }
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
+                    }
+                }
+                CommentCommands::Add { issue, content } => {
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.comment_add(&issue, &content) {
+                                        Ok(output) => println!("{}", output.stdout),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
+                    }
+                }
+            }
+        }
+
+        Commands::Q { title, issue_type, priority, context } => {
+            // Find the target context
+            let ctx_name = context.unwrap_or_else(|| {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                config_for_commands
+                    .contexts
+                    .iter()
+                    .find(|c| c.path.as_ref().is_some_and(|p| cwd.starts_with(p)))
+                    .map(|c| c.name.clone())
+                    .unwrap_or_else(|| "default".to_string())
+            });
+
+            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                if let Some(ctx_path) = &ctx.path {
+                    let priority_u8 = priority.as_ref().and_then(|p| {
+                        p.trim_start_matches('P').parse::<u8>().ok()
+                    });
+
+                    let bd = Beads::with_workdir(ctx_path);
+                    match bd.quick_create_full(&title, issue_type.as_deref(), priority_u8) {
+                        Ok(id) => println!("{}", id),
+                        Err(e) => eprintln!("Error: {}", e),
+                    }
+                } else {
+                    eprintln!("Context '{}' has no local path configured", ctx_name);
+                }
+            } else {
+                eprintln!("Context '{}' not found", ctx_name);
+            }
+        }
+
+        Commands::Epic(epic_cmd) => {
+            match epic_cmd {
+                EpicCommands::List { open } => {
+                    // List epics from all contexts
+                    for ctx in &config_for_commands.contexts {
+                        if let Some(ctx_path) = &ctx.path {
+                            let bd = Beads::with_workdir(ctx_path);
+                            let result: beads::Result<Vec<beads::Issue>> = if open {
+                                bd.epic_list_open()
+                            } else {
+                                bd.epic_list()
+                            };
+                            match result {
+                                Ok(epics) => {
+                                    if !epics.is_empty() {
+                                        println!("Epics in @{}:", ctx.name);
+                                        for epic in epics {
+                                            println!("  {} [P{}] - {}", epic.id, epic.priority.unwrap_or(2), epic.title);
+                                        }
+                                    }
+                                }
+                                Err(e) => eprintln!("Error listing epics in @{}: {}", ctx.name, e),
+                            }
+                        }
+                    }
+                }
+                EpicCommands::Create { title, priority, context } => {
+                    let ctx_name = context.clone().unwrap_or_else(|| {
+                        let cwd = std::env::current_dir().unwrap_or_default();
+                        config_for_commands
+                            .contexts
+                            .iter()
+                            .find(|c| c.path.as_ref().is_some_and(|p| cwd.starts_with(p)))
+                            .map(|c| c.name.clone())
+                            .unwrap_or_else(|| "default".to_string())
+                    });
+
+                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                        if let Some(ctx_path) = &ctx.path {
+                            let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
+                            let bd = Beads::with_workdir(ctx_path);
+                            match bd.create_epic(&title, priority_u8) {
+                                Ok(output) => println!("{}", output.stdout),
+                                Err(e) => eprintln!("Error: {}", e),
+                            }
+                        }
+                    }
+                }
+                EpicCommands::Show { id } => {
+                    let bead_id = allbeads::graph::BeadId::from(id.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
+                            .iter()
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
+                        {
+                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd = Beads::with_workdir(ctx_path);
+                                    match bd.epic_show(&id) {
+                                        Ok(epic) => {
+                                            println!("{}: {}", epic.id, epic.title);
+                                            println!("Status: {}", epic.status);
+                                            if let Some(desc) = &epic.description {
+                                                println!("Description: {}", desc);
+                                            }
+                                        }
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        eprintln!("Epic {} not found", id);
+                    }
+                }
+            }
+        }
+
+        Commands::Edit { id, field } => {
+            let bead_id = allbeads::graph::BeadId::from(id.as_str());
+            if let Some(bead) = graph.beads.get(&bead_id) {
+                if let Some(ctx_name) = bead
+                    .labels
+                    .iter()
+                    .find(|l| l.starts_with('@'))
+                    .map(|l| l.trim_start_matches('@'))
+                {
+                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                        if let Some(ctx_path) = &ctx.path {
+                            let bd = Beads::with_workdir(ctx_path);
+                            match bd.edit(&id, field.as_deref()) {
+                                Ok(output) => println!("{}", output.stdout),
+                                Err(e) => eprintln!("Error: {}", e),
+                            }
+                        }
+                    }
+                }
+            } else {
+                eprintln!("Bead {} not found", id);
+            }
+        }
+
+        Commands::Delete { ids, yes: _ } => {
+            // Group beads by context
+            let mut by_context: std::collections::HashMap<String, Vec<String>> =
+                std::collections::HashMap::new();
+
+            for id in &ids {
+                let bead_id = allbeads::graph::BeadId::from(id.as_str());
+                if let Some(bead) = graph.beads.get(&bead_id) {
+                    if let Some(ctx_name) = bead
+                        .labels
+                        .iter()
+                        .find(|l| l.starts_with('@'))
+                        .map(|l| l.trim_start_matches('@').to_string())
+                    {
+                        by_context.entry(ctx_name).or_default().push(id.clone());
+                    }
+                }
+            }
+
+            for (ctx_name, bead_ids) in by_context {
+                if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx_path) = &ctx.path {
+                        println!(
+                            "Deleting {} bead(s) in context @{}...",
+                            bead_ids.len(),
+                            ctx_name
+                        );
+
+                        let bd = Beads::with_workdir(ctx_path);
+                        let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
+                        match bd.delete_multiple(&id_refs) {
+                            Ok(output) => {
+                                if output.success {
+                                    println!("{}", output.stdout);
+                                } else {
+                                    eprintln!("{}", output.stderr);
+                                }
+                            }
+                            Err(e) => eprintln!("Error: {}", e),
+                        }
+                    }
+                }
+            }
+        }
+
+        Commands::Duplicate { id, of } => {
+            let bead_id = allbeads::graph::BeadId::from(id.as_str());
+            if let Some(bead) = graph.beads.get(&bead_id) {
+                if let Some(ctx_name) = bead
+                    .labels
+                    .iter()
+                    .find(|l| l.starts_with('@'))
+                    .map(|l| l.trim_start_matches('@'))
+                {
+                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                        if let Some(ctx_path) = &ctx.path {
+                            let bd = Beads::with_workdir(ctx_path);
+                            match bd.duplicate(&id, &of) {
+                                Ok(output) => println!("{}", output.stdout),
+                                Err(e) => eprintln!("Error: {}", e),
+                            }
+                        }
+                    }
+                }
+            } else {
+                eprintln!("Bead {} not found", id);
+            }
+        }
+
         Commands::Context(_)
         | Commands::Init { .. }
         | Commands::Mail(_)

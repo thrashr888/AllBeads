@@ -509,6 +509,60 @@ impl Beads {
         self.run_command(&["reopen", id])
     }
 
+    /// Reopen multiple closed issues
+    pub fn reopen_multiple(&self, ids: &[&str]) -> Result<CommandOutput> {
+        let mut args = vec!["reopen"];
+        args.extend(ids);
+        self.run_command(&args)
+    }
+
+    /// Delete an issue
+    pub fn delete(&self, id: &str) -> Result<CommandOutput> {
+        self.run_command(&["delete", id, "--force"])
+    }
+
+    /// Delete multiple issues
+    pub fn delete_multiple(&self, ids: &[&str]) -> Result<CommandOutput> {
+        let mut args = vec!["delete"];
+        args.extend(ids);
+        args.push("--force");
+        self.run_command(&args)
+    }
+
+    /// Mark an issue as a duplicate of another
+    pub fn duplicate(&self, issue: &str, duplicate_of: &str) -> Result<CommandOutput> {
+        self.run_command(&["duplicate", issue, duplicate_of])
+    }
+
+    /// Quick create - create an issue and return just the ID
+    pub fn quick_create(&self, title: &str) -> Result<String> {
+        let output = self.run_command(&["q", title])?;
+        // bd q outputs just the ID
+        Ok(output.stdout.trim().to_string())
+    }
+
+    /// Quick create with type and priority
+    pub fn quick_create_full(
+        &self,
+        title: &str,
+        issue_type: Option<&str>,
+        priority: Option<u8>,
+    ) -> Result<String> {
+        let mut args = vec!["q", title];
+
+        let priority_str;
+        if let Some(t) = issue_type {
+            args.extend(["--type", t]);
+        }
+        if let Some(p) = priority {
+            priority_str = p.to_string();
+            args.extend(["--priority", &priority_str]);
+        }
+
+        let output = self.run_command(&args)?;
+        Ok(output.stdout.trim().to_string())
+    }
+
     // --- Dependencies ---
 
     /// Add a dependency (issue depends on depends_on)
@@ -544,6 +598,40 @@ impl Beads {
     /// Remove a label from an issue
     pub fn label_remove(&self, issue_id: &str, label: &str) -> Result<CommandOutput> {
         self.run_command(&["label", "remove", issue_id, label])
+    }
+
+    /// List all labels in the project
+    pub fn label_list(&self) -> Result<CommandOutput> {
+        self.run_command(&["label", "list"])
+    }
+
+    // --- Epic management ---
+
+    /// List all epics
+    pub fn epic_list(&self) -> Result<Vec<Issue>> {
+        self.list(None, Some("epic"))
+    }
+
+    /// List open epics
+    pub fn epic_list_open(&self) -> Result<Vec<Issue>> {
+        self.list(Some("open"), Some("epic"))
+    }
+
+    /// Show epic details with children
+    pub fn epic_show(&self, id: &str) -> Result<Issue> {
+        self.show(id)
+    }
+
+    // --- Edit ---
+
+    /// Edit an issue field in $EDITOR (returns immediately, editor opens interactively)
+    /// Note: This spawns an interactive editor, use with caution in automated contexts
+    pub fn edit(&self, id: &str, field: Option<&str>) -> Result<CommandOutput> {
+        let mut args = vec!["edit", id];
+        if let Some(f) = field {
+            args.extend(["--field", f]);
+        }
+        self.run_command(&args)
     }
 
     // --- Stats and info ---

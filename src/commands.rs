@@ -29,7 +29,16 @@ Usage:
 {cyan}Wrapper Commands:{reset}
   create             Create a bead in a specific context (delegates to bd)
   update             Update a bead (delegates to bd in the bead's context)
-  close              Close a bead (delegates to bd in the bead's context)
+  close              Close bead(s) (delegates to bd in the bead's context)
+  reopen             Reopen closed bead(s)
+  dep                Manage dependencies (add/remove)
+  label              Manage labels (add/remove/list)
+  comments           Manage comments (list/add)
+  q                  Quick capture - create and output only ID
+  epic               Epic management (list/create/show)
+  edit               Edit a bead in $EDITOR
+  delete             Delete bead(s)
+  duplicate          Mark a bead as duplicate of another
 
 {cyan}Context Management:{reset}
   init               Initialize AllBeads configuration or clone a remote repo
@@ -242,7 +251,7 @@ pub enum Commands {
     },
 
     /// Close a bead (delegates to bd in the bead's context)
-    
+
     Close {
         /// Bead ID(s) to close
         ids: Vec<String>,
@@ -250,6 +259,76 @@ pub enum Commands {
         /// Reason for closing
         #[arg(long)]
         reason: Option<String>,
+    },
+
+    /// Reopen closed bead(s) (delegates to bd in the bead's context)
+    Reopen {
+        /// Bead ID(s) to reopen
+        ids: Vec<String>,
+    },
+
+    /// Manage dependencies between beads
+    #[command(subcommand)]
+    Dep(DepCommands),
+
+    /// Manage labels on beads
+    #[command(subcommand)]
+    Label(LabelCommands),
+
+    /// Manage comments on beads
+    #[command(subcommand)]
+    Comments(CommentCommands),
+
+    /// Quick capture - create bead and output only the ID
+    Q {
+        /// Title of the new bead
+        title: String,
+
+        /// Type (bug, feature, task, epic, chore)
+        #[arg(short = 'T', long = "type")]
+        issue_type: Option<String>,
+
+        /// Priority (P0-P4 or 0-4)
+        #[arg(short, long)]
+        priority: Option<String>,
+
+        /// Context to create in (defaults to current directory's context)
+        #[arg(short, long)]
+        context: Option<String>,
+    },
+
+    /// Epic management commands
+    #[command(subcommand)]
+    Epic(EpicCommands),
+
+    /// Edit a bead field in $EDITOR
+    Edit {
+        /// Bead ID to edit
+        id: String,
+
+        /// Field to edit (title, description, notes)
+        #[arg(long)]
+        field: Option<String>,
+    },
+
+    /// Delete bead(s) (delegates to bd in the bead's context)
+    Delete {
+        /// Bead ID(s) to delete
+        ids: Vec<String>,
+
+        /// Skip confirmation
+        #[arg(long, short)]
+        yes: bool,
+    },
+
+    /// Mark a bead as duplicate of another
+    Duplicate {
+        /// Bead ID to mark as duplicate
+        id: String,
+
+        /// Bead ID that this is a duplicate of
+        #[arg(long)]
+        of: String,
     },
 
     // =========================================================================
@@ -698,6 +777,104 @@ pub enum PluginCommands {
     MarketplaceSync {
         /// Only sync specific marketplace
         name: Option<String>,
+    },
+}
+
+// =========================================================================
+// WRAPPER SUBCOMMANDS
+// =========================================================================
+
+#[derive(Subcommand, Debug)]
+pub enum DepCommands {
+    /// Add a dependency (issue depends on another)
+    Add {
+        /// Issue that will depend on the other
+        issue: String,
+
+        /// Issue that will be depended on (blocker)
+        depends_on: String,
+    },
+
+    /// Remove a dependency
+    Remove {
+        /// Issue to remove dependency from
+        issue: String,
+
+        /// Issue to remove as dependency
+        depends_on: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LabelCommands {
+    /// Add a label to an issue
+    Add {
+        /// Issue ID
+        issue: String,
+
+        /// Label to add
+        label: String,
+    },
+
+    /// Remove a label from an issue
+    Remove {
+        /// Issue ID
+        issue: String,
+
+        /// Label to remove
+        label: String,
+    },
+
+    /// List all labels in the project
+    List,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CommentCommands {
+    /// List comments on an issue
+    List {
+        /// Issue ID
+        issue: String,
+    },
+
+    /// Add a comment to an issue
+    Add {
+        /// Issue ID
+        issue: String,
+
+        /// Comment content
+        content: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum EpicCommands {
+    /// List all epics
+    List {
+        /// Show only open epics
+        #[arg(long)]
+        open: bool,
+    },
+
+    /// Create a new epic
+    Create {
+        /// Epic title
+        #[arg(short, long)]
+        title: String,
+
+        /// Priority (P0-P4 or 0-4)
+        #[arg(short, long, default_value = "2")]
+        priority: String,
+
+        /// Context to create in (defaults to current directory's context)
+        #[arg(short, long)]
+        context: Option<String>,
+    },
+
+    /// Show epic details with children
+    Show {
+        /// Epic ID
+        id: String,
     },
 }
 
