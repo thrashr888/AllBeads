@@ -353,6 +353,188 @@ mod graph_tests {
     }
 }
 
+mod cli_tests {
+    use std::process::Command;
+
+    /// Helper to run ab with arguments and check it doesn't panic
+    fn run_ab(args: &[&str]) -> std::process::Output {
+        Command::new("cargo")
+            .args(["run", "--quiet", "--"])
+            .args(args)
+            .output()
+            .expect("Failed to execute command")
+    }
+
+    /// Test that all commands can at least show help without panicking
+    /// This catches short flag conflicts and argument parsing issues
+    #[test]
+    fn test_list_help() {
+        let output = run_ab(&["list", "-h"]);
+        assert!(output.status.success(), "list -h should succeed");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("List beads"), "Should contain command description");
+    }
+
+    #[test]
+    fn test_show_help() {
+        let output = run_ab(&["show", "-h"]);
+        assert!(output.status.success(), "show -h should succeed");
+    }
+
+    #[test]
+    fn test_ready_help() {
+        let output = run_ab(&["ready", "-h"]);
+        assert!(output.status.success(), "ready -h should succeed");
+    }
+
+    #[test]
+    fn test_blocked_help() {
+        let output = run_ab(&["blocked", "-h"]);
+        assert!(output.status.success(), "blocked -h should succeed");
+    }
+
+    #[test]
+    fn test_search_help() {
+        let output = run_ab(&["search", "-h"]);
+        assert!(output.status.success(), "search -h should succeed");
+    }
+
+    #[test]
+    fn test_stats_help() {
+        let output = run_ab(&["stats", "-h"]);
+        assert!(output.status.success(), "stats -h should succeed");
+    }
+
+    #[test]
+    fn test_duplicates_help() {
+        let output = run_ab(&["duplicates", "-h"]);
+        assert!(output.status.success(), "duplicates -h should succeed");
+    }
+
+    #[test]
+    fn test_create_help() {
+        let output = run_ab(&["create", "-h"]);
+        assert!(output.status.success(), "create -h should succeed");
+    }
+
+    #[test]
+    fn test_update_help() {
+        let output = run_ab(&["update", "-h"]);
+        assert!(output.status.success(), "update -h should succeed");
+    }
+
+    #[test]
+    fn test_close_help() {
+        let output = run_ab(&["close", "-h"]);
+        assert!(output.status.success(), "close -h should succeed");
+    }
+
+    #[test]
+    fn test_dep_help() {
+        let output = run_ab(&["dep", "-h"]);
+        assert!(output.status.success(), "dep -h should succeed");
+    }
+
+    #[test]
+    fn test_reopen_help() {
+        let output = run_ab(&["reopen", "-h"]);
+        assert!(output.status.success(), "reopen -h should succeed");
+    }
+
+    #[test]
+    fn test_label_help() {
+        let output = run_ab(&["label", "-h"]);
+        assert!(output.status.success(), "label -h should succeed");
+    }
+
+    #[test]
+    fn test_comments_help() {
+        let output = run_ab(&["comments", "-h"]);
+        assert!(output.status.success(), "comments -h should succeed");
+    }
+
+    #[test]
+    fn test_q_help() {
+        let output = run_ab(&["q", "-h"]);
+        assert!(output.status.success(), "q -h should succeed");
+    }
+
+    #[test]
+    fn test_epic_help() {
+        let output = run_ab(&["epic", "-h"]);
+        assert!(output.status.success(), "epic -h should succeed");
+    }
+
+    #[test]
+    fn test_edit_help() {
+        let output = run_ab(&["edit", "-h"]);
+        assert!(output.status.success(), "edit -h should succeed");
+    }
+
+    #[test]
+    fn test_delete_help() {
+        let output = run_ab(&["delete", "-h"]);
+        assert!(output.status.success(), "delete -h should succeed");
+    }
+
+    #[test]
+    fn test_duplicate_help() {
+        let output = run_ab(&["duplicate", "-h"]);
+        assert!(output.status.success(), "duplicate -h should succeed");
+    }
+
+    #[test]
+    fn test_context_help() {
+        let output = run_ab(&["context", "-h"]);
+        assert!(output.status.success(), "context -h should succeed");
+    }
+
+    #[test]
+    fn test_mail_help() {
+        let output = run_ab(&["mail", "-h"]);
+        assert!(output.status.success(), "mail -h should succeed");
+    }
+
+    #[test]
+    fn test_sheriff_help() {
+        let output = run_ab(&["sheriff", "-h"]);
+        assert!(output.status.success(), "sheriff -h should succeed");
+    }
+
+    #[test]
+    fn test_tui_help() {
+        let output = run_ab(&["tui", "-h"]);
+        assert!(output.status.success(), "tui -h should succeed");
+    }
+
+    #[test]
+    fn test_swarm_help() {
+        let output = run_ab(&["swarm", "-h"]);
+        assert!(output.status.success(), "swarm -h should succeed");
+    }
+
+    #[test]
+    fn test_main_help() {
+        let output = run_ab(&["-h"]);
+        assert!(output.status.success(), "-h should succeed");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("AllBeads"), "Should contain app name");
+    }
+
+    #[test]
+    fn test_global_flags_no_conflict() {
+        // Test that global flags work with subcommands
+        let output = run_ab(&["--json", "list", "-h"]);
+        assert!(output.status.success(), "--json list -h should succeed");
+
+        let output = run_ab(&["--quiet", "ready", "-h"]);
+        assert!(output.status.success(), "--quiet ready -h should succeed");
+
+        let output = run_ab(&["--verbose", "stats", "-h"]);
+        assert!(output.status.success(), "--verbose stats -h should succeed");
+    }
+}
+
 mod mail_tests {
     use allbeads::mail::*;
     use std::time::Duration;

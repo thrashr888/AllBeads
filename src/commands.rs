@@ -278,7 +278,7 @@ pub enum Commands {
         priority: Option<String>,
 
         /// Filter by context (@work, @personal)
-        #[arg(short = 'c', long)]
+        #[arg(long)]
         context: Option<String>,
 
         /// Filter by label/tag
@@ -304,7 +304,7 @@ pub enum Commands {
         query: Option<String>,
 
         /// Filter by context
-        #[arg(short = 'c', long)]
+        #[arg(long)]
         context: Option<String>,
 
         /// Filter by status. Prefix with ^ to negate (e.g., ^closed)
@@ -377,7 +377,7 @@ pub enum Commands {
         priority: String,
 
         /// Context to create in (defaults to current directory's context)
-        #[arg(short, long)]
+        #[arg(long)]
         context: Option<String>,
     },
 
@@ -716,7 +716,7 @@ pub enum SwarmCommands {
     /// List all agents
     List {
         /// Filter by context
-        #[arg(short = 'c', long)]
+        #[arg(long)]
         context: Option<String>,
 
         /// Only show active agents
@@ -743,7 +743,7 @@ pub enum SwarmCommands {
         name: String,
 
         /// Context
-        #[arg(short = 'c', long, default_value = "default")]
+        #[arg(long, default_value = "default")]
         context: String,
 
         /// Agent persona (general, refactor-bot, test-writer, security-specialist)
@@ -1017,7 +1017,7 @@ pub enum EpicCommands {
         priority: String,
 
         /// Context to create in (defaults to current directory's context)
-        #[arg(short, long)]
+        #[arg(long)]
         context: Option<String>,
     },
 
