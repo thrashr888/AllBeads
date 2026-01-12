@@ -79,11 +79,33 @@ Usage:
   help               Help about any command
 
 Flags:
-  -c, --config string      Path to config file (default: ~/.config/allbeads/config.yaml)
-  -C, --contexts string    Filter to specific contexts (comma-separated)
-      --cached             Use cached data only (don't fetch updates)
-  -h, --help               help for ab
-  -V, --version            Print version information
+  -c, --config string        Path to config file (default: ~/.config/allbeads/config.yaml)
+  -C, --contexts string      Filter to specific contexts (comma-separated)
+      --cached               Use cached data only (don't fetch updates)
+
+{cyan}Output Control:{reset}
+      --json                 Output in JSON format
+  -q, --quiet                Suppress non-essential output (errors only)
+  -v, --verbose              Enable verbose/debug output
+
+{cyan}Database/Storage:{reset}
+      --db string            Database path (default: auto-discover .beads/*.db)
+      --no-db                Use no-db mode: load from JSONL, no SQLite
+      --readonly             Read-only mode: block write operations
+
+{cyan}Sync Behavior:{reset}
+      --no-auto-flush        Disable automatic JSONL sync after CRUD operations
+      --no-auto-import       Disable automatic JSONL import when newer than DB
+      --no-daemon            Force direct storage mode, bypass daemon if running
+      --sandbox              Sandbox mode: disables daemon and auto-sync
+      --allow-stale          Allow operations on potentially stale data
+
+{cyan}Other:{reset}
+      --actor string         Actor name for audit trail (default: $AB_ACTOR or $USER)
+      --lock-timeout string  SQLite busy timeout (default 30s)
+      --profile              Generate CPU profile for performance analysis
+  -h, --help                 help for ab
+  -V, --version              Print version information
 
 Use "ab [command] --help" for more information about a command."#,
         reset = reset,
@@ -97,19 +119,147 @@ Use "ab [command] --help" for more information about a command."#,
 #[command(version, about, long_about = None)]
 pub struct Cli {
     /// Path to config file (default: ~/.config/allbeads/config.yaml)
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     pub config: Option<String>,
 
     /// Filter to specific contexts (comma-separated)
-    #[arg(short = 'C', long)]
+    #[arg(short = 'C', long, global = true)]
     pub contexts: Option<String>,
 
     /// Use cached data only (don't fetch updates)
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub cached: bool,
+
+    // =========================================================================
+    // OUTPUT CONTROL FLAGS (bd-compatible)
+    // =========================================================================
+    /// Output in JSON format
+    #[arg(long, global = true)]
+    pub json: bool,
+
+    /// Suppress non-essential output (errors only)
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
+    /// Enable verbose/debug output
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+
+    // =========================================================================
+    // DATABASE/STORAGE FLAGS (bd-compatible)
+    // =========================================================================
+    /// Database path (default: auto-discover .beads/*.db)
+    #[arg(long, global = true)]
+    pub db: Option<String>,
+
+    /// Use no-db mode: load from JSONL, no SQLite
+    #[arg(long, global = true)]
+    pub no_db: bool,
+
+    /// Read-only mode: block write operations (for worker sandboxes)
+    #[arg(long, global = true)]
+    pub readonly: bool,
+
+    // =========================================================================
+    // SYNC BEHAVIOR FLAGS (bd-compatible)
+    // =========================================================================
+    /// Disable automatic JSONL sync after CRUD operations
+    #[arg(long, global = true)]
+    pub no_auto_flush: bool,
+
+    /// Disable automatic JSONL import when newer than DB
+    #[arg(long, global = true)]
+    pub no_auto_import: bool,
+
+    /// Force direct storage mode, bypass daemon if running
+    #[arg(long, global = true)]
+    pub no_daemon: bool,
+
+    /// Sandbox mode: disables daemon and auto-sync
+    #[arg(long, global = true)]
+    pub sandbox: bool,
+
+    /// Allow operations on potentially stale data (skip staleness check)
+    #[arg(long, global = true)]
+    pub allow_stale: bool,
+
+    // =========================================================================
+    // OTHER FLAGS (bd-compatible)
+    // =========================================================================
+    /// Actor name for audit trail (default: $AB_ACTOR or $USER)
+    #[arg(long, global = true)]
+    pub actor: Option<String>,
+
+    /// SQLite busy timeout (0 = fail immediately if locked) (default 30s)
+    #[arg(long, global = true)]
+    pub lock_timeout: Option<String>,
+
+    /// Generate CPU profile for performance analysis
+    #[arg(long, global = true)]
+    pub profile: bool,
 
     #[command(subcommand)]
     pub command: Option<Commands>,
+}
+
+impl Cli {
+    /// Build bd-compatible global flags from CLI args
+    /// Returns a vector of arguments to pass to bd commands
+    pub fn bd_global_flags(&self) -> Vec<String> {
+        let mut flags = Vec::new();
+
+        // Output control
+        if self.json {
+            flags.push("--json".to_string());
+        }
+        if self.quiet {
+            flags.push("--quiet".to_string());
+        }
+        if self.verbose {
+            flags.push("--verbose".to_string());
+        }
+
+        // Database/storage
+        if let Some(ref db) = self.db {
+            flags.push(format!("--db={}", db));
+        }
+        if self.no_db {
+            flags.push("--no-db".to_string());
+        }
+        if self.readonly {
+            flags.push("--readonly".to_string());
+        }
+
+        // Sync behavior
+        if self.no_auto_flush {
+            flags.push("--no-auto-flush".to_string());
+        }
+        if self.no_auto_import {
+            flags.push("--no-auto-import".to_string());
+        }
+        if self.no_daemon {
+            flags.push("--no-daemon".to_string());
+        }
+        if self.sandbox {
+            flags.push("--sandbox".to_string());
+        }
+        if self.allow_stale {
+            flags.push("--allow-stale".to_string());
+        }
+
+        // Other
+        if let Some(ref actor) = self.actor {
+            flags.push(format!("--actor={}", actor));
+        }
+        if let Some(ref timeout) = self.lock_timeout {
+            flags.push(format!("--lock-timeout={}", timeout));
+        }
+        if self.profile {
+            flags.push("--profile".to_string());
+        }
+
+        flags
+    }
 }
 
 #[derive(Subcommand, Debug)]
@@ -293,7 +443,7 @@ pub enum Commands {
         priority: Option<String>,
 
         /// Context to create in (defaults to current directory's context)
-        #[arg(short, long)]
+        #[arg(long)]
         context: Option<String>,
     },
 

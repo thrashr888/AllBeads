@@ -245,6 +245,8 @@ pub struct StatusInfo {
 pub struct Beads {
     /// Working directory
     workdir: Option<PathBuf>,
+    /// Global flags to pass to all bd commands
+    global_flags: Vec<String>,
 }
 
 impl Beads {
@@ -261,12 +263,31 @@ impl Beads {
     pub fn with_workdir(path: impl Into<PathBuf>) -> Self {
         Self {
             workdir: Some(path.into()),
+            global_flags: Vec::new(),
+        }
+    }
+
+    /// Create with working directory and global flags
+    pub fn with_workdir_and_flags(path: impl Into<PathBuf>, flags: Vec<String>) -> Self {
+        Self {
+            workdir: Some(path.into()),
+            global_flags: flags,
         }
     }
 
     /// Set the working directory
     pub fn set_workdir(&mut self, path: impl Into<PathBuf>) {
         self.workdir = Some(path.into());
+    }
+
+    /// Set global flags to pass to all bd commands
+    pub fn set_global_flags(&mut self, flags: Vec<String>) {
+        self.global_flags = flags;
+    }
+
+    /// Add a global flag
+    pub fn add_global_flag(&mut self, flag: String) {
+        self.global_flags.push(flag);
     }
 
     /// Check if bd is available
@@ -732,6 +753,13 @@ impl Beads {
 
     fn run_command(&self, args: &[&str]) -> Result<CommandOutput> {
         let mut cmd = Command::new("bd");
+
+        // Add global flags first (they apply to all commands)
+        for flag in &self.global_flags {
+            cmd.arg(flag);
+        }
+
+        // Then add command-specific args
         cmd.args(args);
 
         if let Some(ref dir) = self.workdir {

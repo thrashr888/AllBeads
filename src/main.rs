@@ -40,6 +40,9 @@ fn main() {
 }
 
 fn run(mut cli: Cli) -> allbeads::Result<()> {
+    // Get bd-compatible global flags to pass through to wrapper commands
+    let bd_flags = cli.bd_global_flags();
+
     // Take command - if None, show help
     let command = match cli.command.take() {
         Some(cmd) => cmd,
@@ -835,7 +838,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                                 p.trim_start_matches('P').parse::<u8>().ok()
                             });
 
-                            let bd = Beads::with_workdir(ctx_path);
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.update(
                                 &id,
                                 status.as_deref(),
@@ -894,7 +897,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             ctx_name
                         );
 
-                        let bd = Beads::with_workdir(ctx_path);
+                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                         let result = if let Some(r) = &reason {
                             // Use run() for close with reason (close_multiple doesn't support reason)
                             let mut args: Vec<&str> = vec!["close"];
@@ -948,7 +951,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // Parse priority string to u8
                     let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
 
-                    let bd = Beads::with_workdir(ctx_path);
+                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                     match bd.create(&title, &issue_type, priority_u8, None) {
                         Ok(output) => {
                             if output.success {
@@ -995,7 +998,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             ctx_name
                         );
 
-                        let bd = Beads::with_workdir(ctx_path);
+                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                         let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
                         match bd.reopen_multiple(&id_refs) {
                             Ok(output) => {
@@ -1026,7 +1029,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.dep_add(&issue, &depends_on) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1049,7 +1052,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.dep_remove(&issue, &depends_on) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1077,7 +1080,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.label_add(&issue, &label) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1100,7 +1103,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.label_remove(&issue, &label) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1116,7 +1119,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // List labels from all contexts
                     for ctx in &config_for_commands.contexts {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir(ctx_path);
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             println!("Labels in @{}:", ctx.name);
                             match bd.label_list() {
                                 Ok(output) => println!("{}", output.stdout),
@@ -1141,7 +1144,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.comments(&issue) {
                                         Ok(comments) => {
                                             if comments.is_empty() {
@@ -1173,7 +1176,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.comment_add(&issue, &content) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1206,7 +1209,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         p.trim_start_matches('P').parse::<u8>().ok()
                     });
 
-                    let bd = Beads::with_workdir(ctx_path);
+                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                     match bd.quick_create_full(&title, issue_type.as_deref(), priority_u8) {
                         Ok(id) => println!("{}", id),
                         Err(e) => eprintln!("Error: {}", e),
@@ -1225,7 +1228,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // List epics from all contexts
                     for ctx in &config_for_commands.contexts {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir(ctx_path);
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             let result: beads::Result<Vec<beads::Issue>> = if open {
                                 bd.epic_list_open()
                             } else {
@@ -1259,7 +1262,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                         if let Some(ctx_path) = &ctx.path {
                             let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
-                            let bd = Beads::with_workdir(ctx_path);
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.create_epic(&title, priority_u8) {
                                 Ok(output) => println!("{}", output.stdout),
                                 Err(e) => eprintln!("Error: {}", e),
@@ -1278,7 +1281,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         {
                             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir(ctx_path);
+                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.epic_show(&id) {
                                         Ok(epic) => {
                                             println!("{}: {}", epic.id, epic.title);
@@ -1310,7 +1313,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 {
                     if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir(ctx_path);
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.edit(&id, field.as_deref()) {
                                 Ok(output) => println!("{}", output.stdout),
                                 Err(e) => eprintln!("Error: {}", e),
@@ -1351,7 +1354,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             ctx_name
                         );
 
-                        let bd = Beads::with_workdir(ctx_path);
+                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                         let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
                         match bd.delete_multiple(&id_refs) {
                             Ok(output) => {
@@ -1379,7 +1382,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 {
                     if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir(ctx_path);
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.duplicate(&id, &of) {
                                 Ok(output) => println!("{}", output.stdout),
                                 Err(e) => eprintln!("Error: {}", e),
