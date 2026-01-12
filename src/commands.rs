@@ -28,41 +28,11 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    // === Setup & Configuration ===
-    /// Initialize AllBeads configuration or clone a remote repo
-    Init {
-        /// Remote repository URL to clone and initialize
-        #[arg(short, long)]
-        remote: Option<String>,
-
-        /// Target directory for cloned repo (default: derived from URL)
-        #[arg(short, long)]
-        target: Option<String>,
-
-        /// Run janitor agent to scan codebase and create issues
-        #[arg(short, long)]
-        janitor: bool,
-    },
-
-    /// Setup wizard for configuration
-    Setup,
-
-    /// Quickstart guide for AllBeads
-    Quickstart,
-
-    /// Manage contexts (Boss repositories)
-    #[command(subcommand)]
-    Context(ContextCommands),
-
-    /// Manage tracked folders (Dry→Wet progression)
-    #[command(subcommand)]
-    Folder(FolderCommands),
-
-    /// Clear the local cache
-    ClearCache,
-
-    // === Viewing Beads ===
+    // =========================================================================
+    // AGGREGATION COMMANDS - View beads across all contexts
+    // =========================================================================
     /// List beads with optional filters
+    #[command(next_help_heading = "Aggregation Commands")]
     List {
         /// Filter by status (open, in_progress, blocked, closed)
         #[arg(short, long)]
@@ -82,22 +52,22 @@ pub enum Commands {
     },
 
     /// Show detailed information about a bead
+    #[command(next_help_heading = "Aggregation Commands")]
     Show {
         /// Bead ID (e.g., ab-123)
         id: String,
     },
 
     /// Show beads that are ready to work on (no blockers)
+    #[command(next_help_heading = "Aggregation Commands")]
     Ready,
 
     /// Show all blocked beads
+    #[command(next_help_heading = "Aggregation Commands")]
     Blocked,
 
-    /// Show aggregated statistics
-    Stats,
-
-    // === Analysis & Search ===
     /// Search beads by text (title, description, notes)
+    #[command(next_help_heading = "Aggregation Commands")]
     Search {
         /// Search query (optional with filters)
         query: Option<String>,
@@ -144,6 +114,7 @@ pub enum Commands {
     },
 
     /// Find potential duplicate beads
+    #[command(next_help_heading = "Aggregation Commands")]
     Duplicates {
         /// Similarity threshold (0.0-1.0, default: 0.8)
         #[arg(short, long, default_value = "0.8")]
@@ -154,36 +125,15 @@ pub enum Commands {
         include_closed: bool,
     },
 
-    // === CRUD Wrappers (delegate to bd) ===
-    /// Update a bead (delegates to bd in the bead's context)
-    Update {
-        /// Bead ID (e.g., ab-123, rk-456)
-        id: String,
+    /// Show aggregated statistics
+    #[command(next_help_heading = "Aggregation Commands")]
+    Stats,
 
-        /// Set status (open, in_progress, blocked, closed)
-        #[arg(long)]
-        status: Option<String>,
-
-        /// Set priority (P0-P4 or 0-4)
-        #[arg(long)]
-        priority: Option<String>,
-
-        /// Set assignee
-        #[arg(long)]
-        assignee: Option<String>,
-    },
-
-    /// Close a bead (delegates to bd in the bead's context)
-    Close {
-        /// Bead ID(s) to close
-        ids: Vec<String>,
-
-        /// Reason for closing
-        #[arg(long)]
-        reason: Option<String>,
-    },
-
+    // =========================================================================
+    // WRAPPER COMMANDS - Delegate to bd in the correct context
+    // =========================================================================
     /// Create a bead in a specific context (delegates to bd)
+    #[command(next_help_heading = "Wrapper Commands")]
     Create {
         /// Title of the new bead
         #[arg(short, long)]
@@ -202,69 +152,95 @@ pub enum Commands {
         context: Option<String>,
     },
 
-    /// Run janitor analysis on a repository
-    Janitor {
-        /// Path to repository (default: current directory)
-        #[arg(default_value = ".")]
-        path: String,
+    /// Update a bead (delegates to bd in the bead's context)
+    #[command(next_help_heading = "Wrapper Commands")]
+    Update {
+        /// Bead ID (e.g., ab-123, rk-456)
+        id: String,
 
-        /// Include verbose analysis details
+        /// Set status (open, in_progress, blocked, closed)
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Set priority (P0-P4 or 0-4)
+        #[arg(long)]
+        priority: Option<String>,
+
+        /// Set assignee
+        #[arg(long)]
+        assignee: Option<String>,
+    },
+
+    /// Close a bead (delegates to bd in the bead's context)
+    #[command(next_help_heading = "Wrapper Commands")]
+    Close {
+        /// Bead ID(s) to close
+        ids: Vec<String>,
+
+        /// Reason for closing
+        #[arg(long)]
+        reason: Option<String>,
+    },
+
+    // =========================================================================
+    // CONTEXT COMMANDS - Manage Boss repositories
+    // =========================================================================
+    /// Initialize AllBeads configuration or clone a remote repo
+    #[command(next_help_heading = "Context Commands")]
+    Init {
+        /// Remote repository URL to clone and initialize
         #[arg(short, long)]
-        verbose: bool,
+        remote: Option<String>,
 
-        /// Only scan, don't create beads (dry run)
-        #[arg(long)]
-        dry_run: bool,
+        /// Target directory for cloned repo (default: derived from URL)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Run janitor agent to scan codebase and create issues
+        #[arg(short, long)]
+        janitor: bool,
     },
 
-    // === TUI & Interface ===
-    /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
-    Tui,
+    /// Setup wizard for configuration
+    #[command(next_help_heading = "Context Commands")]
+    Setup,
 
-    // === Agent Integration ===
-    /// Show project info and status for AI agents
-    Info,
+    /// Quickstart guide for AllBeads
+    #[command(next_help_heading = "Context Commands")]
+    Quickstart,
 
-    /// Prime agent memory with project context
-    Prime,
+    /// Manage contexts (Boss repositories)
+    #[command(subcommand, next_help_heading = "Context Commands")]
+    Context(ContextCommands),
 
-    /// Onboard to a project (for AI agents)
-    Onboard {
-        /// Show detailed workflow guide
-        #[arg(long)]
-        full: bool,
-    },
+    /// Manage tracked folders (Dry→Wet progression)
+    #[command(subcommand, next_help_heading = "Context Commands")]
+    Folder(FolderCommands),
 
-    /// Send a message to human operator
-    Human {
-        /// Message to send to human
-        message: Option<String>,
-    },
+    /// Clear the local cache
+    #[command(next_help_heading = "Context Commands")]
+    ClearCache,
 
-    /// Agent Mail commands
-    #[command(subcommand)]
-    Mail(MailCommands),
+    // =========================================================================
+    // INTEGRATION COMMANDS - External systems
+    // =========================================================================
+    /// JIRA integration commands
+    #[command(subcommand, next_help_heading = "Integration Commands")]
+    Jira(JiraCommands),
 
-    /// Agent swarm management commands
-    #[command(subcommand)]
-    Swarm(SwarmCommands),
+    /// GitHub integration commands
+    #[command(subcommand, name = "github", next_help_heading = "Integration Commands")]
+    GitHub(GitHubCommands),
 
-    /// Coding agent configuration (Claude Code, Cursor, Copilot, etc.)
-    #[command(subcommand, name = "agent")]
-    CodingAgent(CodingAgentCommands),
-
-    // === Distributed Configuration ===
-    /// Manage distributed configuration sync
-    #[command(subcommand)]
-    Config(ConfigCommands),
-
-    // === Plugin System ===
     /// Manage plugins and onboarding
-    #[command(subcommand)]
+    #[command(subcommand, next_help_heading = "Integration Commands")]
     Plugin(PluginCommands),
 
-    // === Daemons & Sync ===
+    // =========================================================================
+    // DAEMON COMMANDS - Background services
+    // =========================================================================
     /// Sync AllBeads state (config and/or context beads)
+    #[command(next_help_heading = "Daemon Commands")]
     Sync {
         /// Sync all contexts' beads (runs bd sync in each context)
         #[arg(long)]
@@ -283,6 +259,7 @@ pub enum Commands {
     },
 
     /// Run the Sheriff daemon (background sync)
+    #[command(next_help_heading = "Daemon Commands")]
     Sheriff {
         /// Path to manifest file (manifests/default.xml)
         #[arg(short, long)]
@@ -297,14 +274,76 @@ pub enum Commands {
         foreground: bool,
     },
 
-    // === Enterprise Integration ===
-    /// JIRA integration commands
-    #[command(subcommand)]
-    Jira(JiraCommands),
+    /// Agent Mail commands
+    #[command(subcommand, next_help_heading = "Daemon Commands")]
+    Mail(MailCommands),
 
-    /// GitHub integration commands
-    #[command(subcommand, name = "github")]
-    GitHub(GitHubCommands),
+    // =========================================================================
+    // AGENT COMMANDS - AI agent integration
+    // =========================================================================
+    /// Show project info and status for AI agents
+    #[command(next_help_heading = "Agent Commands")]
+    Info,
+
+    /// Prime agent memory with project context
+    #[command(next_help_heading = "Agent Commands")]
+    Prime,
+
+    /// Onboard to a project (for AI agents)
+    #[command(next_help_heading = "Agent Commands")]
+    Onboard {
+        /// Show detailed workflow guide
+        #[arg(long)]
+        full: bool,
+    },
+
+    /// Send a message to human operator
+    #[command(next_help_heading = "Agent Commands")]
+    Human {
+        /// Message to send to human
+        message: Option<String>,
+    },
+
+    /// Agent swarm management commands
+    #[command(subcommand, next_help_heading = "Agent Commands")]
+    Swarm(SwarmCommands),
+
+    /// Coding agent configuration (Claude Code, Cursor, Copilot, etc.)
+    #[command(subcommand, name = "agent", next_help_heading = "Agent Commands")]
+    CodingAgent(CodingAgentCommands),
+
+    // =========================================================================
+    // ANALYSIS COMMANDS - Code and repository analysis
+    // =========================================================================
+    /// Run janitor analysis on a repository
+    #[command(next_help_heading = "Analysis Commands")]
+    Janitor {
+        /// Path to repository (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Include verbose analysis details
+        #[arg(short, long)]
+        verbose: bool,
+
+        /// Only scan, don't create beads (dry run)
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    // =========================================================================
+    // UI COMMANDS - User interface
+    // =========================================================================
+    /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
+    #[command(next_help_heading = "UI Commands")]
+    Tui,
+
+    // =========================================================================
+    // CONFIG COMMANDS - Distributed configuration
+    // =========================================================================
+    /// Manage distributed configuration sync
+    #[command(subcommand, next_help_heading = "Config Commands")]
+    Config(ConfigCommands),
 }
 
 #[derive(Subcommand, Debug)]
