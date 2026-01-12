@@ -5,6 +5,39 @@ All notable changes to AllBeads will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-12
+
+### Added
+
+- **TUI Stats View**: Dashboard showing project statistics with bar charts
+  - Status breakdown (Open, In Progress, Blocked, Closed)
+  - Priority distribution (P0-P4)
+  - Beads by context with horizontal bar visualization
+  - Ready beads count
+
+- **TUI Timeline View**: Gantt-style visualization of beads
+  - Chronological display sorted by creation date
+  - ASCII bars showing days open per bead
+  - Zoom controls (+/-) for timeline range
+  - Detail view with full bead information
+
+- **TUI Governance View**: Policy management dashboard
+  - Two-panel layout (policies + check results)
+  - Navigation between sections (h/l keys)
+  - Detail view for policy and result inspection
+
+- **Governance Module**: Policy Engine for compliance checking
+  - Type-safe `PolicyType` enum with built-in rules
+  - Built-in rules: `require-description`, `require-labels`, `max-in-progress`, `dependency-cycle-check`, `require-priority`, `require-assignee`
+  - `PolicyChecker` for running policies against `FederatedGraph`
+  - SQLite storage for policy configs and check results
+  - 25 unit tests covering all policy rules
+
+- **Sheriff Governance Integration**: Policy checks in daemon poll cycle
+  - `SheriffEvent::PolicyChecked` for policy check notifications
+  - `SheriffCommand::ReloadPolicies` and `CheckPolicies` commands
+  - Policy checks run automatically at end of each poll cycle
+
 ## [0.3.1] - 2026-01-12
 
 ### Fixed
@@ -86,6 +119,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ab init --remote` for existing repositories
 - FederatedGraph for cross-repo dependency tracking
 
+[0.4.0]: https://github.com/thrashr888/AllBeads/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/thrashr888/AllBeads/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/thrashr888/AllBeads/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thrashr888/AllBeads/compare/v0.1.0...v0.2.0
