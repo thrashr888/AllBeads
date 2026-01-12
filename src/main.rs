@@ -9,6 +9,7 @@ use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, IssueType, Priority, Status};
 use allbeads::style;
+use beads::Beads;
 use clap::Parser;
 use commands::*;
 use serde::{Deserialize, Serialize};
@@ -823,32 +824,33 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // Find the context path
                     if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                         if let Some(ctx_path) = &ctx.path {
-                            let mut cmd = vec!["update".to_string(), id.clone()];
-                            if let Some(s) = status {
-                                cmd.push(format!("--status={}", s));
-                            }
-                            if let Some(p) = priority {
-                                cmd.push(format!("--priority={}", p));
-                            }
-                            if let Some(a) = assignee {
-                                cmd.push(format!("--assignee={}", a));
-                            }
-
                             println!(
                                 "Updating {} in context @{}...",
                                 style::issue_id(&id),
                                 ctx_name
                             );
 
-                            let output = std::process::Command::new("bd")
-                                .args(&cmd)
-                                .current_dir(ctx_path)
-                                .output()?;
+                            // Parse priority string to u8 if provided
+                            let priority_u8 = priority.as_ref().and_then(|p| {
+                                p.trim_start_matches('P').parse::<u8>().ok()
+                            });
 
-                            if output.status.success() {
-                                println!("{}", String::from_utf8_lossy(&output.stdout));
-                            } else {
-                                eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                            let bd = Beads::with_workdir(ctx_path);
+                            match bd.update(
+                                &id,
+                                status.as_deref(),
+                                priority_u8,
+                                assignee.as_deref(),
+                                None, // title
+                            ) {
+                                Ok(output) => {
+                                    if output.success {
+                                        println!("{}", output.stdout);
+                                    } else {
+                                        eprintln!("{}", output.stderr);
+                                    }
+                                }
+                                Err(e) => eprintln!("Error: {}", e),
                             }
                         } else {
                             eprintln!("Context '{}' has no local path configured", ctx_name);
@@ -886,27 +888,35 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             for (ctx_name, bead_ids) in by_context {
                 if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                     if let Some(ctx_path) = &ctx.path {
-                        let mut cmd = vec!["close".to_string()];
-                        cmd.extend(bead_ids.clone());
-                        if let Some(r) = &reason {
-                            cmd.push(format!("--reason={}", r));
-                        }
-
                         println!(
                             "Closing {} bead(s) in context @{}...",
                             bead_ids.len(),
                             ctx_name
                         );
 
-                        let output = std::process::Command::new("bd")
-                            .args(&cmd)
-                            .current_dir(ctx_path)
-                            .output()?;
-
-                        if output.status.success() {
-                            println!("{}", String::from_utf8_lossy(&output.stdout));
+                        let bd = Beads::with_workdir(ctx_path);
+                        let result = if let Some(r) = &reason {
+                            // Use run() for close with reason (close_multiple doesn't support reason)
+                            let mut args: Vec<&str> = vec!["close"];
+                            let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
+                            args.extend(id_refs);
+                            let reason_arg = format!("--reason={}", r);
+                            args.push(&reason_arg);
+                            bd.run(&args)
                         } else {
-                            eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                            let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
+                            bd.close_multiple(&id_refs)
+                        };
+
+                        match result {
+                            Ok(output) => {
+                                if output.success {
+                                    println!("{}", output.stdout);
+                                } else {
+                                    eprintln!("{}", output.stderr);
+                                }
+                            }
+                            Err(e) => eprintln!("Error: {}", e),
                         }
                     }
                 }
@@ -933,24 +943,21 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
             if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
                 if let Some(ctx_path) = &ctx.path {
-                    let cmd = vec![
-                        "create".to_string(),
-                        format!("--title={}", title),
-                        format!("--type={}", issue_type),
-                        format!("--priority={}", priority),
-                    ];
-
                     println!("Creating bead in context @{}...", ctx_name);
 
-                    let output = std::process::Command::new("bd")
-                        .args(&cmd)
-                        .current_dir(ctx_path)
-                        .output()?;
+                    // Parse priority string to u8
+                    let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
 
-                    if output.status.success() {
-                        println!("{}", String::from_utf8_lossy(&output.stdout));
-                    } else {
-                        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                    let bd = Beads::with_workdir(ctx_path);
+                    match bd.create(&title, &issue_type, priority_u8, None) {
+                        Ok(output) => {
+                            if output.success {
+                                println!("{}", output.stdout);
+                            } else {
+                                eprintln!("{}", output.stderr);
+                            }
+                        }
+                        Err(e) => eprintln!("Error: {}", e),
                     }
                 } else {
                     eprintln!("Context '{}' has no local path configured", ctx_name);
