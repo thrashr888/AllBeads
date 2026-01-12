@@ -4,6 +4,7 @@
       "Bash(bd blocked)",
       "Bash(bd close:*)",
       "Bash(bd config get:*)",
+      "Bash(bd comments:*)",
       "Bash(bd count:*)",
       "Bash(bd create:*)",
       "Bash(bd dep add:*)",
@@ -48,7 +49,22 @@
       "Bash(./target/debug/allbeads:*)",
       "Skill(beads:show)",
       "Bash(ab:*)",
-      "Bash(allbeads --version:*)"
+      "Bash(allbeads --version:*)",
+      "Bash(allbeads plugin list:*)",
+      "Bash(allbeads plugin recommend:*)",
+      "Skill(beads:stats)",
+      "Skill(allbeads:*)",
+      "Bash(claude plugin:*)",
+      "Bash(allbeads plugin info:*)",
+      "Bash(allbeads plugin:*)",
+      "Bash(allbeads:*)",
+      "Bash(xargs cat:*)",
+      "Bash(xargs -I{} sh -c 'echo \"\"=== {} ===\"\" && cat {}')",
+      "Bash(bd sync:*)",
+      "Bash(./target/release/allbeads janitor:*)",
+      "Bash(bd --help:*)",
+      "Bash(bd comments add:*)",
+      "WebFetch(domain:docs.rs)"
     ]
   }
 }

@@ -4,11 +4,33 @@
 
 use clap::{Parser, Subcommand};
 
+/// Short grouped command reference shown at the end of -h
+const COMMAND_GROUPS_SHORT: &str = "\
+Groups: Aggregation | Wrapper | Context | Integration | Daemon | Agent | Analysis | UI | Config
+Use --help for grouped command reference.";
+
+/// Grouped command reference shown at the end of --help
+const COMMAND_GROUPS: &str = "\
+Command Groups:
+  Aggregation:  list, show, ready, blocked, search, duplicates, stats
+  Wrapper:      create, update, close
+  Context:      init, setup, quickstart, context, folder, clear-cache
+  Integration:  jira, github, plugin
+  Daemon:       sync, sheriff, mail
+  Agent:        info, prime, onboard, human, swarm, agent
+  Analysis:     janitor
+  UI:           tui
+  Config:       config
+
+See 'ab <command> --help' for more information on a specific command.";
+
 /// AllBeads - Multi-context task aggregator and orchestrator
 #[derive(Parser, Debug)]
 #[command(name = "allbeads")]
 #[command(version, about, long_about = None)]
 #[command(arg_required_else_help = true)]
+#[command(after_help = COMMAND_GROUPS_SHORT)]
+#[command(after_long_help = COMMAND_GROUPS)]
 pub struct Cli {
     /// Path to config file (default: ~/.config/allbeads/config.yaml)
     #[arg(short, long)]
