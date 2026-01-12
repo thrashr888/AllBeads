@@ -2,6 +2,7 @@
 
 use super::graph_view::GraphView;
 use super::mail_view::MailView;
+use super::stats_view::StatsView;
 use super::swarm_view::SwarmView;
 use crate::graph::{Bead, FederatedGraph, Status};
 use crate::mail::{Address, Postmaster};
@@ -17,6 +18,7 @@ pub enum Tab {
     Kanban,
     Mail,
     Graph,
+    Stats,
     Swarm,
 }
 
@@ -57,6 +59,7 @@ pub struct App {
     pub current_tab: Tab,
     pub mail_view: MailView,
     pub graph_view: GraphView,
+    pub stats_view: StatsView,
     pub swarm_view: SwarmView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
@@ -68,6 +71,8 @@ impl App {
         list_state.select(Some(0));
         let mut graph_view = GraphView::new();
         graph_view.analyze(&graph);
+        let mut stats_view = StatsView::new();
+        stats_view.analyze(&graph);
         Self {
             graph,
             current_column: Column::Open,
@@ -76,6 +81,7 @@ impl App {
             current_tab: Tab::Kanban,
             mail_view: MailView::new(),
             graph_view,
+            stats_view,
             swarm_view: SwarmView::new(),
             postmaster: None,
             inbox_address: Address::human(),
@@ -127,7 +133,7 @@ impl App {
     }
 
     /// Switch to next tab
-    /// Tab order: Kanban -> Mail (if available) -> Graph -> Swarm (if available) -> Kanban
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Stats -> Swarm (if available) -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
@@ -141,7 +147,8 @@ impl App {
                 }
             }
             Tab::Mail => Tab::Graph,
-            Tab::Graph => {
+            Tab::Graph => Tab::Stats,
+            Tab::Stats => {
                 if has_swarm {
                     Tab::Swarm
                 } else {
@@ -155,6 +162,7 @@ impl App {
         match self.current_tab {
             Tab::Mail => self.refresh_mail(),
             Tab::Graph => self.graph_view.analyze(&self.graph),
+            Tab::Stats => self.stats_view.analyze(&self.graph),
             Tab::Swarm => self.swarm_view.refresh(),
             _ => {}
         }

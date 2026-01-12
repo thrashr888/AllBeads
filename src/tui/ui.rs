@@ -3,6 +3,7 @@
 use super::app::{App, Column, Tab};
 use super::graph_view;
 use super::mail_view;
+use super::stats_view;
 use super::swarm_view;
 use crate::graph::{Bead, Priority};
 use ratatui::{
@@ -27,6 +28,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
         Tab::Graph => {
             draw_graph_tab(f, app);
+        }
+        Tab::Stats => {
+            draw_stats_tab(f, app);
         }
         Tab::Swarm => {
             draw_swarm_tab(f, app);
@@ -73,12 +77,26 @@ fn draw_swarm_tab(f: &mut Frame, app: &mut App) {
     swarm_view::draw(f, &mut app.swarm_view, chunks[1]);
 }
 
+fn draw_stats_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    stats_view::draw(f, &app.stats_view, chunks[1]);
+}
+
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    // Tab order: Kanban, Mail (if available), Graph, Swarm (if available)
+    // Tab order: Kanban, Mail (if available), Graph, Stats, Swarm (if available)
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
     let mut graph_index = 1;
-    let mut swarm_index = 2;
+    let mut stats_index = 2;
+    let mut swarm_index = 3;
 
     // Add mail tab if available
     if app.has_mail() {
@@ -89,11 +107,15 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
             tab_titles.push("Mail".to_string());
         }
         graph_index = 2;
-        swarm_index = 3;
+        stats_index = 3;
+        swarm_index = 4;
     }
 
     // Graph tab is always present
     tab_titles.push("Graph".to_string());
+
+    // Stats tab is always present
+    tab_titles.push("Stats".to_string());
 
     // Add swarm tab if available
     if app.has_swarm() {
@@ -110,6 +132,7 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Kanban => 0,
         Tab::Mail => 1,
         Tab::Graph => graph_index,
+        Tab::Stats => stats_index,
         Tab::Swarm => swarm_index,
     };
 

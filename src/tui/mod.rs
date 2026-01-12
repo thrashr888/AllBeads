@@ -5,11 +5,13 @@
 mod app;
 pub mod graph_view;
 pub mod mail_view;
+pub mod stats_view;
 pub mod swarm_view;
 mod ui;
 
 pub use app::{App, Tab};
 pub use graph_view::GraphView;
+pub use stats_view::StatsView;
 pub use swarm_view::SwarmView;
 
 use crate::graph::FederatedGraph;
@@ -111,6 +113,9 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('f') => app.graph_view.cycle_filter(),
                         _ => {}
                     },
+                    Tab::Stats => {
+                        // Stats is a read-only view, no special keys needed
+                    }
                     Tab::Swarm => match key.code {
                         KeyCode::Char('j') | KeyCode::Down => app.swarm_view.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.swarm_view.previous(),
