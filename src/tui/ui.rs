@@ -1,10 +1,12 @@
 //! TUI rendering
 
 use super::app::{App, Column, Tab};
+use super::governance_view;
 use super::graph_view;
 use super::mail_view;
 use super::stats_view;
 use super::swarm_view;
+use super::timeline_view;
 use crate::graph::{Bead, Priority};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -31,6 +33,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
         Tab::Stats => {
             draw_stats_tab(f, app);
+        }
+        Tab::Timeline => {
+            draw_timeline_tab(f, app);
+        }
+        Tab::Governance => {
+            draw_governance_tab(f, app);
         }
         Tab::Swarm => {
             draw_swarm_tab(f, app);
@@ -90,13 +98,41 @@ fn draw_stats_tab(f: &mut Frame, app: &mut App) {
     stats_view::draw(f, &app.stats_view, chunks[1]);
 }
 
+fn draw_timeline_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    timeline_view::draw(f, &mut app.timeline_view, chunks[1]);
+}
+
+fn draw_governance_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    governance_view::draw(f, &mut app.governance_view, chunks[1]);
+}
+
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    // Tab order: Kanban, Mail (if available), Graph, Stats, Swarm (if available)
+    // Tab order: Kanban, Mail (if available), Graph, Stats, Timeline, Governance, Swarm (if available)
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
     let mut graph_index = 1;
     let mut stats_index = 2;
-    let mut swarm_index = 3;
+    let mut timeline_index = 3;
+    let mut governance_index = 4;
+    let mut swarm_index = 5;
 
     // Add mail tab if available
     if app.has_mail() {
@@ -108,7 +144,9 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         }
         graph_index = 2;
         stats_index = 3;
-        swarm_index = 4;
+        timeline_index = 4;
+        governance_index = 5;
+        swarm_index = 6;
     }
 
     // Graph tab is always present
@@ -116,6 +154,12 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
 
     // Stats tab is always present
     tab_titles.push("Stats".to_string());
+
+    // Timeline tab is always present
+    tab_titles.push("Timeline".to_string());
+
+    // Governance tab is always present
+    tab_titles.push("Governance".to_string());
 
     // Add swarm tab if available
     if app.has_swarm() {
@@ -133,6 +177,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Mail => 1,
         Tab::Graph => graph_index,
         Tab::Stats => stats_index,
+        Tab::Timeline => timeline_index,
+        Tab::Governance => governance_index,
         Tab::Swarm => swarm_index,
     };
 

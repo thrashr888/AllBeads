@@ -3,16 +3,20 @@
 //! Provides a Kanban-style dashboard for viewing beads across multiple contexts.
 
 mod app;
+pub mod governance_view;
 pub mod graph_view;
 pub mod mail_view;
 pub mod stats_view;
 pub mod swarm_view;
+pub mod timeline_view;
 mod ui;
 
 pub use app::{App, Tab};
+pub use governance_view::GovernanceView;
 pub use graph_view::GraphView;
 pub use stats_view::StatsView;
 pub use swarm_view::SwarmView;
+pub use timeline_view::TimelineView;
 
 use crate::graph::FederatedGraph;
 use crate::Result;
@@ -116,6 +120,24 @@ fn run_app<B: ratatui::backend::Backend>(
                     Tab::Stats => {
                         // Stats is a read-only view, no special keys needed
                     }
+                    Tab::Timeline => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.timeline_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.timeline_view.previous(),
+                        KeyCode::Enter => app.timeline_view.toggle_detail(),
+                        KeyCode::Esc => app.timeline_view.close_detail(),
+                        KeyCode::Char('+') | KeyCode::Char('=') => app.timeline_view.zoom_out(),
+                        KeyCode::Char('-') => app.timeline_view.zoom_in(),
+                        _ => {}
+                    },
+                    Tab::Governance => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.governance_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.governance_view.previous(),
+                        KeyCode::Char('h') | KeyCode::Left => app.governance_view.next_section(),
+                        KeyCode::Char('l') | KeyCode::Right => app.governance_view.next_section(),
+                        KeyCode::Enter => app.governance_view.toggle_detail(),
+                        KeyCode::Esc => app.governance_view.close_detail(),
+                        _ => {}
+                    },
                     Tab::Swarm => match key.code {
                         KeyCode::Char('j') | KeyCode::Down => app.swarm_view.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.swarm_view.previous(),

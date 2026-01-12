@@ -1,9 +1,11 @@
 //! TUI application state
 
+use super::governance_view::GovernanceView;
 use super::graph_view::GraphView;
 use super::mail_view::MailView;
 use super::stats_view::StatsView;
 use super::swarm_view::SwarmView;
+use super::timeline_view::TimelineView;
 use crate::graph::{Bead, FederatedGraph, Status};
 use crate::mail::{Address, Postmaster};
 use crate::swarm::AgentManager;
@@ -19,6 +21,8 @@ pub enum Tab {
     Mail,
     Graph,
     Stats,
+    Timeline,
+    Governance,
     Swarm,
 }
 
@@ -60,6 +64,8 @@ pub struct App {
     pub mail_view: MailView,
     pub graph_view: GraphView,
     pub stats_view: StatsView,
+    pub timeline_view: TimelineView,
+    pub governance_view: GovernanceView,
     pub swarm_view: SwarmView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
@@ -73,6 +79,10 @@ impl App {
         graph_view.analyze(&graph);
         let mut stats_view = StatsView::new();
         stats_view.analyze(&graph);
+        let mut timeline_view = TimelineView::new();
+        timeline_view.analyze(&graph);
+        let mut governance_view = GovernanceView::new();
+        governance_view.load_placeholder_data();
         Self {
             graph,
             current_column: Column::Open,
@@ -82,6 +92,8 @@ impl App {
             mail_view: MailView::new(),
             graph_view,
             stats_view,
+            timeline_view,
+            governance_view,
             swarm_view: SwarmView::new(),
             postmaster: None,
             inbox_address: Address::human(),
@@ -133,7 +145,7 @@ impl App {
     }
 
     /// Switch to next tab
-    /// Tab order: Kanban -> Mail (if available) -> Graph -> Stats -> Swarm (if available) -> Kanban
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Stats -> Timeline -> Governance -> Swarm (if available) -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
@@ -148,7 +160,9 @@ impl App {
             }
             Tab::Mail => Tab::Graph,
             Tab::Graph => Tab::Stats,
-            Tab::Stats => {
+            Tab::Stats => Tab::Timeline,
+            Tab::Timeline => Tab::Governance,
+            Tab::Governance => {
                 if has_swarm {
                     Tab::Swarm
                 } else {
@@ -163,6 +177,8 @@ impl App {
             Tab::Mail => self.refresh_mail(),
             Tab::Graph => self.graph_view.analyze(&self.graph),
             Tab::Stats => self.stats_view.analyze(&self.graph),
+            Tab::Timeline => self.timeline_view.analyze(&self.graph),
+            Tab::Governance => self.governance_view.load_placeholder_data(),
             Tab::Swarm => self.swarm_view.refresh(),
             _ => {}
         }
