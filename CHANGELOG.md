@@ -38,6 +38,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `SheriffCommand::ReloadPolicies` and `CheckPolicies` commands
   - Policy checks run automatically at end of each poll cycle
 
+- **Git Hooks for Proactive Policy Enforcement**:
+  - `ab check` command - Run policy checks on-demand
+    - `--strict` mode exits non-zero on violations
+    - `--pre-commit` mode optimized for git hooks (quiet if passing)
+    - `--policy=NAME` to check specific policy only
+    - `--fix` to show resolution suggestions
+    - `--format=json|yaml` for scripting
+  - `ab hooks` command - Manage git hooks
+    - `install` - Create pre-commit/commit-msg/post-commit/pre-push hooks
+    - `uninstall` - Remove hooks
+    - `list` - Show installed hooks
+    - `test` - Test hooks without committing
+    - `status` - Check installation status
+  - Smart hook templates detect dev vs production mode
+  - Pre-commit hook blocks commits with policy violations
+  - YAML policy configuration (`.beads/policies.yaml`)
+  - Example policies for AllBeads, QDOS, ethertext, rookery contexts
+
 ## [0.3.1] - 2026-01-12
 
 ### Fixed
