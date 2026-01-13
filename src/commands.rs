@@ -72,6 +72,10 @@ Usage:
 {cyan}UI:{reset}
   tui                Launch Terminal UI (Kanban + Mail + Graph + Swarm)
 
+{cyan}Governance:{reset}
+  check              Check governance policies against current beads
+  hooks              Manage git hooks for policy enforcement
+
 {cyan}Configuration:{reset}
   config             Manage distributed configuration sync
 
@@ -634,8 +638,43 @@ pub enum Commands {
     // UI COMMANDS - User interface
     // =========================================================================
     /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
-    
+
     Tui,
+
+    // =========================================================================
+    // GOVERNANCE COMMANDS - Policy enforcement and compliance
+    // =========================================================================
+    /// Check governance policies against current beads
+
+    Check {
+        /// Run in strict mode (exit non-zero on any violation)
+        #[arg(long)]
+        strict: bool,
+
+        /// Check specific policy only
+        #[arg(long)]
+        policy: Option<String>,
+
+        /// Show fix suggestions for violations
+        #[arg(long)]
+        fix: bool,
+
+        /// Pre-commit mode (optimized, quiet if passing)
+        #[arg(long)]
+        pre_commit: bool,
+
+        /// Check specific bead
+        #[arg(long)]
+        bead: Option<String>,
+
+        /// Output format (text, json, yaml)
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+
+    /// Manage git hooks for policy enforcement
+    #[command(subcommand)]
+    Hooks(HooksCommands),
 
     // =========================================================================
     // CONFIG COMMANDS - Distributed configuration
@@ -820,6 +859,48 @@ pub enum ConfigCommands {
         #[arg(short, long)]
         target: Option<String>,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum HooksCommands {
+    /// Install git hooks for policy enforcement
+    Install {
+        /// Install specific hook (pre-commit, commit-msg, post-commit, pre-push)
+        #[arg(long)]
+        hook: Option<String>,
+
+        /// Install all available hooks
+        #[arg(long)]
+        all: bool,
+
+        /// Dry run (show what would be installed)
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Uninstall git hooks
+    Uninstall {
+        /// Uninstall specific hook
+        #[arg(long)]
+        hook: Option<String>,
+
+        /// Uninstall all hooks
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// List installed hooks
+    List,
+
+    /// Test hooks without committing
+    Test {
+        /// Test specific hook
+        #[arg(long)]
+        hook: Option<String>,
+    },
+
+    /// Check hook installation status
+    Status,
 }
 
 #[derive(Subcommand, Debug)]

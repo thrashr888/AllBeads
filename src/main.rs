@@ -107,6 +107,23 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_coding_agent_command(agent_cmd);
     }
 
+    // Handle governance commands (don't need graph)
+    if let Commands::Check {
+        strict,
+        ref policy,
+        fix,
+        pre_commit,
+        ref bead,
+        ref format,
+    } = command
+    {
+        return handle_check_command(strict, policy.as_deref(), fix, pre_commit, bead.as_deref(), format);
+    }
+
+    if let Commands::Hooks(ref hooks_cmd) = command {
+        return handle_hooks_command(hooks_cmd);
+    }
+
     // Handle sync command
     if let Commands::Sync {
         all,
@@ -1483,9 +1500,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Human { .. }
         | Commands::Plugin(_)
         | Commands::CodingAgent(_)
-        | Commands::Sync { .. } => {
+        | Commands::Sync { .. }
+        | Commands::Check { .. }
+        | Commands::Hooks(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, and Human commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, and Hooks commands should be handled before aggregation")
         }
     }
 
@@ -7541,4 +7560,367 @@ fn handle_human_command(message: &Option<String>) -> allbeads::Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_check_command(
+    strict: bool,
+    policy: Option<&str>,
+    fix: bool,
+    pre_commit: bool,
+    bead: Option<&str>,
+    format: &str,
+) -> allbeads::Result<()> {
+    use allbeads::governance::{load_policies_for_context, PolicyChecker};
+    use allbeads::graph::FederatedGraph;
+    use allbeads::storage::issue_to_bead;
+    use beads::Beads;
+    use std::process;
+
+    // Load policies from .beads/policies.yaml
+    let policies = load_policies_for_context(".");
+
+    if policies.is_empty() {
+        if !pre_commit {
+            eprintln!("No policies configured. Create .beads/policies.yaml to enable governance checks.");
+        }
+        return Ok(());
+    }
+
+    // Create policy checker and add policies
+    let mut checker = PolicyChecker::new();
+    for p in policies {
+        // Filter by specific policy if requested
+        if let Some(policy_name) = policy {
+            if p.name != policy_name {
+                continue;
+            }
+        }
+        checker.add_policy(p);
+    }
+
+    // Load beads from current directory
+    let beads_path = std::env::current_dir()?.join(".beads");
+    if !beads_path.exists() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Not in a beads repository. Run 'bd init' first.".to_string(),
+        ));
+    }
+
+    let bd = Beads::with_workdir(&beads_path);
+    let beads_list = bd.list(None, None).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e))
+    })?;
+
+    // Convert to graph for checking
+    let mut graph = FederatedGraph::new();
+    for bead_issue in beads_list {
+        let graph_bead = issue_to_bead(bead_issue)?;
+
+        // Filter by specific bead if requested
+        if let Some(bead_id) = bead {
+            if graph_bead.id.to_string() != bead_id {
+                continue;
+            }
+        }
+
+        graph.add_bead(graph_bead);
+    }
+
+    // Run checks
+    let results = checker.check_graph(&graph);
+
+    // Count violations
+    let violations: Vec<_> = results.iter().filter(|r| !r.passed).collect();
+    let has_violations = !violations.is_empty();
+
+    // Output results
+    if pre_commit {
+        // Pre-commit mode: only output if there are violations
+        if has_violations {
+            eprintln!("Error: Policy violations detected\n");
+            for result in &violations {
+                eprintln!("✗ {}: {}", result.policy_name, result.message);
+                if !result.affected_beads.is_empty() {
+                    eprintln!("  Affected beads: {}", result.affected_beads.join(", "));
+                }
+            }
+            eprintln!("\nCommit blocked. Fix violations and try again.");
+            if fix {
+                eprintln!("\nRun 'bd check --fix' for suggestions.");
+            }
+            process::exit(1);
+        }
+        // No output if passing
+    } else {
+        // Normal mode: show all results
+        match format {
+            "json" | "yaml" => {
+                // Format results for serialization
+                let output: Vec<serde_json::Value> = results
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "policy_name": r.policy_name,
+                            "passed": r.passed,
+                            "message": r.message,
+                            "affected_beads": r.affected_beads,
+                            "timestamp": r.timestamp,
+                        })
+                    })
+                    .collect();
+
+                if format == "json" {
+                    let json = serde_json::to_string_pretty(&output)?;
+                    println!("{}", json);
+                } else {
+                    let yaml = serde_yaml::to_string(&output)?;
+                    println!("{}", yaml);
+                }
+            }
+            _ => {
+                println!("Checking governance policies...\n");
+
+                let mut passed = 0;
+                let mut failed = 0;
+
+                for result in &results {
+                    if result.passed {
+                        println!("✓ {}: PASS", result.policy_name);
+                        passed += 1;
+                    } else {
+                        println!("✗ {}: FAIL", result.policy_name);
+                        println!("    {}", result.message);
+                        if !result.affected_beads.is_empty() {
+                            println!("    Affected beads: {}", result.affected_beads.join(", "));
+                        }
+                        failed += 1;
+                    }
+                }
+
+                println!("\nSummary: {} passed, {} failed", passed, failed);
+
+                if fix && has_violations {
+                    println!("\nResolution suggestions:");
+                    println!("  1. Review violations above");
+                    println!("  2. Fix issues or adjust policy in .beads/policies.yaml");
+                    println!("  3. Run 'bd check' again to verify");
+                }
+            }
+        }
+
+        // Exit with non-zero if strict mode and violations exist
+        if strict && has_violations {
+            process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_hooks_command(cmd: &HooksCommands) -> allbeads::Result<()> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let git_hooks_dir = PathBuf::from(".git/hooks");
+
+    if !git_hooks_dir.exists() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Not in a git repository. No .git/hooks directory found.".to_string(),
+        ));
+    }
+
+    match cmd {
+        HooksCommands::Install { hook, all, dry_run } => {
+            let hooks_to_install = if *all {
+                vec!["pre-commit", "commit-msg", "post-commit", "pre-push"]
+            } else if let Some(h) = hook {
+                vec![h.as_str()]
+            } else {
+                vec!["pre-commit"]
+            };
+
+            println!("Installing git hooks...\n");
+
+            for hook_name in hooks_to_install {
+                let hook_path = git_hooks_dir.join(hook_name);
+                let hook_content = get_hook_template(hook_name);
+
+                if *dry_run {
+                    println!("Would install: {}", hook_path.display());
+                    continue;
+                }
+
+                fs::write(&hook_path, hook_content)?;
+
+                // Make executable (Unix only)
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(&hook_path)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(&hook_path, perms)?;
+                }
+
+                println!("  ✓ Created {}", hook_path.display());
+            }
+
+            if !dry_run {
+                println!("\nHooks installed successfully.");
+                println!("\nTest the hooks:");
+                println!("  bd hooks test");
+            }
+
+            Ok(())
+        }
+
+        HooksCommands::Uninstall { hook, all } => {
+            let hooks_to_remove = if *all {
+                vec!["pre-commit", "commit-msg", "post-commit", "pre-push"]
+            } else if let Some(h) = hook {
+                vec![h.as_str()]
+            } else {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Specify --hook=<name> or --all".to_string(),
+                ));
+            };
+
+            println!("Uninstalling git hooks...\n");
+
+            for hook_name in hooks_to_remove {
+                let hook_path = git_hooks_dir.join(hook_name);
+
+                if hook_path.exists() {
+                    fs::remove_file(&hook_path)?;
+                    println!("  ✓ Removed {}", hook_path.display());
+                } else {
+                    println!("  ⊗ Not installed: {}", hook_name);
+                }
+            }
+
+            println!("\nHooks uninstalled.");
+            Ok(())
+        }
+
+        HooksCommands::List => {
+            println!("Installed hooks:\n");
+
+            let all_hooks = vec!["pre-commit", "commit-msg", "post-commit", "pre-push"];
+            let mut found_any = false;
+
+            for hook_name in all_hooks {
+                let hook_path = git_hooks_dir.join(hook_name);
+                if hook_path.exists() {
+                    println!("  ✓ {}", hook_name);
+                    found_any = true;
+                }
+            }
+
+            if !found_any {
+                println!("  (none)");
+                println!("\nInstall hooks with: bd hooks install");
+            }
+
+            Ok(())
+        }
+
+        HooksCommands::Test { hook } => {
+            let hook_name = hook.as_deref().unwrap_or("pre-commit");
+            let hook_path = git_hooks_dir.join(hook_name);
+
+            if !hook_path.exists() {
+                return Err(allbeads::AllBeadsError::Config(
+                    format!("Hook '{}' not installed. Run 'bd hooks install' first.", hook_name),
+                ));
+            }
+
+            println!("Testing {} hook...\n", hook_name);
+
+            // Run the hook script
+            let output = std::process::Command::new(&hook_path)
+                .output()?;
+
+            if output.status.success() {
+                println!("✓ Hook passed");
+            } else {
+                println!("✗ Hook failed");
+                if !output.stderr.is_empty() {
+                    eprintln!("\nError output:");
+                    eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+                }
+            }
+
+            Ok(())
+        }
+
+        HooksCommands::Status => {
+            println!("Hook installation status:\n");
+
+            let all_hooks = vec!["pre-commit", "commit-msg", "post-commit", "pre-push"];
+
+            for hook_name in all_hooks {
+                let hook_path = git_hooks_dir.join(hook_name);
+                if hook_path.exists() {
+                    println!("  ✓ {} - installed", hook_name);
+                } else {
+                    println!("  ✗ {} - not installed", hook_name);
+                }
+            }
+
+            Ok(())
+        }
+    }
+}
+
+fn get_hook_template(hook_name: &str) -> String {
+    match hook_name {
+        "pre-commit" => {
+            r#"#!/bin/sh
+# AllBeads pre-commit hook for policy enforcement
+# Auto-generated by bd hooks install
+
+# Run policy checks in pre-commit mode
+bd check --pre-commit --strict
+
+exit $?
+"#.to_string()
+        }
+
+        "commit-msg" => {
+            r#"#!/bin/sh
+# AllBeads commit-msg hook for bead reference validation
+# Auto-generated by bd hooks install
+
+# TODO: Validate bead references in commit message
+# For now, just pass through
+exit 0
+"#.to_string()
+        }
+
+        "post-commit" => {
+            r#"#!/bin/sh
+# AllBeads post-commit hook for metadata updates
+# Auto-generated by bd hooks install
+
+# TODO: Update bead metadata with commit info
+# For now, just pass through
+exit 0
+"#.to_string()
+        }
+
+        "pre-push" => {
+            r#"#!/bin/sh
+# AllBeads pre-push hook for full validation
+# Auto-generated by bd hooks install
+
+# Run full policy checks before push
+bd check --strict
+
+exit $?
+"#.to_string()
+        }
+
+        _ => {
+            format!("#!/bin/sh\n# Unknown hook: {}\nexit 0\n", hook_name)
+        }
+    }
 }
