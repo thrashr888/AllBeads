@@ -458,6 +458,361 @@ Drift Summary: 1 drifted, 1 partial, 2 compliant
 Run 'ab sheriff remediate' to fix drift automatically.
 ```
 
+### 7. Git Hooks for Proactive Policy Enforcement
+
+**Goal:** Catch policy violations *before* they're committed, not after.
+
+Instead of only running policy checks in Sheriff daemon (post-commit), integrate with git hooks to provide immediate feedback during the development workflow.
+
+#### Architecture
+
+```
+Developer workflow with hooks:
+
+┌─────────────────────────────────────────────────────────────┐
+│  Developer: bd update beads-123 --status=in_progress        │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Modified: .beads/issues.jsonl                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Developer: git commit -m "Update bead status"              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Git pre-commit hook triggers                               │
+│  → Runs: bd check --pre-commit                              │
+│  → Loads policies from .beads/policies.yaml                 │
+│  → Runs all enabled policies against current state          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+┌─────────────────────────┐     ┌─────────────────────────────┐
+│  ✓ All policies pass    │     │  ✗ Policy violation         │
+│  → Commit proceeds      │     │  → Commit BLOCKED           │
+│  → Changes committed    │     │  → Show violations          │
+└─────────────────────────┘     │  → Exit code 1              │
+                                └─────────────────────────────┘
+```
+
+#### The `bd check` Command
+
+New command for running policy checks on-demand:
+
+```bash
+# Check all policies against current state
+$ bd check
+
+Checking governance policies...
+
+✓ require-description: PASS (128/128 beads)
+✗ max-in-progress: FAIL (4/3 beads)
+    Violation: User @thrashr888 has 4 beads in progress (max: 3)
+    Beads: ab-001, ab-002, ab-003, ab-004
+✓ dependency-cycle-check: PASS (no cycles detected)
+✓ require-priority: PASS (128/128 beads)
+
+Summary: 3 passed, 1 failed
+
+Run with --fix to get suggestions for resolving violations.
+```
+
+**Command options:**
+
+```bash
+# Run in strict mode (exit non-zero on any violation)
+bd check --strict
+
+# Check specific policy only
+bd check --policy=max-in-progress
+
+# Check with auto-fix suggestions
+bd check --fix
+
+# Check in pre-commit mode (optimized, no output if passing)
+bd check --pre-commit
+
+# Check specific bead
+bd check --bead=ab-123
+
+# Output JSON for scripting
+bd check --format=json
+```
+
+**Pre-commit mode behavior:**
+
+```bash
+$ bd check --pre-commit
+# If passing: no output, exit 0
+# If failing: brief error, exit 1
+
+Error: Policy violations detected
+
+✗ max-in-progress: You have 4 beads in progress (max: 3)
+  → Close one of: ab-001, ab-002, ab-003, ab-004
+  → Or run: bd check --fix for suggestions
+
+Commit blocked. Fix violations and try again.
+```
+
+#### The `bd hooks install` Command
+
+Install git hooks for policy enforcement:
+
+```bash
+# Install default hooks (pre-commit with bd check)
+$ bd hooks install
+
+Installing git hooks...
+
+  ✓ Created .git/hooks/pre-commit
+  ✓ Hook will run: bd check --pre-commit --strict
+
+Hooks installed successfully.
+
+Test the hook:
+  bd update <bead-id> --status=in_progress
+  git add .beads/issues.jsonl
+  git commit -m "test"
+```
+
+**Command options:**
+
+```bash
+# Install specific hooks
+bd hooks install --hook=pre-commit
+bd hooks install --hook=commit-msg
+
+# Install all available hooks
+bd hooks install --all
+
+# Show what would be installed (dry run)
+bd hooks install --dry-run
+
+# Uninstall hooks
+bd hooks uninstall
+
+# List installed hooks
+bd hooks list
+
+# Test hooks without committing
+bd hooks test
+```
+
+**Hook types:**
+
+| Hook | When | What it does |
+|------|------|--------------|
+| `pre-commit` | Before commit | Runs `bd check --pre-commit --strict` |
+| `commit-msg` | After commit message entered | Validates bead references (e.g., `Fixes: ab-123`) |
+| `post-commit` | After commit | Updates bead metadata (last_modified, commit_hash) |
+| `pre-push` | Before push | Runs full policy check + sync validation |
+
+#### Example: Blocking a Commit
+
+**Scenario:** Developer tries to start 4th bead when max is 3
+
+```bash
+$ bd update ab-004 --status=in_progress
+✓ Updated ab-004 status to in_progress
+
+$ git add .beads/issues.jsonl
+
+$ git commit -m "Start work on ab-004"
+
+Running governance checks...
+
+✗ Policy violation: max-in-progress
+
+  Rule: max_in_progress (max_count: 3)
+  Current: 4 beads in progress for @thrashr888
+
+  Beads in progress:
+    • ab-001 (P1): Implement user authentication
+    • ab-002 (P2): Add caching layer
+    • ab-003 (P2): Refactor API handlers
+    • ab-004 (P3): Update documentation
+
+  Resolution options:
+    1. Close one of the above beads
+    2. Adjust policy in .beads/policies.yaml (requires approval)
+    3. Skip this check: git commit --no-verify (not recommended)
+
+Commit blocked. Exit code: 1
+```
+
+**Resolution:**
+
+```bash
+$ bd close ab-003
+✓ Closed ab-003
+
+$ git add .beads/issues.jsonl
+
+$ git commit -m "Start work on ab-004"
+
+Running governance checks...
+✓ All policies passed
+
+[main a1b2c3d] Start work on ab-004
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+```
+
+#### Hook Configuration
+
+Hooks can be configured in `.beads/policies.yaml`:
+
+```yaml
+# .beads/policies.yaml
+
+policies:
+  - name: require-description
+    enabled: true
+    severity: error
+    enforce_in_hooks: true  # Block commit if violated
+
+  - name: max-in-progress
+    enabled: true
+    type: max_in_progress
+    config:
+      max_count: 3
+    enforce_in_hooks: true
+
+  - name: require-labels
+    enabled: true
+    type: require_labels
+    config:
+      min_count: 1
+    enforce_in_hooks: false  # Warning only, don't block
+
+hooks:
+  # Hook-specific settings
+  pre_commit:
+    enabled: true
+    policies: [require-description, max-in-progress]
+    strict: true  # Exit non-zero on any violation
+    timeout: 5s   # Max time for check
+
+  commit_msg:
+    enabled: true
+    require_bead_reference: false
+
+  post_commit:
+    enabled: true
+    auto_update_metadata: true
+
+  pre_push:
+    enabled: false
+    run_full_check: true
+```
+
+#### Integration with Existing Hook System
+
+This builds on the existing PluginHooks infrastructure:
+
+```rust
+// src/hooks/mod.rs
+
+pub struct HookRunner {
+    policy_checker: PolicyChecker,
+    hook_config: HookConfig,
+}
+
+impl HookRunner {
+    pub fn run_pre_commit(&self) -> Result<HookResult> {
+        // Load current state
+        let beads = load_beads()?;
+
+        // Run policy checks
+        let results = self.policy_checker.check_beads(&beads)?;
+
+        // Filter by enforce_in_hooks
+        let blocking_violations: Vec<_> = results
+            .iter()
+            .filter(|r| !r.passed && r.policy.enforce_in_hooks)
+            .collect();
+
+        if !blocking_violations.is_empty() {
+            return Ok(HookResult::Blocked {
+                violations: blocking_violations,
+                exit_code: 1,
+            });
+        }
+
+        Ok(HookResult::Allowed)
+    }
+}
+```
+
+#### CLI Commands Summary
+
+```bash
+# Check policies
+bd check                              # Run all checks
+bd check --strict                     # Exit non-zero on failure
+bd check --policy=max-in-progress     # Check specific policy
+bd check --pre-commit                 # Pre-commit mode (optimized)
+bd check --fix                        # Show fix suggestions
+
+# Manage hooks
+bd hooks install                      # Install default hooks
+bd hooks install --all                # Install all hooks
+bd hooks uninstall                    # Remove hooks
+bd hooks list                         # Show installed hooks
+bd hooks test                         # Test hooks without committing
+
+# Hook status (for sheriff drift detection)
+bd hooks status                       # Check if hooks are installed
+```
+
+#### Benefits
+
+1. **Immediate Feedback** - Developers know about violations before push
+2. **Prevents Bad State** - Can't commit beads that violate policies
+3. **Local Enforcement** - Works without Sheriff daemon running
+4. **Configurable** - Choose which policies block vs warn
+5. **Fast** - Pre-commit checks optimized for speed (<1s typical)
+6. **Bypass Option** - `--no-verify` for emergencies (logged in audit)
+
+#### Sheriff Integration
+
+Sheriff daemon tracks hook compliance:
+
+```bash
+$ ab sheriff drift
+
+Checking for policy drift...
+
+✗ acme/api: DRIFTED
+  - Missing required hook: pre-commit
+  - Policy version: 1.2 (current: 1.5)
+
+⚠ acme/frontend: HOOKS NOT INSTALLED
+  - Install with: bd hooks install
+  - Required by policy: governance.yaml
+
+✓ acme/billing: COMPLIANT (hooks installed and passing)
+✓ acme/auth: COMPLIANT (hooks installed and passing)
+```
+
+Sheriff can also auto-install hooks during onboarding:
+
+```yaml
+# Onboarding template
+onboarding:
+  steps:
+    - name: Configure hooks
+      action: install-hooks
+      hooks: [pre-commit, post-commit]
+      verify: true  # Test hooks before completing
+```
+
 ---
 
 ## Architecture
@@ -555,10 +910,10 @@ ab sheriff policy apply github.com/acme/api
 ab sheriff policy check --repo=api
 ```
 
-### Governance Checks
+### Governance Checks (Sheriff-level)
 
 ```bash
-# Run all checks
+# Run all checks across all repos (Sheriff daemon)
 ab sheriff check
 
 # Run specific check
@@ -569,6 +924,65 @@ ab sheriff check --repo=api
 
 # Run in CI mode (exit code reflects status)
 ab sheriff check --ci
+```
+
+### Policy Checks (Repo-level)
+
+For individual repository use:
+
+```bash
+# Check policies in current repo
+bd check
+
+# Run in strict mode (exit non-zero on any violation)
+bd check --strict
+
+# Check specific policy only
+bd check --policy=max-in-progress
+
+# Check with auto-fix suggestions
+bd check --fix
+
+# Pre-commit mode (optimized, quiet if passing)
+bd check --pre-commit
+
+# Check specific bead
+bd check --bead=ab-123
+
+# Output formats
+bd check --format=json
+bd check --format=yaml
+```
+
+### Git Hooks Management
+
+```bash
+# Install default hooks
+bd hooks install
+
+# Install specific hook
+bd hooks install --hook=pre-commit
+bd hooks install --hook=commit-msg
+
+# Install all hooks
+bd hooks install --all
+
+# Dry run (show what would be installed)
+bd hooks install --dry-run
+
+# Uninstall hooks
+bd hooks uninstall
+bd hooks uninstall --hook=pre-commit
+
+# List installed hooks
+bd hooks list
+
+# Test hooks without committing
+bd hooks test
+bd hooks test --hook=pre-commit
+
+# Check hook status
+bd hooks status
 ```
 
 ### Reporting
@@ -697,21 +1111,56 @@ notifications:
 
 ## Implementation Phases
 
-### Phase 1: Policy Engine (4-6 weeks)
+### Phase 0: Git Hooks Integration (1-2 weeks) **← CURRENT**
 
-- [ ] Policy YAML schema definition
-- [ ] Policy loading and validation
-- [ ] Basic policy evaluation (allow/deny)
-- [ ] Audit logging to SQLite
-- [ ] `ab sheriff policy` commands
+**Goal:** Enable proactive policy enforcement via git hooks
 
-### Phase 2: Checks Runner (4-6 weeks)
+- [ ] `bd check` command implementation
+  - [ ] Load policies from `.beads/policies.yaml`
+  - [ ] Run all enabled policies
+  - [ ] `--strict` mode (exit non-zero on violations)
+  - [ ] `--pre-commit` mode (optimized, quiet if passing)
+  - [ ] `--policy=NAME` to check specific policy
+  - [ ] `--fix` to show resolution suggestions
+  - [ ] `--format=json` for scripting
+- [ ] `bd hooks` command implementation
+  - [ ] `hooks install` - Install git hooks
+  - [ ] `hooks uninstall` - Remove hooks
+  - [ ] `hooks list` - Show installed hooks
+  - [ ] `hooks test` - Test hooks without committing
+  - [ ] `hooks status` - Check hook installation
+- [ ] Hook script generation
+  - [ ] `pre-commit` hook template
+  - [ ] `commit-msg` hook template (bead reference validation)
+  - [ ] `post-commit` hook template (metadata updates)
+  - [ ] `pre-push` hook template (full checks)
+- [ ] Hook configuration in policies.yaml
+  - [ ] `enforce_in_hooks` flag per policy
+  - [ ] `hooks` section with per-hook settings
+  - [ ] Timeout configuration
+- [ ] Testing and dogfooding
+  - [ ] Install hooks in AllBeads repo
+  - [ ] Test with actual workflow
+  - [ ] Verify performance (<1s for typical checks)
 
-- [ ] Built-in check implementations
-- [ ] Custom check script execution
-- [ ] Check scheduling in daemon
-- [ ] `ab sheriff check` commands
-- [ ] CI mode with exit codes
+### Phase 1: Policy Engine (4-6 weeks) **✓ COMPLETE**
+
+- [x] Policy YAML schema definition
+- [x] Policy loading and validation
+- [x] Basic policy evaluation (allow/deny)
+- [x] Audit logging to SQLite (PolicyStorage)
+- [x] Built-in policy types (RequireDescription, MaxInProgress, etc.)
+- [ ] `ab sheriff policy` commands (Sheriff-level, deferred)
+
+### Phase 2: Checks Runner (4-6 weeks) **✓ COMPLETE**
+
+- [x] Built-in check implementations (6 rules)
+- [x] Policy checker integration with Sheriff
+- [x] Check scheduling in daemon (poll cycle)
+- [x] Check results storage (SQLite)
+- [ ] Custom check script execution (deferred)
+- [ ] `ab sheriff check` commands (Sheriff-level, deferred)
+- [ ] CI mode with exit codes (deferred)
 
 ### Phase 3: Agent Guardrails (3-4 weeks)
 
