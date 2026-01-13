@@ -124,6 +124,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_hooks_command(hooks_cmd);
     }
 
+    // Handle Aiki commands (don't need graph)
+    if let Commands::Aiki(ref aiki_cmd) = command {
+        return handle_aiki_command(aiki_cmd);
+    }
+
     // Handle sync command
     if let Commands::Sync {
         all,
@@ -1502,9 +1507,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::CodingAgent(_)
         | Commands::Sync { .. }
         | Commands::Check { .. }
-        | Commands::Hooks(_) => {
+        | Commands::Hooks(_)
+        | Commands::Aiki(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, and Hooks commands should be handled before aggregation")
+            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, and Aiki commands should be handled before aggregation")
         }
     }
 
@@ -7865,6 +7871,82 @@ fn handle_hooks_command(cmd: &HooksCommands) -> allbeads::Result<()> {
                     println!("  ✗ {} - not installed", hook_name);
                 }
             }
+
+            Ok(())
+        }
+    }
+}
+
+fn handle_aiki_command(cmd: &AikiCommands) -> allbeads::Result<()> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let env_file = PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()))
+        .join(".config/allbeads/env");
+
+    match cmd {
+        AikiCommands::Activate { bead_id } => {
+            // Create parent directory if it doesn't exist
+            if let Some(parent) = env_file.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            // Write the environment variable to the file
+            fs::write(&env_file, format!("export AB_ACTIVE_BEAD=\"{}\"\n", bead_id))?;
+
+            println!("✓ Activated bead: {}", bead_id);
+            println!("\nTo use this in your current shell, run:");
+            println!("  source {}", env_file.display());
+            println!("\nOr eval the output:");
+            println!("  eval \"$(ab aiki hook-init)\"");
+            println!("\nTo make this automatic, add to your shell rc file:");
+            println!("  eval \"$(ab aiki hook-init)\"");
+
+            Ok(())
+        }
+
+        AikiCommands::Deactivate => {
+            if env_file.exists() {
+                fs::remove_file(&env_file)?;
+                println!("✓ Deactivated bead");
+                println!("\nIn your current shell, run:");
+                println!("  unset AB_ACTIVE_BEAD");
+            } else {
+                println!("No active bead");
+            }
+
+            Ok(())
+        }
+
+        AikiCommands::Status => {
+            if let Ok(content) = fs::read_to_string(&env_file) {
+                // Extract the bead ID from the file
+                if let Some(line) = content.lines().next() {
+                    if let Some(id) = line.strip_prefix("export AB_ACTIVE_BEAD=\"").and_then(|s| s.strip_suffix("\"")) {
+                        println!("Active bead: {}", id);
+                        println!("Env file: {}", env_file.display());
+                        return Ok(());
+                    }
+                }
+            }
+
+            println!("No active bead");
+            println!("\nActivate a bead with:");
+            println!("  ab aiki activate <bead-id>");
+
+            Ok(())
+        }
+
+        AikiCommands::HookInit => {
+            // Output shell code that sources the env file
+            println!("# AllBeads Aiki integration");
+            println!("# Add this to your ~/.bashrc or ~/.zshrc:");
+            println!("# eval \"$(ab aiki hook-init)\"");
+            println!();
+            println!("ALLBEADS_ENV_FILE=\"{}\"", env_file.display());
+            println!("if [ -f \"$ALLBEADS_ENV_FILE\" ]; then");
+            println!("    source \"$ALLBEADS_ENV_FILE\"");
+            println!("fi");
 
             Ok(())
         }

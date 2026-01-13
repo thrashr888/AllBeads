@@ -76,6 +76,9 @@ Usage:
   check              Check governance policies against current beads
   hooks              Manage git hooks for policy enforcement
 
+{cyan}Aiki Integration:{reset}
+  aiki               Aiki integration utilities (activate/deactivate beads)
+
 {cyan}Configuration:{reset}
   config             Manage distributed configuration sync
 
@@ -676,6 +679,10 @@ pub enum Commands {
     #[command(subcommand)]
     Hooks(HooksCommands),
 
+    /// Aiki integration utilities
+    #[command(subcommand)]
+    Aiki(AikiCommands),
+
     // =========================================================================
     // CONFIG COMMANDS - Distributed configuration
     // =========================================================================
@@ -901,6 +908,24 @@ pub enum HooksCommands {
 
     /// Check hook installation status
     Status,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AikiCommands {
+    /// Activate a bead (set AB_ACTIVE_BEAD environment variable)
+    Activate {
+        /// Bead ID to activate
+        bead_id: String,
+    },
+
+    /// Deactivate the current bead (unset AB_ACTIVE_BEAD)
+    Deactivate,
+
+    /// Show the currently active bead
+    Status,
+
+    /// Output shell initialization code (for eval)
+    HookInit,
 }
 
 #[derive(Subcommand, Debug)]
