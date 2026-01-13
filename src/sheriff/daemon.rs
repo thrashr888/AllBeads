@@ -4,6 +4,7 @@
 //! Runs as a tokio async event loop with configurable poll intervals.
 
 use crate::governance::checker::CheckSummary;
+use crate::governance::config::load_policies_for_context;
 use crate::governance::rules::CheckResult;
 use crate::governance::{Policy, PolicyChecker, PolicyStorage};
 use crate::graph::{RigId, ShadowBead};
@@ -232,8 +233,17 @@ impl Sheriff {
         let (event_tx, _) = broadcast::channel(100);
         let (command_tx, command_rx) = mpsc::channel(10);
 
-        // Initialize policy checker with defaults
-        let policy_checker = PolicyChecker::with_defaults();
+        // Load policies from config file, or use defaults
+        let policies = load_policies_for_context(&config.boss_repo_path);
+        let policy_checker = if policies.is_empty() {
+            PolicyChecker::with_defaults()
+        } else {
+            let mut checker = PolicyChecker::new();
+            for policy in policies {
+                checker.add_policy(policy);
+            }
+            checker
+        };
 
         Ok(Self {
             config,

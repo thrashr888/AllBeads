@@ -1,0 +1,42 @@
+# AllBeads Governance Policies
+# These policies are enforced by the Sheriff daemon during sync cycles
+
+policies:
+  # All beads should have a description explaining the work
+  - name: require-description
+    enabled: true
+    severity: warning
+    type: require_description
+    description: "All beads must have a description explaining the work"
+
+  # Limit work-in-progress to prevent context switching
+  - name: max-in-progress
+    enabled: true
+    severity: warning
+    type: max_in_progress
+    config:
+      max_count: 3
+    description: "Limit concurrent in-progress beads to 3 per assignee"
+
+  # Prevent circular dependencies which cause blockers
+  - name: dependency-cycle-check
+    enabled: true
+    severity: error
+    type: dependency_cycle_check
+    description: "Detect and prevent circular dependencies"
+
+  # Epics and features should have labels for tracking
+  - name: require-labels-for-epics
+    enabled: false  # Disabled until we have conditional rules
+    severity: info
+    type: require_labels
+    config:
+      min_count: 1
+    description: "Epics should have at least one label for categorization"
+
+  # High priority items should be assigned
+  - name: require-assignee-p0-p1
+    enabled: false  # Disabled until we have conditional rules
+    severity: warning
+    type: require_assignee
+    description: "P0 and P1 beads should have an assignee"

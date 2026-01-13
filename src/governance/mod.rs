@@ -24,11 +24,13 @@
 //! ```
 
 pub mod checker;
+pub mod config;
 pub mod policy;
 pub mod rules;
 pub mod storage;
 
 pub use checker::PolicyChecker;
-pub use policy::{Policy, PolicyConfig, PolicyType};
+pub use config::{load_policies_for_context, PoliciesConfig};
+pub use policy::{Policy, PolicyConfig, PolicySeverity, PolicyType};
 pub use rules::PolicyRule;
 pub use storage::PolicyStorage;
