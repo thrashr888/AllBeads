@@ -297,6 +297,10 @@ pub enum Commands {
         Show {
         /// Bead ID (e.g., ab-123)
         id: String,
+
+        /// Show provenance information from Aiki
+        #[arg(long)]
+        provenance: bool,
     },
 
     /// Show beads that are ready to work on (no blockers)

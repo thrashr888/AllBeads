@@ -207,6 +207,7 @@ fn create_message_list_item(msg: &StoredMessage) -> ListItem<'static> {
         MessageType::Broadcast(_) => "[BROADCAST]",
         MessageType::Heartbeat(_) => "[HEARTBEAT]",
         MessageType::Response(_) => "[RESPONSE]",
+        MessageType::AikiEvent(_) => "[AIKI]",
     };
 
     let type_color = match &msg.message.message_type {
@@ -216,6 +217,7 @@ fn create_message_list_item(msg: &StoredMessage) -> ListItem<'static> {
         MessageType::Broadcast(_) => Color::Magenta,
         MessageType::Response(_) => Color::Blue,
         MessageType::Heartbeat(_) => Color::Gray,
+        MessageType::AikiEvent(_) => Color::Cyan,
     };
 
     // Get message summary
@@ -230,6 +232,7 @@ fn create_message_list_item(msg: &StoredMessage) -> ListItem<'static> {
             .message
             .clone()
             .unwrap_or_else(|| format!("{:?}", r.status)),
+        MessageType::AikiEvent(a) => format!("Review {:?} for bead {}", a.event, a.bead_id),
     };
 
     let from = msg.message.from.to_string();
@@ -290,6 +293,7 @@ fn draw_detail_view(f: &mut Frame, mail_view: &mut MailView, area: Rect) {
             MessageType::Broadcast(_) => "Broadcast",
             MessageType::Heartbeat(_) => "Heartbeat",
             MessageType::Response(_) => "Response",
+            MessageType::AikiEvent(_) => "Aiki Review Event",
         };
         let title = Paragraph::new(format!("{} from {}", type_name, msg.message.from))
             .style(
@@ -375,6 +379,32 @@ fn draw_detail_view(f: &mut Frame, mail_view: &mut MailView, area: Rect) {
                 text.push(Line::raw(format!("Status: {:?}", r.status)));
                 if let Some(ref message) = r.message {
                     text.push(Line::raw(message));
+                }
+            }
+            MessageType::AikiEvent(a) => {
+                text.push(Line::raw(format!("Event: {:?}", a.event)));
+                text.push(Line::raw(format!("Bead ID: {}", a.bead_id)));
+                text.push(Line::raw(format!("Change ID: {}", a.change_id)));
+                text.push(Line::raw(format!("Attempts: {}", a.attempts)));
+                if !a.issues.is_empty() {
+                    text.push(Line::raw(""));
+                    text.push(Line::from(Span::styled(
+                        "Issues:",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )));
+                    for issue in &a.issues {
+                        text.push(Line::raw(format!(
+                            "  [{:?}] {}: {}",
+                            issue.severity, issue.issue_type, issue.message
+                        )));
+                        if let Some(ref loc) = issue.location {
+                            text.push(Line::raw(format!("    at {}", loc)));
+                        }
+                    }
+                }
+                if let Some(ref rec) = a.recommendation {
+                    text.push(Line::raw(""));
+                    text.push(Line::raw(format!("Recommendation: {}", rec)));
                 }
             }
         }

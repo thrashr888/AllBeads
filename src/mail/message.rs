@@ -81,6 +81,10 @@ pub enum MessageType {
 
     /// Response to a previous message
     Response(ResponsePayload),
+
+    /// Aiki review event
+    /// Example: Aiki daemon notifies Sheriff about review outcomes
+    AikiEvent(AikiEventPayload),
 }
 
 /// Lock request payload
@@ -331,6 +335,130 @@ impl ResponsePayload {
             data: None,
         }
     }
+}
+
+/// Aiki event payload
+///
+/// Used by Aiki daemon to notify Sheriff about review outcomes
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AikiEventPayload {
+    /// Event type
+    pub event: AikiEventType,
+
+    /// Related bead ID
+    pub bead_id: String,
+
+    /// JJ change ID that was reviewed
+    pub change_id: String,
+
+    /// Number of review attempts
+    pub attempts: u32,
+
+    /// Optional issues detected during review
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<ReviewIssue>,
+
+    /// Optional recommendation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommendation: Option<String>,
+}
+
+impl AikiEventPayload {
+    /// Create a new Aiki event
+    pub fn new(
+        event: AikiEventType,
+        bead_id: impl Into<String>,
+        change_id: impl Into<String>,
+        attempts: u32,
+    ) -> Self {
+        Self {
+            event,
+            bead_id: bead_id.into(),
+            change_id: change_id.into(),
+            attempts,
+            issues: Vec::new(),
+            recommendation: None,
+        }
+    }
+
+    /// Add a review issue
+    pub fn with_issue(mut self, issue: ReviewIssue) -> Self {
+        self.issues.push(issue);
+        self
+    }
+
+    /// Add a recommendation
+    pub fn with_recommendation(mut self, recommendation: impl Into<String>) -> Self {
+        self.recommendation = Some(recommendation.into());
+        self
+    }
+}
+
+/// Aiki event types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AikiEventType {
+    /// Review passed on this attempt
+    ReviewPassed,
+
+    /// Review failed (will retry or escalate)
+    ReviewFailed,
+
+    /// Review escalated to human
+    Escalated,
+
+    /// Review completed after iterations
+    ReviewCompleted,
+}
+
+/// Review issue detected by Aiki
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReviewIssue {
+    /// Issue type (e.g., "security", "style", "correctness")
+    pub issue_type: String,
+
+    /// Severity level
+    pub severity: ReviewSeverity,
+
+    /// Human-readable message
+    pub message: String,
+
+    /// Optional file location
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+}
+
+impl ReviewIssue {
+    /// Create a new review issue
+    pub fn new(
+        issue_type: impl Into<String>,
+        severity: ReviewSeverity,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            issue_type: issue_type.into(),
+            severity,
+            message: message.into(),
+            location: None,
+        }
+    }
+
+    /// Set location
+    pub fn with_location(mut self, location: impl Into<String>) -> Self {
+        self.location = Some(location.into());
+        self
+    }
+}
+
+/// Review issue severity
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReviewSeverity {
+    Info,
+    Warning,
+    Error,
+    Critical,
 }
 
 /// Severity levels for notifications

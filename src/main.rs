@@ -39,6 +39,60 @@ fn main() {
     }
 }
 
+/// Provenance review statistics
+#[derive(Debug, Deserialize)]
+struct ProvenanceReviews {
+    passed: u32,
+    iterated: u32,
+}
+
+/// Provenance summary from Aiki
+#[derive(Debug, Deserialize)]
+struct ProvenanceSummary {
+    total_changes: u32,
+    agents: Vec<(String, u32)>,
+    #[serde(default)]
+    reviews: Option<ProvenanceReviews>,
+    #[serde(default)]
+    time_in_review: Option<String>,
+}
+
+/// Query Aiki for provenance information about a bead
+///
+/// Returns a structured summary of changes associated with the bead ID
+/// via Aiki's `summary --bead=<id>` command.
+fn query_aiki_provenance(bead_id: &str, context_path: Option<&Path>) -> allbeads::Result<ProvenanceSummary> {
+    use std::process::Command;
+
+    // Determine where to run the aiki command
+    let working_dir = context_path.unwrap_or_else(|| Path::new("."));
+
+    // Try to run `aiki summary --bead=<id> --format=json`
+    let output = Command::new("aiki")
+        .args(&["summary", &format!("--bead={}", bead_id), "--format=json"])
+        .current_dir(working_dir)
+        .output()
+        .map_err(|e| {
+            allbeads::AllBeadsError::Config(format!(
+                "Failed to execute aiki command: {}. Is Aiki installed?", e
+            ))
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Aiki command failed: {}",
+            stderr.trim()
+        )));
+    }
+
+    // Parse JSON output
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str(&stdout).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to parse Aiki output: {}", e))
+    })
+}
+
 fn run(mut cli: Cli) -> allbeads::Result<()> {
     // Get bd-compatible global flags to pass through to wrapper commands
     let bd_flags = cli.bd_global_flags();
@@ -309,10 +363,38 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Show { id } => {
+        Commands::Show { id, provenance } => {
             let bead_id = BeadId::new(&id);
             if let Some(bead) = graph.get_bead(&bead_id) {
                 print_bead_detailed(bead);
+
+                // Show provenance information if requested
+                if provenance {
+                    match query_aiki_provenance(&id, None) {
+                        Ok(prov) => {
+                            println!("\n  {}", style::header("Provenance Summary (from Aiki):"));
+                            println!("    Total changes: {}", prov.total_changes);
+                            if !prov.agents.is_empty() {
+                                print!("    Agents: ");
+                                let agents_str: Vec<String> = prov.agents.iter()
+                                    .map(|(agent, count)| format!("{} ({})", agent, count))
+                                    .collect();
+                                println!("{}", agents_str.join(", "));
+                            }
+                            if let Some(reviews) = prov.reviews {
+                                println!("    Reviews: {} passed, {} required iteration",
+                                    reviews.passed, reviews.iterated);
+                            }
+                            if let Some(time) = prov.time_in_review {
+                                println!("    Time in review loop: {}", time);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("\n  {} Unable to fetch provenance: {}",
+                                style::error("✗"), e);
+                        }
+                    }
+                }
             } else {
                 return Err(allbeads::AllBeadsError::IssueNotFound(id));
             }
@@ -6715,6 +6797,7 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                         MessageType::Broadcast(_) => "[BROADCAST]",
                         MessageType::Heartbeat(_) => "[HEARTBEAT]",
                         MessageType::Response(_) => "[RESPONSE]",
+                        MessageType::AikiEvent(_) => "[AIKI]",
                     };
                     let summary = match &msg.message.message_type {
                         MessageType::Notify(n) => n.message.clone(),
@@ -6727,6 +6810,7 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                             .message
                             .clone()
                             .unwrap_or_else(|| format!("{:?}", r.status)),
+                        MessageType::AikiEvent(a) => format!("Review {:?} for bead {}", a.event, a.bead_id),
                     };
                     let time = msg.message.timestamp.format("%H:%M");
                     println!(

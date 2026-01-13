@@ -363,6 +363,7 @@ impl Postmaster {
             MessageType::Broadcast(p) => ("Broadcast", serde_json::to_string(p)?),
             MessageType::Heartbeat(p) => ("Heartbeat", serde_json::to_string(p)?),
             MessageType::Response(p) => ("Response", serde_json::to_string(p)?),
+            MessageType::AikiEvent(p) => ("AikiEvent", serde_json::to_string(p)?),
         };
 
         let delivered_at = if status == DeliveryStatus::Delivered {

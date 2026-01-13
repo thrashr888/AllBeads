@@ -145,7 +145,7 @@ impl App {
     }
 
     /// Switch to next tab
-    /// Tab order: Kanban -> Mail (if available) -> Graph -> Stats -> Timeline -> Governance -> Swarm (if available) -> Kanban
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Stats -> Swarm (if available) -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
@@ -159,10 +159,10 @@ impl App {
                 }
             }
             Tab::Mail => Tab::Graph,
-            Tab::Graph => Tab::Stats,
-            Tab::Stats => Tab::Timeline,
+            Tab::Graph => Tab::Timeline,
             Tab::Timeline => Tab::Governance,
-            Tab::Governance => {
+            Tab::Governance => Tab::Stats,
+            Tab::Stats => {
                 if has_swarm {
                     Tab::Swarm
                 } else {

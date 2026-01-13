@@ -5,6 +5,33 @@ All notable changes to AllBeads will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Aiki Integration (Phases 1-3)**: Foundation for linking AllBeads issues to Aiki provenance
+  - Phase 1: Environment Variable Bridge
+    - `ab aiki activate <bead-id>` sets `AB_ACTIVE_BEAD` environment variable
+    - `ab aiki deactivate` clears the active bead
+    - `ab aiki status` shows currently active bead
+    - `ab aiki hook-init` outputs shell code for automatic env var loading
+    - Shell integration via `eval "$(ab aiki hook-init)"`
+  - Phase 2: Provenance Queries
+    - `ab show <id> --provenance` queries Aiki for change summary
+    - Displays total changes, agents, review statistics
+    - Graceful fallback when Aiki is not installed
+  - Phase 3: Agent Mail Integration
+    - New `AikiEvent` message type for review outcomes
+    - Support for review event types: `review_passed`, `review_failed`, `escalated`, `review_completed`
+    - `ReviewIssue` structure with severity levels (info, warning, error, critical)
+    - Aiki events displayed in TUI mail view with full detail
+  - Phase 4 (Future): Unified daemon deferred per SPEC-aiki-integration.md
+
+### Changed
+
+- **TUI Navigation**: Stats view moved to last position in tab order
+  - New order: Kanban → Mail → Graph → Timeline → Governance → Stats → Swarm
+
 ## [0.4.0] - 2026-01-12
 
 ### Added
