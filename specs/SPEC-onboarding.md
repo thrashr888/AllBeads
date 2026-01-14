@@ -30,6 +30,27 @@ This manual process is error-prone, inconsistent, and doesn't guide users throug
 - Creating new GitHub repositories (separate feature: ab-k2g)
 - Managing CI/CD configuration (out of scope)
 - Language-specific skill recommendations (requires agentic analysis)
+- Replacing or duplicating beads' initialization system
+
+## Separation of Concerns: AllBeads vs Beads
+
+**Beads Responsibilities (Rig Level):**
+- Repository-level issue tracking (`.beads/` directory)
+- Database management (SQLite or JSONL-only modes)
+- Git hooks for auto-sync (pre-commit, post-commit)
+- Merge drivers for conflict resolution
+- Local workflow (create, update, close issues)
+- Initialization via `bd init` with multiple modes
+
+**AllBeads Responsibilities (Boss Level):**
+- Multi-repository aggregation and federation
+- Context management (adding repos to AllBeads config)
+- Boss-level integrations (JIRA/GitHub sync across repos)
+- Skills marketplace configuration (.claude/settings.json)
+- Cross-repo dashboard (TUI)
+- Clone automation and workspace management
+
+**Key Principle**: AllBeads delegates to `bd init` for all Rig-level setup (beads, hooks, database). AllBeads focuses on Boss-level orchestration (multi-repo aggregation, integrations, visualization).
 
 ## Solution Overview
 
@@ -121,29 +142,53 @@ Clone to: /Users/thrashr888/Workspace/my-project
 
 ### Stage 3: Initialize Beads
 
+**Purpose:**
+Delegate to `bd init` to let beads handle its own initialization with user-chosen mode.
+
 **Detection:**
 - Check for `.beads/` directory
 - If exists, ask to reinitialize or skip
+- Check if `bd` CLI is available
 
 **Interactive Prompt:**
 ```
 Initialize beads tracking?
-  [y] Yes (recommended)
-  [n] No (skip beads setup)
+  [1] Standard mode (SQLite database + git hooks)
+  [2] No-DB mode (JSONL only, no SQLite)
+  [3] Stealth mode (personal, git-ignored)
+  [4] Team mode (team workflow setup)
+  [5] Skip beads setup
+
+Choice [1]:
 ```
 
 **Actions:**
-1. Run `bd init` equivalent
-2. Create `.beads/` directory structure
-3. Initialize `issues.jsonl`
-4. Create initial database
+1. Based on user choice, run one of:
+   - `bd init` (standard)
+   - `bd init --no-db` (no database)
+   - `bd init --stealth` (personal mode)
+   - `bd init --team` (team workflow wizard)
+2. Beads handles:
+   - Creating `.beads/` directory structure
+   - Initializing `issues.jsonl` and/or SQLite database
+   - Installing git hooks (pre-commit, post-commit for auto-sync)
+   - Setting up merge drivers
+3. AllBeads only observes the result
+
+**Non-interactive:**
+- Default to `bd init --quiet` (standard mode)
 
 **Output:**
 ```
+→ Running: bd init
 → Initializing beads (.beads/ directory)...
-✓ Beads initialized
-→ Current status: [B]eads ✓  [S]kills ✗  [I]ntegrations ✗  [C]I/CD ?  [H]ooks ✗
+→ Installing git hooks (auto-sync enabled)...
+✓ Beads initialized (standard mode)
+→ Current status: [B]eads ✓  [S]kills ✗  [I]ntegrations ✗  [C]I/CD ?  [H]ooks ✓
 ```
+
+**Note on Hooks:**
+Beads installs its own git hooks for database syncing. AllBeads doesn't need additional hooks at the Rig (repository) level - AllBeads operates at the Boss level to aggregate across multiple Rigs.
 
 ### Stage 4: Populate Issues (Interactive)
 
@@ -247,49 +292,7 @@ Choice [y]:
 **Note on Language-Specific Skills:**
 Language or project-specific skills (rust-analyzer, testing frameworks, etc.) are NOT automatically added as this requires agentic analysis. Users can add these manually or through Claude Code skills later.
 
-### Stage 6: Install Git Hooks
-
-**Detection:**
-- Check `.git/hooks/` directory
-- Check for existing hooks (pre-commit, post-commit)
-
-**Interactive Prompt:**
-```
-Would you like to install AllBeads Git hooks?
-Hooks will:
-  • pre-commit: Run 'bd check' to validate issues before commits
-  • post-commit: Auto-sync beads changes to remote
-  [y] Yes (recommended)
-  [n] Skip for now
-
-Choice [y]:
-```
-
-**Actions:**
-1. Create `.git/hooks/pre-commit`:
-   ```bash
-   #!/bin/bash
-   # AllBeads pre-commit hook
-   bd check || exit 1
-   ```
-2. Create `.git/hooks/post-commit`:
-   ```bash
-   #!/bin/bash
-   # AllBeads post-commit hook
-   bd sync --quiet || true
-   ```
-3. Make hooks executable
-
-**Output:**
-```
-→ Installing Git hooks...
-  ✓ pre-commit (runs 'bd check' before commits)
-  ✓ post-commit (auto-sync beads changes)
-✓ Hooks installed
-→ Current status: [B]eads ✓  [S]kills ✓  [I]ntegrations ✗  [C]I/CD ?  [H]ooks ✓
-```
-
-### Stage 7: Integrations (Optional)
+### Stage 6: Integrations (Optional)
 
 **Detection:**
 - Check if GitHub integration already configured
@@ -338,7 +341,7 @@ Skip integrations by default. They can be added later.
 → Current status: [B]eads ✓  [S]kills ✓  [I]ntegrations ✗  [C]I/CD ?  [H]ooks ✓
 ```
 
-### Stage 8: CI/CD Detection
+### Stage 7: CI/CD Detection
 
 **Detection:**
 - Check for `.github/workflows/*.yml`
@@ -353,7 +356,7 @@ Skip integrations by default. They can be added later.
 **Note:**
 CI/CD is informational only. AllBeads does not create or manage CI/CD configurations as it's highly project-specific.
 
-### Stage 9: Add to AllBeads Config
+### Stage 8: Add to AllBeads Config
 
 **Actions:**
 1. Extract context name from repo name (or use --context-name override)
@@ -386,7 +389,7 @@ CI/CD is informational only. AllBeads does not create or manage CI/CD configurat
 ✓ Context added to AllBeads config
 ```
 
-### Stage 10: Summary & Next Steps
+### Stage 9: Summary & Next Steps
 
 **Output:**
 ```
@@ -518,14 +521,14 @@ Type the context name to confirm: my-project
 
 **Onboarding:**
 ```
-User Input → Discovery → Clone → Init Beads → Import Issues →
-Configure Skills → Install Hooks → Detect CI/CD → Add Config → Summary
+User Input → Discovery → Clone → Init Beads (bd init handles hooks) → Import Issues →
+Configure Skills → Integrations → Detect CI/CD → Add Config → Summary
 ```
 
 **Offboarding:**
 ```
 User Input → Verify Context → Confirm Level → Remove Config →
-Remove Hooks → Remove Beads (optional) → Clean Claude Config (optional) → Summary
+Remove Beads (optional, includes hooks) → Clean Claude Config (optional) → Summary
 ```
 
 ### Configuration Changes
@@ -638,102 +641,10 @@ pub fn configure_claude_skills(repo_path: &Path) -> Result<()> {
 }
 ```
 
-### Hook Installation
-
-**pre-commit hook:**
-```bash
-#!/bin/bash
-# AllBeads pre-commit hook
-# Validates beads state before allowing commit
-
-if command -v bd &> /dev/null; then
-    bd check || exit 1
-else
-    echo "Warning: 'bd' command not found, skipping beads check"
-fi
-```
-
-**post-commit hook:**
-```bash
-#!/bin/bash
-# AllBeads post-commit hook
-# Auto-syncs beads changes after commit
-
-if command -v bd &> /dev/null; then
-    bd sync --quiet || true
-fi
-```
-
-**Implementation:**
-```rust
-/// Install AllBeads Git hooks in a repository
-/// Appends to existing hooks if present, doesn't overwrite
-pub fn install_hooks(repo_path: &Path) -> Result<()> {
-    let hooks_dir = repo_path.join(".git/hooks");
-
-    // Ensure hooks directory exists
-    if !hooks_dir.exists() {
-        return Err(anyhow!("Not a git repository"));
-    }
-
-    // Install pre-commit (append if exists)
-    let pre_commit = hooks_dir.join("pre-commit");
-    install_hook(&pre_commit, PRECOMMIT_HOOK_TEMPLATE)?;
-
-    // Install post-commit (append if exists)
-    let post_commit = hooks_dir.join("post-commit");
-    install_hook(&post_commit, POSTCOMMIT_HOOK_TEMPLATE)?;
-
-    Ok(())
-}
-
-/// Install or append to a Git hook file
-fn install_hook(hook_path: &Path, content: &str) -> Result<()> {
-    if hook_path.exists() {
-        // Existing hook - read and check if our content is already there
-        let existing = fs::read_to_string(hook_path)?;
-
-        // Check if AllBeads hook already present
-        if existing.contains("AllBeads") {
-            tracing::info!("AllBeads hook already installed: {}", hook_path.display());
-            return Ok(());
-        }
-
-        // Append to existing hook
-        let mut new_content = existing;
-        if !new_content.ends_with('\n') {
-            new_content.push('\n');
-        }
-        new_content.push_str("\n# AllBeads hook\n");
-        new_content.push_str(content);
-        fs::write(hook_path, new_content)?;
-        tracing::info!("Appended AllBeads hook to: {}", hook_path.display());
-    } else {
-        // No existing hook - create new
-        fs::write(hook_path, format!("#!/bin/bash\n\n{}", content))?;
-        set_executable(hook_path)?;
-        tracing::info!("Created AllBeads hook: {}", hook_path.display());
-    }
-
-    Ok(())
-}
-
-#[cfg(unix)]
-fn set_executable(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = fs::metadata(path)?.permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(path, perms)?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn set_executable(_path: &Path) -> Result<()> {
-    Ok(())
-}
-```
-
 ### Issue Import
+
+**Note on Hooks:**
+Hook installation is handled by `bd init` during Stage 3. AllBeads doesn't install additional hooks at the Rig level - it operates at the Boss level to aggregate across repositories.
 
 **GitHub Issues Import:**
 ```rust
@@ -819,10 +730,11 @@ fn test_full_onboarding_flow() {
 
 1. **Workspace Directory**: Use configured default workspace directory in AllBeads config. Default to `~/Workspace` if not set. Allow override with `--path` option.
 
-2. **Hook Conflicts**: Follow beads' approach from [INSTALLING.md](https://github.com/steveyegge/beads/blob/main/docs/INSTALLING.md#cli--hooks-recommended-for-claude-code):
-   - Check for existing hooks
-   - If hooks exist, append to them (don't overwrite)
-   - Preserve existing hook functionality
+2. **Beads Initialization**: Delegate to `bd init` for all beads setup:
+   - Respects user choice of mode (standard, no-db, stealth, team)
+   - Beads handles hook installation, merge drivers, git config
+   - AllBeads only adds Boss-level config (context, integrations, skills)
+   - Separation of concerns: beads = Rig level, AllBeads = Boss level
 
 3. **Settings.json Merge**: Mutate existing JSON intelligently:
    - Load existing settings.json if present
