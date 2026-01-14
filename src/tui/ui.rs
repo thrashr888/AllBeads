@@ -126,12 +126,12 @@ fn draw_governance_tab(f: &mut Frame, app: &mut App) {
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    // Tab order: Kanban, Mail (if available), Graph, Stats, Timeline, Governance, Swarm (if available)
+    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Stats, Swarm (if available)
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
     let mut graph_index = 1;
-    let mut stats_index = 2;
-    let mut timeline_index = 3;
-    let mut governance_index = 4;
+    let mut timeline_index = 2;
+    let mut governance_index = 3;
+    let mut stats_index = 4;
     let mut swarm_index = 5;
 
     // Add mail tab if available
@@ -143,23 +143,23 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
             tab_titles.push("Mail".to_string());
         }
         graph_index = 2;
-        stats_index = 3;
-        timeline_index = 4;
-        governance_index = 5;
+        timeline_index = 3;
+        governance_index = 4;
+        stats_index = 5;
         swarm_index = 6;
     }
 
     // Graph tab is always present
     tab_titles.push("Graph".to_string());
 
-    // Stats tab is always present
-    tab_titles.push("Stats".to_string());
-
     // Timeline tab is always present
     tab_titles.push("Timeline".to_string());
 
     // Governance tab is always present
     tab_titles.push("Governance".to_string());
+
+    // Stats tab is always present
+    tab_titles.push("Stats".to_string());
 
     // Add swarm tab if available
     if app.has_swarm() {
@@ -176,9 +176,9 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Kanban => 0,
         Tab::Mail => 1,
         Tab::Graph => graph_index,
-        Tab::Stats => stats_index,
         Tab::Timeline => timeline_index,
         Tab::Governance => governance_index,
+        Tab::Stats => stats_index,
         Tab::Swarm => swarm_index,
     };
 
