@@ -79,6 +79,9 @@ fn run_app<B: ratatui::backend::Backend>(
     loop {
         terminal.draw(|f| ui::draw(f, app))?;
 
+        // Handle deferred context loading after draw so loading message shows
+        app.do_contexts_refresh();
+
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 // Global keys
@@ -162,6 +165,9 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('j') | KeyCode::Down => app.contexts_view.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.contexts_view.previous(),
                         KeyCode::Char('r') => app.force_refresh_contexts_view(),
+                        KeyCode::Char('s') => app.contexts_view.cycle_sort(),
+                        KeyCode::Enter => app.contexts_view.toggle_detail(),
+                        KeyCode::Esc => app.contexts_view.close_detail(),
                         _ => {}
                     },
                 }

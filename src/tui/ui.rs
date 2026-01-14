@@ -156,8 +156,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         governance_index = 4;
         aiki_index = 5;
         swarm_index = 6;
-        contexts_index = 7;
-        stats_index = 8;
+        contexts_index = 6;
+        stats_index = 7;
     }
 
     // Graph tab is always present

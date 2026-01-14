@@ -218,7 +218,7 @@ impl Aggregator {
         // Load beads from each Boss repository
         for (context_name, repo) in &self.repos {
             if !repo.has_issues_jsonl() {
-                tracing::warn!(
+                tracing::debug!(
                     context = %context_name,
                     "No issues.jsonl found, skipping"
                 );

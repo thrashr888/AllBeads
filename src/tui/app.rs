@@ -203,10 +203,18 @@ impl App {
         self.aiki_view.refresh(&self.graph);
     }
 
-    /// Refresh Contexts view
+    /// Refresh Contexts view (deferred)
     pub fn refresh_contexts_view(&mut self) {
         // Only refresh if not already loaded (to avoid lag on every tab switch)
         if self.contexts_view.report.is_none() {
+            // Request deferred refresh so loading message shows first
+            self.contexts_view.request_refresh();
+        }
+    }
+
+    /// Actually perform the contexts refresh (called after draw)
+    pub fn do_contexts_refresh(&mut self) {
+        if self.contexts_view.needs_refresh {
             use crate::config::AllBeadsConfig;
             if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
                 self.contexts_view.refresh(&config);
@@ -216,10 +224,9 @@ impl App {
 
     /// Force refresh Contexts view (called when user presses 'r')
     pub fn force_refresh_contexts_view(&mut self) {
-        use crate::config::AllBeadsConfig;
-        if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
-            self.contexts_view.refresh(&config);
-        }
+        // Clear current data and request refresh to show loading message
+        self.contexts_view.report = None;
+        self.contexts_view.request_refresh();
     }
 
     /// Mark selected message as read
