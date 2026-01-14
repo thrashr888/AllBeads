@@ -4,6 +4,7 @@
 
 mod app;
 pub mod aiki_view;
+pub mod contexts_view;
 pub mod governance_view;
 pub mod graph_view;
 pub mod mail_view;
@@ -14,6 +15,7 @@ mod ui;
 
 pub use aiki_view::AikiView;
 pub use app::{App, Tab};
+pub use contexts_view::ContextsView;
 pub use governance_view::GovernanceView;
 pub use graph_view::GraphView;
 pub use stats_view::StatsView;
@@ -154,6 +156,12 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('j') | KeyCode::Down => app.aiki_view.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.aiki_view.previous(),
                         KeyCode::Char('r') => app.refresh_aiki_view(),
+                        _ => {}
+                    },
+                    Tab::Contexts => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.contexts_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.contexts_view.previous(),
+                        KeyCode::Char('r') => app.refresh_contexts_view(),
                         _ => {}
                     },
                 }

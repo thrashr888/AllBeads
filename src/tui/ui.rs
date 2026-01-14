@@ -1,6 +1,7 @@
 //! TUI rendering
 
 use super::app::{App, Column, Tab};
+use super::contexts_view;
 use super::governance_view;
 use super::graph_view;
 use super::mail_view;
@@ -45,6 +46,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         }
         Tab::Aiki => {
             draw_aiki_tab(f, app);
+        }
+        Tab::Contexts => {
+            draw_contexts_tab(f, app);
         }
     }
 }
@@ -129,14 +133,15 @@ fn draw_governance_tab(f: &mut Frame, app: &mut App) {
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Aiki, Swarm (if available), Stats
+    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Aiki, Swarm (if available), Contexts, Stats
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
     let mut graph_index = 1;
     let mut timeline_index = 2;
     let mut governance_index = 3;
     let mut aiki_index = 4;
     let mut swarm_index = 5;
-    let mut stats_index = 6;
+    let mut contexts_index = 6;
+    let mut stats_index = 7;
 
     // Add mail tab if available
     if app.has_mail() {
@@ -151,7 +156,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         governance_index = 4;
         aiki_index = 5;
         swarm_index = 6;
-        stats_index = 7;
+        contexts_index = 7;
+        stats_index = 8;
     }
 
     // Graph tab is always present
@@ -179,7 +185,12 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         } else {
             tab_titles.push("Swarm".to_string());
         }
+        contexts_index += 1;
+        stats_index += 1;
     }
+
+    // Contexts tab is always present
+    tab_titles.push("Contexts".to_string());
 
     // Stats tab is always present (always at the end)
     tab_titles.push("Stats".to_string());
@@ -193,6 +204,7 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Governance => governance_index,
         Tab::Aiki => aiki_index,
         Tab::Swarm => swarm_index,
+        Tab::Contexts => contexts_index,
         Tab::Stats => stats_index,
     };
 
@@ -662,6 +674,19 @@ fn draw_aiki_tab(f: &mut Frame, app: &mut App) {
         .style(Style::default().fg(Color::White))
         .block(Block::default().borders(Borders::ALL).title("Help"));
     f.render_widget(help, content_chunks[1]);
+}
+
+fn draw_contexts_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+    contexts_view::draw(f, &mut app.contexts_view, chunks[1]);
 }
 
 fn priority_color(priority: Priority) -> Color {

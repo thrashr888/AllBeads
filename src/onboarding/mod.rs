@@ -163,8 +163,8 @@ impl OnboardingStatus {
                     // Check for skills
                     let has_skills = Self::has_skills(&repo);
 
-                    // Check for integration
-                    let has_integration = Self::has_integration(&repo);
+                    // Check for integration (from context config)
+                    let has_integration = Self::has_integration_from_context(context);
 
                     // Check for CI
                     let has_ci = Self::has_ci(&repo);
@@ -197,7 +197,7 @@ impl OnboardingStatus {
         };
 
         let has_skills = Self::has_skills(&repo);
-        let has_integration = Self::has_integration(&repo);
+        let has_integration = Self::has_integration_from_context(context);
         let has_ci = Self::has_ci(&repo);
 
         Ok(OnboardingStatus {
@@ -234,13 +234,10 @@ impl OnboardingStatus {
         claude_plugin.exists() || claude_md.exists()
     }
 
-    /// Check if repository has integration configured
-    fn has_integration(repo: &BossRepo) -> bool {
-        // Check for .beads/jira.yaml or .beads/github.yaml
-        let jira_config = repo.beads_dir().join("jira.yaml");
-        let github_config = repo.beads_dir().join("github.yaml");
-
-        jira_config.exists() || github_config.exists()
+    /// Check if repository has integration configured (from BossContext)
+    fn has_integration_from_context(context: &BossContext) -> bool {
+        // Check if context has JIRA or GitHub integration configured
+        context.integrations.jira.is_some() || context.integrations.github.is_some()
     }
 
     /// Check if repository has CI/CD configured

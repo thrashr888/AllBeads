@@ -1,6 +1,7 @@
 //! TUI application state
 
 use super::aiki_view::AikiView;
+use super::contexts_view::ContextsView;
 use super::governance_view::GovernanceView;
 use super::graph_view::GraphView;
 use super::mail_view::MailView;
@@ -26,6 +27,7 @@ pub enum Tab {
     Governance,
     Swarm,
     Aiki,
+    Contexts,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +72,7 @@ pub struct App {
     pub governance_view: GovernanceView,
     pub swarm_view: SwarmView,
     pub aiki_view: AikiView,
+    pub contexts_view: ContextsView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
 }
@@ -101,6 +104,7 @@ impl App {
             governance_view,
             swarm_view: SwarmView::new(),
             aiki_view,
+            contexts_view: ContextsView::new(),
             postmaster: None,
             inbox_address: Address::human(),
         }
@@ -151,7 +155,7 @@ impl App {
     }
 
     /// Switch to next tab
-    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Aiki -> Swarm (if available) -> Stats -> Kanban
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Aiki -> Swarm (if available) -> Contexts -> Stats -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
@@ -172,10 +176,11 @@ impl App {
                 if has_swarm {
                     Tab::Swarm
                 } else {
-                    Tab::Stats
+                    Tab::Contexts
                 }
             }
-            Tab::Swarm => Tab::Stats,
+            Tab::Swarm => Tab::Contexts,
+            Tab::Contexts => Tab::Stats,
             Tab::Stats => Tab::Kanban,
         };
 
@@ -188,6 +193,7 @@ impl App {
             Tab::Governance => self.governance_view.load_placeholder_data(),
             Tab::Swarm => self.swarm_view.refresh(),
             Tab::Aiki => self.aiki_view.refresh(&self.graph),
+            Tab::Contexts => self.refresh_contexts_view(),
             _ => {}
         }
     }
@@ -195,6 +201,15 @@ impl App {
     /// Refresh Aiki view
     pub fn refresh_aiki_view(&mut self) {
         self.aiki_view.refresh(&self.graph);
+    }
+
+    /// Refresh Contexts view
+    pub fn refresh_contexts_view(&mut self) {
+        // Load config and refresh contexts view
+        use crate::config::AllBeadsConfig;
+        if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
+            self.contexts_view.refresh(&config);
+        }
     }
 
     /// Mark selected message as read
