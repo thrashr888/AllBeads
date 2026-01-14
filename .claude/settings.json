@@ -1,28 +1,34 @@
 {
   "enabledPlugins": {
-    "open-prose@prose": true,
     "allbeads@allbeads-marketplace": true,
-    "beads@beads-marketplace": true
+    "beads@beads-marketplace": true,
+    "open-prose@prose": true
+  },
+  "extraKnownMarketplaces": {
+    "allbeads-marketplace": {
+      "source": {
+        "repo": "thrashr888/AllBeads",
+        "source": "github"
+      }
+    },
+    "beads-marketplace": {
+      "source": {
+        "repo": "steveyegge/beads",
+        "source": "github"
+      }
+    }
   },
   "hooks": {
     "SessionStart": [
       {
         "hooks": [
           {
-            "type": "command",
             "command": "allbeads sync --status 2>/dev/null || true",
-            "statusMessage": "Checking AllBeads sync status"
+            "statusMessage": "Checking AllBeads sync status",
+            "type": "command"
           }
         ]
       }
     ]
-  },
-  "extraKnownMarketplaces": {
-    "allbeads-marketplace": {
-      "source": {
-        "source": "github",
-        "repo": "thrashr888/AllBeads"
-      }
-    }
   }
 }
