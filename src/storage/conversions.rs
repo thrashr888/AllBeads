@@ -137,6 +137,7 @@ pub fn issue_to_bead(issue: beads::Issue) -> Result<Bead> {
         blocks: issue.blocks.into_iter().map(BeadId::new).collect(),
         labels: issue.labels.into_iter().collect(),
         notes: None,
+        aiki_tasks: Vec::new(),
     };
 
     Ok(bead)

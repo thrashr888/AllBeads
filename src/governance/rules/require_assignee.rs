@@ -54,6 +54,7 @@ mod tests {
             assignee: assignee.map(String::from),
             issue_type: crate::graph::IssueType::Task,
             notes: None,
+            aiki_tasks: Vec::new(),
         }
     }
 

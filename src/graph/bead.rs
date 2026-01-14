@@ -130,6 +130,10 @@ pub struct Bead {
     /// Optional notes
     #[serde(skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+
+    /// Linked Aiki task IDs (for integration with Aiki task system)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aiki_tasks: Vec<String>,
 }
 
 impl Bead {
@@ -155,6 +159,7 @@ impl Bead {
             blocks: Vec::new(),
             labels: HashSet::new(),
             notes: None,
+            aiki_tasks: Vec::new(),
         }
     }
 
@@ -186,6 +191,32 @@ impl Bead {
     /// Update the timestamp to now
     pub fn update_timestamp(&mut self) {
         self.updated_at = chrono::Utc::now().to_rfc3339();
+    }
+
+    /// Add an Aiki task ID link
+    pub fn add_aiki_task(&mut self, task_id: impl Into<String>) {
+        let task_id = task_id.into();
+        if !self.aiki_tasks.contains(&task_id) {
+            self.aiki_tasks.push(task_id);
+        }
+        self.update_timestamp();
+    }
+
+    /// Remove an Aiki task ID link
+    pub fn remove_aiki_task(&mut self, task_id: &str) -> bool {
+        let before_len = self.aiki_tasks.len();
+        self.aiki_tasks.retain(|id| id != task_id);
+        if before_len != self.aiki_tasks.len() {
+            self.update_timestamp();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if an Aiki task is linked
+    pub fn has_aiki_task(&self, task_id: &str) -> bool {
+        self.aiki_tasks.iter().any(|id| id == task_id)
     }
 }
 

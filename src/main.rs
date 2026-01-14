@@ -8034,6 +8034,114 @@ fn handle_aiki_command(cmd: &AikiCommands) -> allbeads::Result<()> {
 
             Ok(())
         }
+
+        AikiCommands::Link { bead_id, task_id } => {
+            // Load beads from JSONL, add the task link, save back
+            use allbeads::storage::{read_beads, write_beads};
+
+            let beads_path = std::path::PathBuf::from(".beads");
+            if !beads_path.exists() {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Not in a beads repository. Run 'bd init' first.".to_string(),
+                ));
+            }
+
+            let issues_file = beads_path.join("issues.jsonl");
+            let mut beads = read_beads(&issues_file)?;
+
+            // Find the bead
+            let bead = beads
+                .iter_mut()
+                .find(|b| b.id.as_str() == bead_id)
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Bead {} not found", bead_id))
+                })?;
+
+            if bead.has_aiki_task(task_id) {
+                println!("Task {} is already linked to bead {}", task_id, bead_id);
+                return Ok(());
+            }
+
+            bead.add_aiki_task(task_id.clone());
+
+            // Write all beads back
+            write_beads(&issues_file, &beads)?;
+
+            println!("✓ Linked task {} to bead {}", task_id, bead_id);
+            Ok(())
+        }
+
+        AikiCommands::Unlink { bead_id, task_id } => {
+            // Load beads from JSONL, remove the task link, save back
+            use allbeads::storage::{read_beads, write_beads};
+
+            let beads_path = std::path::PathBuf::from(".beads");
+            if !beads_path.exists() {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Not in a beads repository. Run 'bd init' first.".to_string(),
+                ));
+            }
+
+            let issues_file = beads_path.join("issues.jsonl");
+            let mut beads = read_beads(&issues_file)?;
+
+            // Find the bead
+            let bead = beads
+                .iter_mut()
+                .find(|b| b.id.as_str() == bead_id)
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Bead {} not found", bead_id))
+                })?;
+
+            if !bead.remove_aiki_task(task_id) {
+                println!("Task {} was not linked to bead {}", task_id, bead_id);
+                return Ok(());
+            }
+
+            // Write all beads back
+            write_beads(&issues_file, &beads)?;
+
+            println!("✓ Unlinked task {} from bead {}", task_id, bead_id);
+            Ok(())
+        }
+
+        AikiCommands::Tasks { bead_id } => {
+            // Load beads and display linked tasks
+            use allbeads::storage::read_beads;
+
+            let beads_path = std::path::PathBuf::from(".beads");
+            if !beads_path.exists() {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Not in a beads repository. Run 'bd init' first.".to_string(),
+                ));
+            }
+
+            let issues_file = beads_path.join("issues.jsonl");
+            let beads = read_beads(&issues_file)?;
+
+            // Find the bead
+            let bead = beads
+                .iter()
+                .find(|b| b.id.as_str() == bead_id)
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Bead {} not found", bead_id))
+                })?;
+
+            if bead.aiki_tasks.is_empty() {
+                println!("No Aiki tasks linked to bead {}", bead_id);
+                println!("\nLink a task with:");
+                println!("  ab aiki link {} <task-id>", bead_id);
+                return Ok(());
+            }
+
+            println!("Aiki tasks linked to {}:", bead_id);
+            for task_id in &bead.aiki_tasks {
+                println!("  {}", task_id);
+            }
+            println!("\nTotal: {} task(s)", bead.aiki_tasks.len());
+
+            Ok(())
+        }
     }
 }
 

@@ -930,6 +930,30 @@ pub enum AikiCommands {
 
     /// Output shell initialization code (for eval)
     HookInit,
+
+    /// Link an Aiki task to a bead
+    Link {
+        /// Bead ID
+        bead_id: String,
+
+        /// Aiki task ID
+        task_id: String,
+    },
+
+    /// Unlink an Aiki task from a bead
+    Unlink {
+        /// Bead ID
+        bead_id: String,
+
+        /// Aiki task ID
+        task_id: String,
+    },
+
+    /// List Aiki tasks linked to a bead
+    Tasks {
+        /// Bead ID
+        bead_id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
