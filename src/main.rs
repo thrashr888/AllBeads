@@ -93,6 +93,124 @@ fn query_aiki_provenance(bead_id: &str, context_path: Option<&Path>) -> allbeads
     })
 }
 
+/// Display Aiki tasks linked to a bead
+fn show_aiki_tasks_for_bead(bead: &allbeads::graph::Bead) -> allbeads::Result<()> {
+    use std::process::Command;
+
+    println!("\n  {}", style::header("Aiki Tasks:"));
+
+    // Show linked tasks from bead metadata
+    if !bead.aiki_tasks.is_empty() {
+        println!("    Linked tasks:");
+        for task_id in &bead.aiki_tasks {
+            println!("      • {}", style::highlight(task_id));
+        }
+    } else {
+        println!("    No tasks linked to this bead");
+        println!("\n    Link a task with:");
+        println!("      ab aiki link {} <task-id>", bead.id.as_str());
+        return Ok(());
+    }
+
+    // Try to query Aiki for task details if available
+    let output = Command::new("aiki")
+        .args(&["task", "list", "--format=xml"])
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            parse_and_display_aiki_tasks(&stdout, &bead.aiki_tasks);
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!("\n    {} Unable to fetch task details: {}",
+                style::error("✗"), stderr.trim());
+        }
+        Err(_) => {
+            println!("\n    {} Aiki not available (task details unavailable)",
+                style::warning("⚠"));
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse Aiki XML task list and display relevant tasks
+fn parse_and_display_aiki_tasks(xml: &str, linked_tasks: &[String]) {
+    use std::collections::HashMap;
+
+    // Simple XML parsing - look for <task id="..."> <title>...</title> <status>...</status>
+    // This is a basic implementation; could use a proper XML parser later
+
+    let mut tasks: HashMap<String, (String, String)> = HashMap::new(); // id -> (title, status)
+
+    // Split by <task and process each task block
+    for chunk in xml.split("<task") {
+        if chunk.trim().is_empty() {
+            continue;
+        }
+
+        // Extract id from id="..."
+        let id = if let Some(start) = chunk.find("id=\"") {
+            let rest = &chunk[start + 4..];
+            if let Some(end) = rest.find('"') {
+                Some(&rest[..end])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Extract title from <title>...</title>
+        let title = if let Some(start) = chunk.find("<title>") {
+            let rest = &chunk[start + 7..];
+            if let Some(end) = rest.find("</title>") {
+                Some(&rest[..end])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Extract status from <status>...</status>
+        let status = if let Some(start) = chunk.find("<status>") {
+            let rest = &chunk[start + 8..];
+            if let Some(end) = rest.find("</status>") {
+                Some(&rest[..end])
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let (Some(id), Some(title), Some(status)) = (id, title, status) {
+            tasks.insert(id.to_string(), (title.to_string(), status.to_string()));
+        }
+    }
+
+    // Display details for linked tasks
+    if !tasks.is_empty() {
+        println!("\n    Task details:");
+        for task_id in linked_tasks {
+            if let Some((title, status)) = tasks.get(task_id) {
+                let status_display = style::status_style(status);
+                println!("      • {} - {} [{}]",
+                    style::highlight(task_id),
+                    title,
+                    status_display);
+            } else {
+                println!("      • {} - {}",
+                    style::highlight(task_id),
+                    style::error("not found"));
+            }
+        }
+    }
+}
+
 fn run(mut cli: Cli) -> allbeads::Result<()> {
     // Get bd-compatible global flags to pass through to wrapper commands
     let bd_flags = cli.bd_global_flags();
@@ -363,7 +481,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Show { id, provenance } => {
+        Commands::Show { id, provenance, tasks } => {
             let bead_id = BeadId::new(&id);
             if let Some(bead) = graph.get_bead(&bead_id) {
                 print_bead_detailed(bead);
@@ -394,6 +512,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                                 style::error("✗"), e);
                         }
                     }
+                }
+
+                // Show linked Aiki tasks if requested
+                if tasks {
+                    show_aiki_tasks_for_bead(bead)?;
                 }
             } else {
                 return Err(allbeads::AllBeadsError::IssueNotFound(id));

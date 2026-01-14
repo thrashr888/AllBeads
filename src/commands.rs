@@ -301,6 +301,10 @@ pub enum Commands {
         /// Show provenance information from Aiki
         #[arg(long)]
         provenance: bool,
+
+        /// Show linked Aiki tasks
+        #[arg(long)]
+        tasks: bool,
     },
 
     /// Show beads that are ready to work on (no blockers)
