@@ -7721,104 +7721,10 @@ fn handle_setup_command(config_path: &Option<String>) -> allbeads::Result<()> {
     Ok(())
 }
 
-/// Handle the `onboard` command - onboarding guide for AI agents
-fn handle_onboard_command(
-    full: bool,
-    graph: &allbeads::graph::FederatedGraph,
-) -> allbeads::Result<()> {
-    println!("# AllBeads Agent Onboarding");
-    println!();
-
-    if full {
-        // Full workflow guide
-        println!("## Workflow Guide");
-        println!();
-        println!("### 1. Context Recovery");
-        println!();
-        println!("After compaction or starting a new session:");
-        println!("```bash");
-        println!("ab prime    # Recover context from beads/issues");
-        println!("ab info     # Show current project status");
-        println!("```");
-        println!();
-        println!("### 2. Finding Work");
-        println!();
-        println!("```bash");
-        println!("ab ready    # Show unblocked work");
-        println!("ab blocked  # Show blocked work (dependencies)");
-        println!("ab search \"keyword\" --status open  # Search");
-        println!("```");
-        println!();
-        println!("### 3. Session Completion (\"Landing the Plane\")");
-        println!();
-        println!("Before ending any session, complete this checklist:");
-        println!();
-        println!("1. **File remaining work** - Create issues for incomplete tasks");
-        println!("2. **Run quality gates** - `cargo test && cargo clippy`");
-        println!("3. **Update issue status** - Mark completed work as closed");
-        println!("4. **Sync and push**:");
-        println!("   ```bash");
-        println!("   git pull --rebase");
-        println!("   bd sync       # If using beads issue tracker");
-        println!("   git add -A && git commit -m \"message\"");
-        println!("   git push");
-        println!("   git status    # Verify \"up to date\"");
-        println!("   ```");
-        println!("5. **Clean git state** - No uncommitted changes");
-        println!("6. **Provide handoff context** - Summary for next session");
-        println!();
-        println!("**Critical rule**: Work is NOT complete until `git push` succeeds.");
-        println!();
-        println!("### 4. Visual Design System");
-        println!();
-        println!("Status indicators (no emojis in CLI output):");
-        println!("- `○` Open");
-        println!("- `◐` In Progress");
-        println!("- `●` Blocked");
-        println!("- `✓` Closed");
-        println!("- `❄` Deferred");
-        println!();
-        println!("Priority colors:");
-        println!("- P0: Red (critical)");
-        println!("- P1: Light Red (high)");
-        println!("- P2: Yellow (medium)");
-        println!("- P3: Blue (low)");
-        println!("- P4: Gray (backlog)");
-    } else {
-        // Quick onboarding summary
-        let stats = graph.stats();
-        let ready_count = graph.ready_beads().len();
-
-        println!("## Project Overview");
-        println!();
-        println!(
-            "- {} total beads across {} contexts",
-            stats.total_beads,
-            graph.rigs.len()
-        );
-        println!(
-            "- {} open, {} in progress, {} blocked",
-            stats.open_beads, stats.in_progress_beads, stats.blocked_beads
-        );
-        println!("- {} beads ready to work on", ready_count);
-        println!();
-        println!("## Quick Commands");
-        println!();
-        println!("```bash");
-        println!("ab ready        # Find work to do");
-        println!("ab show <id>    # View bead details");
-        println!("ab tui          # Interactive dashboard");
-        println!("```");
-        println!();
-        println!("Run `ab onboard --full` for the complete workflow guide.");
-    }
-
-    Ok(())
-}
-
 /// Handle the `onboard` command - onboard a repository into AllBeads
+/// Handle repository onboarding through the 9-stage workflow.
 ///
-/// This implements the 9-stage onboarding workflow from SPEC-onboarding.md:
+/// Implements SPEC-onboarding.md:
 /// 1. Discovery/Selection
 /// 2. Clone (if needed)
 /// 3. Initialize Beads (via bd init)
@@ -7836,48 +7742,90 @@ fn handle_onboard_repository(
     skip_beads: bool,
     skip_skills: bool,
     _skip_hooks: bool, // Handled by bd init
-    skip_issues: bool,
+    _skip_issues: bool,
     context_name: Option<&str>,
     custom_path: Option<&str>,
     config: &AllBeadsConfig,
 ) -> allbeads::Result<()> {
+    use allbeads::onboarding::repository;
+
     println!("🚀 AllBeads Repository Onboarding");
     println!();
 
-    // TODO: Implement onboarding stages
     // Stage 1: Discovery & Validation
-    println!("Target: {}", target);
-    println!("Mode: {}", if non_interactive { "non-interactive" } else { "interactive" });
+    println!("Stage 1: Discovery");
+    let repo_info = repository::discover_repository(target, custom_path, config)?;
+    println!("  Repository: {}", repo_info.name);
+    println!("  Path: {}", repo_info.path.display());
+    if let Some(ref url) = repo_info.url {
+        println!("  URL: {}", url);
+    }
+    if let Some(ref org) = repo_info.organization {
+        println!("  Organization: {}", org);
+    }
+    println!("  Exists locally: {}", repo_info.exists_locally);
     println!();
 
-    // Stage configuration summary
-    println!("Configuration:");
-    println!("  Clone:       {}", if skip_clone { "skip" } else { "enabled" });
-    println!("  Beads:       {}", if skip_beads { "skip" } else { "enabled (bd init)" });
-    println!("  Skills:      {}", if skip_skills { "skip" } else { "enabled" });
-    println!("  Issues:      {}", if skip_issues { "skip" } else { "enabled" });
-    if let Some(name) = context_name {
-        println!("  Context:     {}", name);
+    // Stage 2: Clone (if needed)
+    if !skip_clone && !repo_info.exists_locally {
+        if let Some(ref url) = repo_info.url {
+            println!("Stage 2: Clone");
+            repository::clone_repository(url, &repo_info.path, non_interactive)?;
+            println!();
+        }
+    } else if repo_info.exists_locally {
+        println!("Stage 2: Clone (skipped - already exists)");
+        println!();
     }
-    if let Some(path) = custom_path {
-        println!("  Path:        {}", path);
+
+    // Stage 3: Initialize Beads (bd init)
+    if !skip_beads {
+        println!("Stage 3: Initialize Beads");
+        repository::initialize_beads(&repo_info.path, non_interactive)?;
+        println!();
     } else {
-        println!("  Workspace:   {}", config.workspace_directory().display());
+        println!("Stage 3: Initialize Beads (skipped)");
+        println!();
+    }
+
+    // Stage 4: Populate Issues (deferred - requires more integration work)
+    println!("Stage 4: Populate Issues (not yet implemented)");
+    println!("  Use `bd create` to add issues manually");
+    println!();
+
+    // Stage 5: Configure Skills
+    if !skip_skills {
+        println!("Stage 5: Configure Skills");
+        repository::configure_skills(&repo_info.path)?;
+        println!();
+    } else {
+        println!("Stage 5: Configure Skills (skipped)");
+        println!();
+    }
+
+    // Stage 6: Git Hooks (handled by bd init)
+    println!("Stage 6: Git Hooks (handled by bd init)");
+    println!();
+
+    // Stage 7: Detect CI/CD
+    println!("Stage 7: CI/CD Detection");
+    repository::detect_ci_cd(&repo_info.path)?;
+    println!();
+
+    // Stage 8: Add to AllBeads Config
+    let ctx_name = context_name.unwrap_or(&repo_info.name);
+    println!("Stage 8: Add to AllBeads Config");
+    if repo_info.url.is_some() {
+        repository::add_to_allbeads_config(ctx_name, &repo_info, config)?;
+    } else {
+        println!("  Skipping config update (local path, no URL)");
     }
     println!();
 
-    println!("⚠️  Onboarding implementation in progress (ab-pp6i)");
-    println!();
-    println!("This command will:");
-    println!("  1. Parse repository URL/path");
-    println!("  2. Clone repository (if needed)");
-    println!("  3. Run `bd init` (with mode selection)");
-    println!("  4. Import issues (GitHub/JIRA/Janitor)");
-    println!("  5. Configure .claude/settings.json (marketplace skills)");
-    println!("  6. Add to AllBeads contexts");
-    println!("  7. Display onboarding summary");
-    println!();
-    println!("For now, use: ab onboard-repo <path>");
+    // Stage 9: Summary
+    println!("Stage 9: Summary");
+    println!("═══════════════════════════════════════════════════════════════");
+    repository::print_onboarding_summary(&repo_info, ctx_name, skip_beads, skip_skills);
 
     Ok(())
 }

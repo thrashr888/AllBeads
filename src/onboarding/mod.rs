@@ -2,7 +2,11 @@
 //!
 //! This module helps track and guide the onboarding process for repositories
 //! into the AllBeads ecosystem, from initial tracking to full adoption.
+//!
+//! - `workflow`: Interactive onboarding workflow (status tracking)
+//! - `repository`: Repository onboarding operations (clone, init, configure)
 
+pub mod repository;
 pub mod workflow;
 
 use crate::config::BossContext;
