@@ -140,8 +140,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     let mut governance_index = 3;
     let mut aiki_index = 4;
     let mut swarm_index = 5;
-    let mut contexts_index = 6;
-    let mut stats_index = 7;
+    let mut contexts_index = 5;  // Fixed: was 6, should be 5 when swarm is not available
+    let mut stats_index = 6;     // Fixed: was 7, should be 6 when swarm is not available
 
     // Add mail tab if available
     if app.has_mail() {

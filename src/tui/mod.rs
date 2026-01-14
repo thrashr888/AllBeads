@@ -161,7 +161,7 @@ fn run_app<B: ratatui::backend::Backend>(
                     Tab::Contexts => match key.code {
                         KeyCode::Char('j') | KeyCode::Down => app.contexts_view.next(),
                         KeyCode::Char('k') | KeyCode::Up => app.contexts_view.previous(),
-                        KeyCode::Char('r') => app.refresh_contexts_view(),
+                        KeyCode::Char('r') => app.force_refresh_contexts_view(),
                         _ => {}
                     },
                 }

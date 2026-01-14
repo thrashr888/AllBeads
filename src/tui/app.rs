@@ -205,7 +205,17 @@ impl App {
 
     /// Refresh Contexts view
     pub fn refresh_contexts_view(&mut self) {
-        // Load config and refresh contexts view
+        // Only refresh if not already loaded (to avoid lag on every tab switch)
+        if self.contexts_view.report.is_none() {
+            use crate::config::AllBeadsConfig;
+            if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
+                self.contexts_view.refresh(&config);
+            }
+        }
+    }
+
+    /// Force refresh Contexts view (called when user presses 'r')
+    pub fn force_refresh_contexts_view(&mut self) {
         use crate::config::AllBeadsConfig;
         if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
             self.contexts_view.refresh(&config);

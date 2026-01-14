@@ -101,7 +101,7 @@ pub fn draw(f: &mut Frame, contexts_view: &mut ContextsView, area: Rect) {
     draw_context_details(f, contexts_view, chunks[2]);
 
     // Help text
-    let help = Paragraph::new("↑↓: navigate | Tab: switch view | q: quit")
+    let help = Paragraph::new("↑↓: navigate | r: refresh | Tab: switch view | q: quit")
         .style(Style::default().fg(Color::DarkGray))
         .block(Block::default().borders(Borders::TOP));
     f.render_widget(help, chunks[3]);
@@ -169,7 +169,16 @@ fn draw_contexts_list(f: &mut Frame, contexts_view: &mut ContextsView, area: Rec
             })
             .collect()
     } else {
-        vec![ListItem::new("Loading contexts...")]
+        vec![
+            ListItem::new(""),
+            ListItem::new(Line::from(vec![
+                Span::styled("Loading contexts...", Style::default().fg(Color::Yellow)),
+            ])),
+            ListItem::new(""),
+            ListItem::new(Line::from(vec![
+                Span::styled("(This may take a few seconds on first load)", Style::default().fg(Color::DarkGray)),
+            ])),
+        ]
     };
 
     let list = List::new(items)
