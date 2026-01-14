@@ -1,5 +1,6 @@
 //! TUI application state
 
+use super::aiki_view::AikiView;
 use super::governance_view::GovernanceView;
 use super::graph_view::GraphView;
 use super::mail_view::MailView;
@@ -24,6 +25,7 @@ pub enum Tab {
     Timeline,
     Governance,
     Swarm,
+    Aiki,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,6 +69,7 @@ pub struct App {
     pub timeline_view: TimelineView,
     pub governance_view: GovernanceView,
     pub swarm_view: SwarmView,
+    pub aiki_view: AikiView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
 }
@@ -83,6 +86,8 @@ impl App {
         timeline_view.analyze(&graph);
         let mut governance_view = GovernanceView::new();
         governance_view.load_placeholder_data();
+        let mut aiki_view = AikiView::new();
+        aiki_view.refresh(&graph);
         Self {
             graph,
             current_column: Column::Open,
@@ -95,6 +100,7 @@ impl App {
             timeline_view,
             governance_view,
             swarm_view: SwarmView::new(),
+            aiki_view,
             postmaster: None,
             inbox_address: Address::human(),
         }
@@ -162,7 +168,8 @@ impl App {
             Tab::Graph => Tab::Timeline,
             Tab::Timeline => Tab::Governance,
             Tab::Governance => Tab::Stats,
-            Tab::Stats => {
+            Tab::Stats => Tab::Aiki,
+            Tab::Aiki => {
                 if has_swarm {
                     Tab::Swarm
                 } else {
@@ -180,8 +187,14 @@ impl App {
             Tab::Timeline => self.timeline_view.analyze(&self.graph),
             Tab::Governance => self.governance_view.load_placeholder_data(),
             Tab::Swarm => self.swarm_view.refresh(),
+            Tab::Aiki => self.aiki_view.refresh(&self.graph),
             _ => {}
         }
+    }
+
+    /// Refresh Aiki view
+    pub fn refresh_aiki_view(&mut self) {
+        self.aiki_view.refresh(&self.graph);
     }
 
     /// Mark selected message as read

@@ -3,6 +3,7 @@
 //! Provides a Kanban-style dashboard for viewing beads across multiple contexts.
 
 mod app;
+pub mod aiki_view;
 pub mod governance_view;
 pub mod graph_view;
 pub mod mail_view;
@@ -11,6 +12,7 @@ pub mod swarm_view;
 pub mod timeline_view;
 mod ui;
 
+pub use aiki_view::AikiView;
 pub use app::{App, Tab};
 pub use governance_view::GovernanceView;
 pub use graph_view::GraphView;
@@ -146,6 +148,12 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('p') => app.swarm_view.pause_selected(),
                         KeyCode::Char('r') => app.swarm_view.resume_selected(),
                         KeyCode::Char('x') => app.swarm_view.kill_selected(),
+                        _ => {}
+                    },
+                    Tab::Aiki => match key.code {
+                        KeyCode::Char('j') | KeyCode::Down => app.aiki_view.next(),
+                        KeyCode::Char('k') | KeyCode::Up => app.aiki_view.previous(),
+                        KeyCode::Char('r') => app.refresh_aiki_view(),
                         _ => {}
                     },
                 }

@@ -43,6 +43,9 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Tab::Swarm => {
             draw_swarm_tab(f, app);
         }
+        Tab::Aiki => {
+            draw_aiki_tab(f, app);
+        }
     }
 }
 
@@ -126,13 +129,14 @@ fn draw_governance_tab(f: &mut Frame, app: &mut App) {
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Stats, Swarm (if available)
+    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Stats, Aiki, Swarm (if available)
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
     let mut graph_index = 1;
     let mut timeline_index = 2;
     let mut governance_index = 3;
     let mut stats_index = 4;
-    let mut swarm_index = 5;
+    let mut aiki_index = 5;
+    let mut swarm_index = 6;
 
     // Add mail tab if available
     if app.has_mail() {
@@ -146,7 +150,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         timeline_index = 3;
         governance_index = 4;
         stats_index = 5;
-        swarm_index = 6;
+        aiki_index = 6;
+        swarm_index = 7;
     }
 
     // Graph tab is always present
@@ -160,6 +165,14 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
 
     // Stats tab is always present
     tab_titles.push("Stats".to_string());
+
+    // Aiki tab is always present
+    let beads_with_tasks = app.aiki_view.beads_with_tasks.len();
+    if beads_with_tasks > 0 {
+        tab_titles.push(format!("Aiki ({})", beads_with_tasks));
+    } else {
+        tab_titles.push("Aiki".to_string());
+    }
 
     // Add swarm tab if available
     if app.has_swarm() {
@@ -179,6 +192,7 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Timeline => timeline_index,
         Tab::Governance => governance_index,
         Tab::Stats => stats_index,
+        Tab::Aiki => aiki_index,
         Tab::Swarm => swarm_index,
     };
 
@@ -514,6 +528,140 @@ fn draw_detail_view(f: &mut Frame, app: &mut App) {
             .block(Block::default().borders(Borders::ALL).title("Help"));
         f.render_widget(help, chunks[2]);
     }
+}
+
+fn draw_aiki_tab(f: &mut Frame, app: &mut App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3), // Tab bar
+            Constraint::Min(0),    // Content
+        ])
+        .split(f.area());
+
+    draw_tab_bar(f, app, chunks[0]);
+
+    // Draw Aiki tasks view
+    let content_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),    // Task list
+            Constraint::Length(3), // Help
+        ])
+        .split(chunks[1]);
+
+    // Build task list
+    let mut items: Vec<ListItem> = Vec::new();
+
+    if app.aiki_view.beads_with_tasks.is_empty() {
+        items.push(ListItem::new(Line::from(vec![
+            Span::raw("No beads with linked Aiki tasks"),
+        ])));
+        items.push(ListItem::new(Line::from(vec![
+            Span::raw(""),
+        ])));
+        items.push(ListItem::new(Line::from(vec![
+            Span::raw("Link tasks with: "),
+            Span::styled("ab aiki link <bead-id> <task-id>", Style::default().fg(Color::Cyan)),
+        ])));
+    } else {
+        for bead_id in &app.aiki_view.beads_with_tasks {
+            if let Some(bead) = app.graph.beads.get(bead_id) {
+                // Bead header
+                let status_char = match bead.status {
+                    crate::graph::Status::Open => "○",
+                    crate::graph::Status::InProgress => "◐",
+                    crate::graph::Status::Closed => "●",
+                    _ => "○",
+                };
+
+                let bead_line = vec![
+                    Span::styled(status_char, Style::default().fg(priority_color(bead.priority))),
+                    Span::raw(" "),
+                    Span::styled(
+                        bead.id.as_str(),
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(": "),
+                    Span::raw(&bead.title),
+                ];
+                items.push(ListItem::new(Line::from(bead_line)));
+
+                // Linked tasks
+                for task_id in &bead.aiki_tasks {
+                    let task_line = if let Some(task) = app.aiki_view.task_details.get(task_id) {
+                        // Show task details if available
+                        let status_char = match task.status.as_str() {
+                            "open" => "○",
+                            "in_progress" => "◐",
+                            "closed" => "●",
+                            _ => "○",
+                        };
+                        let status_color = match task.status.as_str() {
+                            "open" => Color::Yellow,
+                            "in_progress" => Color::Blue,
+                            "closed" => Color::Gray,
+                            _ => Color::Yellow,
+                        };
+                        vec![
+                            Span::raw("  "),
+                            Span::styled(status_char, Style::default().fg(status_color)),
+                            Span::raw(" "),
+                            Span::styled(task_id, Style::default().fg(Color::Green)),
+                            Span::raw(": "),
+                            Span::raw(&task.title),
+                        ]
+                    } else {
+                        // Task details not available
+                        vec![
+                            Span::raw("  • "),
+                            Span::styled(task_id, Style::default().fg(Color::Green)),
+                            Span::raw(" "),
+                            Span::styled("(details unavailable)", Style::default().fg(Color::Gray)),
+                        ]
+                    };
+                    items.push(ListItem::new(Line::from(task_line)));
+                }
+
+                // Empty line between beads
+                items.push(ListItem::new(Line::from("")));
+            }
+        }
+    }
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Beads with Aiki Tasks"),
+        )
+        .highlight_style(Style::default().bg(Color::DarkGray));
+
+    f.render_stateful_widget(list, content_chunks[0], &mut app.aiki_view.list_state);
+
+    // Help text
+    let aiki_status = if app.aiki_view.aiki_available {
+        Span::styled("✓ Aiki Available", Style::default().fg(Color::Green))
+    } else {
+        Span::styled("✗ Aiki Unavailable", Style::default().fg(Color::Red))
+    };
+
+    let help_text = vec![Line::from(vec![
+        Span::styled("j/k: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw("Navigate  "),
+        Span::styled("r: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw("Refresh  "),
+        Span::styled("Tab: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw("Next Tab  "),
+        Span::styled("q: ", Style::default().add_modifier(Modifier::BOLD)),
+        Span::raw("Quit  "),
+        aiki_status,
+    ])];
+
+    let help = Paragraph::new(help_text)
+        .style(Style::default().fg(Color::White))
+        .block(Block::default().borders(Borders::ALL).title("Help"));
+    f.render_widget(help, content_chunks[1]);
 }
 
 fn priority_color(priority: Priority) -> Color {
