@@ -1168,18 +1168,17 @@ pub enum EpicCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum ContextCommands {
-    /// Add a new context (from current directory or explicit path)
+    /// Add a new context (from local path or remote URL)
     Add {
-        /// Path to git repository (default: current directory)
-        /// Name and URL are inferred from git config
-        #[arg(default_value = ".")]
-        path: String,
+        /// Path to git repository (optional if --url provided)
+        /// Name and URL are inferred from git config if path exists
+        path: Option<String>,
 
-        /// Override context name (default: folder name)
+        /// Override context name (default: folder/repo name)
         #[arg(short, long)]
         name: Option<String>,
 
-        /// Override repository URL (default: git remote origin)
+        /// Repository URL (required if no path, or overrides remote origin)
         #[arg(short, long)]
         url: Option<String>,
 

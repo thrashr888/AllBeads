@@ -4758,48 +4758,72 @@ fn handle_context_command(
             url,
             auth,
         } => {
-            // Resolve path to absolute
-            let repo_path = std::fs::canonicalize(path).map_err(|e| {
-                allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", path, e))
-            })?;
+            // Determine if this is a local path or URL-only context
+            let (repo_path_opt, remote_url, context_name) = if let Some(url_str) = url {
+                // URL provided - this is the primary mode
+                let inferred_name = if let Some(n) = name {
+                    n.clone()
+                } else {
+                    // Extract repo name from URL
+                    // Examples:
+                    //   https://github.com/user/repo.git -> repo
+                    //   git@github.com:user/repo.git -> repo
+                    let url_path = url_str
+                        .trim_end_matches(".git")
+                        .rsplit('/')
+                        .next()
+                        .or_else(|| url_str.rsplit(':').next())
+                        .unwrap_or("unknown");
+                    url_path.to_string()
+                };
 
-            // Check if it's a git repository
-            let git_dir = repo_path.join(".git");
-            if !git_dir.exists() {
-                return Err(allbeads::AllBeadsError::Config(format!(
-                    "'{}' is not a git repository (no .git directory)",
-                    repo_path.display()
-                )));
-            }
+                // Check if path provided and exists as git repo
+                let path_opt = if let Some(ref p) = path {
+                    match std::fs::canonicalize(p) {
+                        Ok(abs_path) if abs_path.join(".git").exists() => Some(abs_path),
+                        Ok(abs_path) => {
+                            eprintln!("⚠️  Path '{}' exists but is not a git repository", abs_path.display());
+                            None
+                        }
+                        Err(_) => {
+                            eprintln!("ℹ️  Path not found locally - tracking URL only");
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
 
-            // Infer name from folder if not provided
-            let context_name = if let Some(n) = name {
-                n.clone()
-            } else {
-                repo_path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| {
-                        allbeads::AllBeadsError::Config(
-                            "Could not infer context name from path".to_string(),
-                        )
-                    })?
-            };
+                (path_opt, url_str.clone(), inferred_name)
+            } else if let Some(p) = path.as_ref() {
+                // Path provided but no URL - use git remote
+                let repo_path = std::fs::canonicalize(p).map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", p, e))
+                })?;
 
-            // Check if context already exists
-            if config.get_context(&context_name).is_some() {
-                return Err(allbeads::AllBeadsError::Config(format!(
-                    "Context '{}' already exists",
-                    context_name
-                )));
-            }
+                let git_dir = repo_path.join(".git");
+                if !git_dir.exists() {
+                    return Err(allbeads::AllBeadsError::Config(format!(
+                        "'{}' is not a git repository (no .git directory)",
+                        repo_path.display()
+                    )));
+                }
 
-            // Get git remote URL if not provided
-            let remote_url = if let Some(u) = url {
-                u.clone()
-            } else {
-                // Run: git -C <path> remote get-url origin
+                let inferred_name = if let Some(n) = name {
+                    n.clone()
+                } else {
+                    repo_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_string())
+                        .ok_or_else(|| {
+                            allbeads::AllBeadsError::Config(
+                                "Could not infer context name from path".to_string(),
+                            )
+                        })?
+                };
+
+                // Get git remote URL
                 let output = std::process::Command::new("git")
                     .args([
                         "-C",
@@ -4818,13 +4842,26 @@ fn handle_context_command(
                         "No 'origin' remote found. Add one with:\n  \
                          git remote add origin <url>\n\n\
                          Or specify the URL explicitly:\n  \
-                         ab context add {} --url <url>",
-                        path
+                         ab context add --url <url>",
                     )));
                 }
 
-                String::from_utf8_lossy(&output.stdout).trim().to_string()
+                let url_from_git = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                (Some(repo_path), url_from_git, inferred_name)
+            } else {
+                // Neither path nor URL provided
+                return Err(allbeads::AllBeadsError::Config(
+                    "Either provide a path to a local git repository or use --url <url> to track a remote repository".to_string()
+                ));
             };
+
+            // Check if context already exists
+            if config.get_context(&context_name).is_some() {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Context '{}' already exists",
+                    context_name
+                )));
+            }
 
             // Parse or auto-detect auth strategy
             let auth_strategy = if let Some(ref auth_str) = auth {
@@ -4848,18 +4885,18 @@ fn handle_context_command(
                 }
             };
 
-            // Print before moving auth_strategy
-            println!(
-                "✓ Added context '{}' from {}",
-                context_name,
-                repo_path.display()
-            );
+            // Print confirmation
+            if let Some(ref path) = repo_path_opt {
+                println!("✓ Added context '{}' from {}", context_name, path.display());
+            } else {
+                println!("✓ Added context '{}' (URL-only)", context_name);
+            }
             println!("  URL:  {}", remote_url);
             println!("  Auth: {:?}", auth_strategy);
 
             // Create context
             let mut context = BossContext::new(&context_name, &remote_url, auth_strategy);
-            context.path = Some(repo_path);
+            context.path = repo_path_opt;
 
             config.add_context(context);
             config.save(&config_file)?;
