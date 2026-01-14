@@ -140,6 +140,16 @@ pub struct OnboardingStatus {
 
     /// Has GitHub Actions configured
     pub has_ci: bool,
+
+    /// Has Git hooks installed
+    pub has_hooks: bool,
+}
+
+impl OnboardingStatus {
+    /// Check if beads is actively being used (has issues)
+    pub fn has_beads_usage(&self) -> bool {
+        self.stage >= OnboardingStage::HasIssues
+    }
 }
 
 impl OnboardingStatus {
@@ -199,6 +209,7 @@ impl OnboardingStatus {
         let has_skills = Self::has_skills(&repo);
         let has_integration = Self::has_integration_from_context(context);
         let has_ci = Self::has_ci(&repo);
+        let has_hooks = Self::has_hooks(&repo);
 
         Ok(OnboardingStatus {
             context_name: context.name.clone(),
@@ -209,6 +220,7 @@ impl OnboardingStatus {
             has_skills,
             has_integration,
             has_ci,
+            has_hooks,
         })
     }
 
@@ -255,6 +267,23 @@ impl OnboardingStatus {
                         }
                     }
                 }
+            }
+        }
+
+        false
+    }
+
+    /// Check if repository has beads Git hooks installed
+    fn has_hooks(repo: &BossRepo) -> bool {
+        // Check for the main beads hook (pre-commit)
+        let git_hooks_dir = repo.path().join(".git/hooks");
+        let pre_commit_hook = git_hooks_dir.join("pre-commit");
+
+        // Check if pre-commit hook exists and contains AllBeads marker
+        if pre_commit_hook.exists() {
+            if let Ok(content) = std::fs::read_to_string(&pre_commit_hook) {
+                // Check if it's an AllBeads hook by looking for our marker
+                return content.contains("AllBeads") || content.contains("bd check");
             }
         }
 

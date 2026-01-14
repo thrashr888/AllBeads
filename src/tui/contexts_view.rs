@@ -12,12 +12,53 @@ use ratatui::{
     Frame,
 };
 
+/// Sort mode for contexts list
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortMode {
+    /// Sort by onboarding stage (default)
+    ByStage,
+    /// Sort alphabetically by name
+    ByName,
+    /// Sort by issue count (descending)
+    ByIssueCount,
+    /// Sort by progress percentage (ascending)
+    ByProgress,
+}
+
+impl SortMode {
+    /// Get display name for this sort mode
+    pub fn name(&self) -> &'static str {
+        match self {
+            SortMode::ByStage => "Stage",
+            SortMode::ByName => "Name",
+            SortMode::ByIssueCount => "Issues",
+            SortMode::ByProgress => "Progress",
+        }
+    }
+
+    /// Get next sort mode (cycle through)
+    pub fn next(&self) -> SortMode {
+        match self {
+            SortMode::ByStage => SortMode::ByName,
+            SortMode::ByName => SortMode::ByIssueCount,
+            SortMode::ByIssueCount => SortMode::ByProgress,
+            SortMode::ByProgress => SortMode::ByStage,
+        }
+    }
+}
+
 /// Contexts view state
 pub struct ContextsView {
     /// Onboarding report
     pub report: Option<OnboardingReport>,
     /// Selected context index
     pub list_state: ListState,
+    /// Current sort mode
+    pub sort_mode: SortMode,
+    /// Whether to show detail view
+    pub show_detail: bool,
+    /// Whether a refresh is needed (deferred loading)
+    pub needs_refresh: bool,
 }
 
 impl ContextsView {
@@ -28,14 +69,76 @@ impl ContextsView {
         Self {
             report: None,
             list_state,
+            sort_mode: SortMode::ByName,
+            show_detail: false,
+            needs_refresh: false,
         }
+    }
+
+    /// Request a refresh (deferred loading)
+    pub fn request_refresh(&mut self) {
+        self.needs_refresh = true;
     }
 
     /// Refresh the contexts data
     pub fn refresh(&mut self, config: &AllBeadsConfig) {
-        if let Ok(report) = OnboardingReport::from_contexts(&config.contexts) {
+        if let Ok(mut report) = OnboardingReport::from_contexts(&config.contexts) {
+            // Apply current sort mode
+            Self::apply_sort(self.sort_mode, &mut report);
             self.report = Some(report);
+            self.needs_refresh = false;
         }
+    }
+
+    /// Apply current sort mode to the report
+    fn apply_sort(sort_mode: SortMode, report: &mut OnboardingReport) {
+        match sort_mode {
+            SortMode::ByStage => {
+                // Sort by stage (least to most advanced) then by name
+                report.statuses.sort_by(|a, b| {
+                    a.stage
+                        .cmp(&b.stage)
+                        .then_with(|| a.context_name.cmp(&b.context_name))
+                });
+            }
+            SortMode::ByName => {
+                // Sort alphabetically by name
+                report
+                    .statuses
+                    .sort_by(|a, b| a.context_name.cmp(&b.context_name));
+            }
+            SortMode::ByIssueCount => {
+                // Sort by issue count (descending, with None at end)
+                report
+                    .statuses
+                    .sort_by(|a, b| match (a.issue_count, b.issue_count) {
+                        (Some(a_count), Some(b_count)) => b_count.cmp(&a_count),
+                        (Some(_), None) => std::cmp::Ordering::Less,
+                        (None, Some(_)) => std::cmp::Ordering::Greater,
+                        (None, None) => a.context_name.cmp(&b.context_name),
+                    });
+            }
+            SortMode::ByProgress => {
+                // Sort by progress percentage (ascending)
+                report.statuses.sort_by(|a, b| {
+                    a.stage
+                        .progress()
+                        .cmp(&b.stage.progress())
+                        .then_with(|| a.context_name.cmp(&b.context_name))
+                });
+            }
+        }
+    }
+
+    /// Cycle to next sort mode
+    pub fn cycle_sort(&mut self) {
+        self.sort_mode = self.sort_mode.next();
+        // Re-sort if we have data
+        if let Some(ref mut report) = self.report {
+            Self::apply_sort(self.sort_mode, report);
+        }
+        // Reset selection to top
+        self.list_state.select(Some(0));
     }
 
     /// Select next context
@@ -71,6 +174,16 @@ impl ContextsView {
             self.list_state.select(Some(prev));
         }
     }
+
+    /// Toggle detail view
+    pub fn toggle_detail(&mut self) {
+        self.show_detail = !self.show_detail;
+    }
+
+    /// Close detail view
+    pub fn close_detail(&mut self) {
+        self.show_detail = false;
+    }
 }
 
 impl Default for ContextsView {
@@ -81,35 +194,120 @@ impl Default for ContextsView {
 
 /// Draw the contexts view
 pub fn draw(f: &mut Frame, contexts_view: &mut ContextsView, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),  // Title
-            Constraint::Min(10),    // Contexts list
-            Constraint::Length(10), // Selected context details
-            Constraint::Length(3),  // Help
-        ])
-        .split(area);
+    if contexts_view.show_detail {
+        // Detail view layout
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),  // Title
+                Constraint::Length(1),  // Column header
+                Constraint::Min(10),    // Contexts list
+                Constraint::Length(10), // Selected context details
+                Constraint::Length(3),  // Help
+            ])
+            .split(area);
 
-    // Title with summary
-    draw_title(f, contexts_view, chunks[0]);
+        // Title with summary
+        draw_title(f, contexts_view, chunks[0]);
 
-    // Contexts list
-    draw_contexts_list(f, contexts_view, chunks[1]);
+        // Column header
+        draw_column_header(f, chunks[1]);
 
-    // Selected context details
-    draw_context_details(f, contexts_view, chunks[2]);
+        // Contexts list
+        draw_contexts_list(f, contexts_view, chunks[2]);
 
-    // Help text
-    let help = Paragraph::new("↑↓: navigate | r: refresh | Tab: switch view | q: quit")
+        // Selected context details
+        draw_context_details(f, contexts_view, chunks[3]);
+
+        // Help text
+        let help = Paragraph::new("↑↓: navigate | s: sort | r: refresh | Enter: details | Esc: close | Tab: switch view | q: quit")
+            .style(Style::default().fg(Color::DarkGray))
+            .block(Block::default().borders(Borders::TOP));
+        f.render_widget(help, chunks[4]);
+    } else {
+        // List view layout (no details)
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // Title
+                Constraint::Length(1), // Column header
+                Constraint::Min(10),   // Contexts list
+                Constraint::Length(3), // Help
+            ])
+            .split(area);
+
+        // Title with summary
+        draw_title(f, contexts_view, chunks[0]);
+
+        // Column header
+        draw_column_header(f, chunks[1]);
+
+        // Contexts list
+        draw_contexts_list(f, contexts_view, chunks[2]);
+
+        // Help text
+        let help = Paragraph::new(
+            "↑↓: navigate | s: sort | r: refresh | Enter: details | Tab: switch view | q: quit",
+        )
         .style(Style::default().fg(Color::DarkGray))
         .block(Block::default().borders(Borders::TOP));
-    f.render_widget(help, chunks[3]);
+        f.render_widget(help, chunks[3]);
+    }
+}
+
+fn draw_column_header(f: &mut Frame, area: Rect) {
+    // Column headers: B=Beads, S=Skills, I=Integration, C=CI/CD, H=Hooks
+    let header = Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<22} ", "Name"),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(
+            "B",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            "S",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            "I",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            "C",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            "H",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  "),
+        Span::styled("Progress", Style::default().fg(Color::DarkGray)),
+    ]);
+
+    let paragraph = Paragraph::new(header);
+    f.render_widget(paragraph, area);
 }
 
 fn draw_title(f: &mut Frame, contexts_view: &ContextsView, area: Rect) {
-    let title_text = if let Some(ref report) = contexts_view.report {
-        format!(
+    let (left_text, right_text) = if let Some(ref report) = contexts_view.report {
+        let left = format!(
             "Contexts - {}/{} Fully Onboarded ({}%)",
             report.stats.fully_onboarded,
             report.stats.total_contexts,
@@ -118,14 +316,35 @@ fn draw_title(f: &mut Frame, contexts_view: &ContextsView, area: Rect) {
             } else {
                 0
             }
-        )
+        );
+        let right = format!("Sort: {}", contexts_view.sort_mode.name());
+        (left, right)
     } else {
-        "Contexts - Loading...".to_string()
+        ("Contexts - Loading...".to_string(), String::new())
     };
 
-    let title = Paragraph::new(title_text)
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::BOTTOM));
+    // Calculate spacing to right-align the sort info
+    let available_width = area.width.saturating_sub(2) as usize; // Subtract borders
+    let left_len = left_text.len();
+    let right_len = right_text.len();
+    let spacing = if left_len + right_len + 3 < available_width {
+        " ".repeat(available_width.saturating_sub(left_len + right_len))
+    } else {
+        " ".to_string()
+    };
+
+    let title_line = Line::from(vec![
+        Span::styled(
+            left_text,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(spacing),
+        Span::styled(right_text, Style::default().fg(Color::DarkGray)),
+    ]);
+
+    let title = Paragraph::new(title_line).block(Block::default().borders(Borders::BOTTOM));
     f.render_widget(title, area);
 }
 
@@ -151,12 +370,77 @@ fn draw_contexts_list(f: &mut Frame, contexts_view: &mut ContextsView, area: Rec
                     OnboardingStage::FullyOnboarded => Color::Green,
                 };
 
+                // Status indicators (checkmarks only, header shows labels)
+                let beads_char = if status.has_beads_usage() {
+                    "✓"
+                } else {
+                    "✗"
+                };
+                let skills_char = if status.has_skills { "✓" } else { "✗" };
+                let integration_char = if status.has_integration { "✓" } else { "✗" };
+                let ci_char = if status.has_ci { "✓" } else { "✗" };
+                let hooks_char = if status.has_hooks { "✓" } else { "✗" };
+
+                // Truncate name to fit column width
+                let display_name = if status.context_name.len() > 20 {
+                    format!("{}...", &status.context_name[..17])
+                } else {
+                    status.context_name.clone()
+                };
+
                 let line = Line::from(vec![
                     Span::raw(format!("{} ", emoji)),
                     Span::styled(
-                        format!("{:<20} ", status.context_name),
+                        format!("{:<20} ", display_name),
                         Style::default().fg(Color::White),
                     ),
+                    // Status columns (no labels, see header)
+                    Span::styled(
+                        beads_char,
+                        Style::default().fg(if status.has_beads_usage() {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(
+                        skills_char,
+                        Style::default().fg(if status.has_skills {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(
+                        integration_char,
+                        Style::default().fg(if status.has_integration {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(
+                        ci_char,
+                        Style::default().fg(if status.has_ci {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw(" "),
+                    Span::styled(
+                        hooks_char,
+                        Style::default().fg(if status.has_hooks {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw("  "),
+                    // Progress bar
                     Span::styled(bar, Style::default().fg(color)),
                     Span::styled(empty, Style::default().fg(Color::DarkGray)),
                     Span::styled(
@@ -171,13 +455,15 @@ fn draw_contexts_list(f: &mut Frame, contexts_view: &mut ContextsView, area: Rec
     } else {
         vec![
             ListItem::new(""),
-            ListItem::new(Line::from(vec![
-                Span::styled("Loading contexts...", Style::default().fg(Color::Yellow)),
-            ])),
+            ListItem::new(Line::from(vec![Span::styled(
+                "Loading contexts...",
+                Style::default().fg(Color::Yellow),
+            )])),
             ListItem::new(""),
-            ListItem::new(Line::from(vec![
-                Span::styled("(This may take a few seconds on first load)", Style::default().fg(Color::DarkGray)),
-            ])),
+            ListItem::new(Line::from(vec![Span::styled(
+                "(This may take a few seconds on first load)",
+                Style::default().fg(Color::DarkGray),
+            )])),
         ]
     };
 
@@ -206,15 +492,14 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                         Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
                         Span::styled(
                             status.context_name.clone(),
-                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
                         ),
                     ]),
                     Line::from(vec![
                         Span::styled("URL: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            status.url.clone(),
-                            Style::default().fg(Color::Blue),
-                        ),
+                        Span::styled(status.url.clone(), Style::default().fg(Color::Blue)),
                     ]),
                 ];
 
@@ -231,31 +516,64 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                 if let Some(count) = status.issue_count {
                     lines.push(Line::from(vec![
                         Span::styled("Issues: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            count.to_string(),
-                            Style::default().fg(Color::Cyan),
-                        ),
+                        Span::styled(count.to_string(), Style::default().fg(Color::Cyan)),
                     ]));
                 }
 
                 lines.push(Line::from(""));
                 lines.push(Line::from(vec![
+                    Span::styled("Beads: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        if status.has_beads_usage() {
+                            "✓"
+                        } else {
+                            "✗"
+                        },
+                        Style::default().fg(if status.has_beads_usage() {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw("  "),
                     Span::styled("Skills: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_skills { "✓" } else { "✗" },
-                        Style::default().fg(if status.has_skills { Color::Green } else { Color::Red }),
+                        Style::default().fg(if status.has_skills {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
                     ),
                     Span::raw("  "),
                     Span::styled("Integration: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_integration { "✓" } else { "✗" },
-                        Style::default().fg(if status.has_integration { Color::Green } else { Color::Red }),
+                        Style::default().fg(if status.has_integration {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
                     ),
                     Span::raw("  "),
                     Span::styled("CI/CD: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_ci { "✓" } else { "✗" },
-                        Style::default().fg(if status.has_ci { Color::Green } else { Color::Red }),
+                        Style::default().fg(if status.has_ci {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
+                    ),
+                    Span::raw("  "),
+                    Span::styled("Hooks: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        if status.has_hooks { "✓" } else { "✗" },
+                        Style::default().fg(if status.has_hooks {
+                            Color::Green
+                        } else {
+                            Color::Red
+                        }),
                     ),
                 ]));
 
