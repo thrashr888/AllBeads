@@ -1,8 +1,9 @@
 # SPEC: AllBeads + Aiki Integration
 
-**Status:** Draft / Ultrathink
-**Author:** Claude Opus 4.5 + thrashr888
-**Date:** 2026-01-11
+**Status:** Updated / Ready for Implementation
+**Author:** Claude Sonnet 4.5 + thrashr888
+**Date:** 2026-01-13
+**Last Updated:** 2026-01-13
 
 ---
 
@@ -12,533 +13,620 @@ AllBeads and Aiki solve complementary problems in AI-assisted development:
 
 | System | Focus | Core Innovation |
 |--------|-------|-----------------|
-| **AllBeads** | *What* work is being done | Multi-repo issue orchestration with dependencies |
-| **Aiki** | *How* work gets done | Edit-level provenance with autonomous review |
+| **AllBeads** | *Cross-repo orchestration* | Multi-repo issue tracking with dependencies, Sheriff daemon, Agent Mail protocol |
+| **Aiki** | *Single-repo AI workflow* | Task management, JJ-based event sourcing, edit-level provenance tracking |
 
-Together, they could provide **complete traceability from intent to implementation**: an issue (bead) tracks the goal, Aiki tracks every AI edit made toward that goal, and the integration links them with cryptographic proof.
+**Key Insight from Latest Aiki Analysis (2026-01-13)**:
+- Aiki has a **fully implemented task system** (not review system)
+- Tasks stored on `aiki/tasks` JJ branch as event-sourced data
+- Hierarchical tasks with parent/child relationships
+- XML output optimized for AI agent consumption
+- **No code review system implemented** (contrary to older specs)
 
----
-
-## The Gap Each Solves
-
-### What AllBeads Provides (That Aiki Lacks)
-
-1. **Cross-Repository Coordination**
-   - Beads span multiple repos with dependency graphs
-   - Sheriff daemon synchronizes state across repos
-   - Contexts aggregate work from distributed teams
-
-2. **Work Intent Tracking**
-   - Issues capture *why* work is happening
-   - Dependencies track *what must happen first*
-   - Priorities and status track *what matters now*
-
-3. **Agent Messaging Infrastructure**
-   - Agent Mail protocol (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST)
-   - Postmaster daemon for message routing
-   - Cross-session coordination between AI agents
-
-### What Aiki Provides (That AllBeads Lacks)
-
-1. **Edit-Level Provenance**
-   - Which agent made which change, when
-   - Iteration history (attempt 1 failed, attempt 2 passed)
-   - Confidence levels and detection methods
-
-2. **Autonomous Review Loop**
-   - Pre-commit quality gates (2-5 seconds)
-   - AI self-correction without human intervention
-   - Structured feedback that agents can read
-
-3. **Cryptographic Verification**
-   - GPG/SSH signing of AI-attributed changes
-   - Tamper-proof audit trails
-   - Enterprise compliance (SOX, PCI-DSS)
-
-4. **Jujutsu Foundation**
-   - Change-centric model (stable change IDs)
-   - Working-copy-as-commit enables rapid iteration
-   - Operation log captures full creative process
+Together, they could provide **complete traceability from strategic intent to tactical execution**: AllBeads tracks cross-repo epics and dependencies, Aiki tracks single-repo tasks and code changes.
 
 ---
 
-## Integration Architecture
+## Current State: What Each System Actually Has
 
-### Option A: Loose Coupling (Recommended for Phase 1)
+### AllBeads (v0.4.0) - IMPLEMENTED
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Developer Workflow                       │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   bd update <id> --status=in_progress                        │
-│              ↓                                               │
-│   ┌─────────────────┐                                        │
-│   │   AllBeads CLI  │  ← Tracks active bead                  │
-│   └────────┬────────┘                                        │
-│            │ Sets AB_ACTIVE_BEAD env var                     │
-│            ↓                                                 │
-│   ┌─────────────────┐                                        │
-│   │   AI Agent      │  ← Claude Code / Cursor                │
-│   │   (editing)     │                                        │
-│   └────────┬────────┘                                        │
-│            │ PostToolUse hook                                │
-│            ↓                                                 │
-│   ┌─────────────────┐                                        │
-│   │   Aiki Hook     │  ← Records provenance + bead_id        │
-│   │   Handler       │                                        │
-│   └────────┬────────┘                                        │
-│            │ [aiki] block includes bead_id                   │
-│            ↓                                                 │
-│   ┌─────────────────┐                                        │
-│   │   JJ Change     │  ← Provenance stored in description    │
-│   │   Description   │                                        │
-│   └─────────────────┘                                        │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+**Core Features**:
+- Multi-context aggregation (Boss repository pattern)
+- Sheriff daemon for cross-repo synchronization
+- Agent Mail protocol (LOCK, UNLOCK, NOTIFY, REQUEST, BROADCAST, HEARTBEAT)
+- TUI with Kanban, Mail, Graph, Timeline, Governance, Stats views
+- Governance policies with git hook enforcement
+- JIRA and GitHub Issues bi-directional sync
+- SQLite cache layer with automatic expiration
+
+**Storage**: JSONL files in `.beads/` directory, Git-backed
+
+**Data Model**:
+```rust
+struct Bead {
+    id: BeadId,                    // ab-xyz format
+    title: String,
+    description: Option<String>,
+    status: Status,                // Open, InProgress, Blocked, Closed
+    priority: Priority,            // P0-P4
+    issue_type: IssueType,         // Bug, Feature, Task, Epic
+    dependencies: Vec<BeadId>,     // What this depends on
+    blocks: Vec<BeadId>,           // What this blocks
+    labels: HashSet<String>,
+}
 ```
 
-**How it works:**
+### Aiki (Latest) - IMPLEMENTED
 
-1. Developer runs `bd update bead-123 --status=in_progress`
-2. AllBeads sets `AB_ACTIVE_BEAD=bead-123` environment variable
-3. AI agent makes edits (Claude Code, Cursor)
-4. Aiki's hook handler reads `AB_ACTIVE_BEAD` from environment
-5. Provenance block includes `bead_id=bead-123`
-6. Later queries can find all changes associated with a bead
+**Core Features**:
+- Task management system for AI agents
+- JJ-based event sourcing on `aiki/tasks` branch
+- Hierarchical tasks (parent.child.grandchild)
+- Scope-based ready queue filtering
+- XML output for AI consumption
+- Edit-level provenance tracking ([aiki] blocks in JJ descriptions)
+- Batch operations (start/stop/close multiple tasks)
 
-**Metadata Format:**
+**Storage**: Fileless JJ changes on `aiki/tasks` branch
+
+**Data Model**:
+```rust
+struct Task {
+    id: String,                    // JJ-style: zkmqwyx (32 char) or parent.N for children
+    name: String,
+    status: TaskStatus,            // Open, InProgress, Stopped, Closed
+    priority: TaskPriority,        // P0-P3
+    assignee: Option<String>,
+    stopped_reason: Option<String>,
+    closed_outcome: Option<TaskOutcome>,  // Done, WontDo
+}
 ```
+
+**Event Types**:
+- Created, Started (batch), Stopped (batch), Closed (batch), Reopened, CommentAdded, Updated
+
+**CLI Commands**:
+```bash
+aiki task add <name> [--parent parent_id] [--p0/p1/p2/p3]
+aiki task list [--all | --open | --in-progress | --stopped | --closed]
+aiki task start [id...] [--reopen --reason <text>]
+aiki task stop [id] [--reason <text>] [--blocked <reason>]
+aiki task close [id...] [--wont-do] [--duplicate <id>]
+aiki task show [id]
+aiki task update [id] [--name <text>] [--p0/p1/p2/p3]
+aiki task comment [id] <text>
+```
+
+**What Aiki Does NOT Have**:
+- ❌ Code review system (not implemented)
+- ❌ Multi-repository support
+- ❌ Cross-repo dependencies
+- ❌ External integrations (JIRA, GitHub)
+- ❌ Agent Mail protocol
+
+---
+
+## The Integration Gap
+
+### Overlap: Both Have Task/Issue Systems
+
+**Problem**: Two different task systems that could conflict:
+- AllBeads beads (cross-repo, strategic)
+- Aiki tasks (single-repo, tactical)
+
+**Solution**: Don't compete - complement. Use each for what it's best at.
+
+### What Each System Needs From The Other
+
+**AllBeads Needs From Aiki**:
+1. Fine-grained task decomposition within a repo
+2. JJ change provenance linking
+3. Agent-friendly XML output for task querying
+4. Session-scoped task management
+
+**Aiki Needs From AllBeads**:
+1. Cross-repo orchestration (Aiki is single-repo only)
+2. Strategic epic tracking that spans repositories
+3. Agent Mail for cross-repo coordination
+4. Integration with external systems (JIRA, GitHub)
+
+---
+
+## Integration Architecture: Hierarchical Decomposition
+
+### Design Philosophy: Strategic vs Tactical
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        AllBeads (Strategic)                      │
+│  Cross-Repo Epics, Dependencies, External Integrations          │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           │ decomposes into
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    AllBeads Beads (Tactical)                     │
+│  Repo-Specific Tasks, Implementation Work                        │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                           │ decomposes into (optional)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Aiki Tasks (Micro)                          │
+│  Session-Level Subtasks, Code-Level Changes                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Example Hierarchy**:
+```
+AllBeads Epic: ab-2xf "Implement Multi-Tenant Auth" (@allbeads context)
+  ├─ AllBeads Bead: ab-3gh "Auth Service Changes" (@auth-service repo)
+  │   └─ Aiki Task: zkmqwyx "Fix JWT validation bug" (local to auth-service)
+  │       ├─ Aiki Task: zkmqwyx.1 "Add null check" (subtask)
+  │       └─ Aiki Task: zkmqwyx.2 "Update tests" (subtask)
+  └─ AllBeads Bead: ab-4jk "Frontend Login Flow" (@frontend repo)
+      └─ Aiki Task: plwmrst "Implement token refresh" (local to frontend)
+```
+
+### Integration Strategy: Linked Not Merged
+
+**Key Principle**: Keep systems separate, link via metadata.
+
+**AllBeads → Aiki**: Beads can reference Aiki tasks
+```yaml
+# .beads/issues/ab-3gh.jsonl
+{
+  "id": "ab-3gh",
+  "title": "Auth Service Changes",
+  "aiki_tasks": ["zkmqwyx", "plwmrst"],  # Optional field
+  "workdir": "/path/to/auth-service"
+}
+```
+
+**Aiki → AllBeads**: Tasks can reference beads
+```
+# JJ change description with [aiki] block
 [aiki]
-agent=claude-code
+author=claude-code
 session=claude-session-abc123
-tool=Edit
-confidence=High
-method=Hook
-bead_id=bead-123
+task=zkmqwyx
+bead=ab-3gh         # Link back to AllBeads bead
 [/aiki]
+
+# Also in task event metadata
+[aiki-task]
+event=created
+task_id=zkmqwyx
+name=Fix JWT validation bug
+bead=ab-3gh         # Link to strategic bead
+[/aiki-task]
 ```
 
-**Benefits:**
-- Minimal coupling between systems
-- Works with existing hook infrastructure
-- No daemon-to-daemon communication needed
-- Each system remains independently useful
+---
 
-### Option B: Deep Integration (Future Phase)
+## Integration Phases
 
+### Phase 1: Metadata Linking (Already Partially Complete)
+
+**Status**: ✅ AllBeads side complete, ⏳ Aiki side needs work
+
+**AllBeads Changes (Complete)**:
+- ✅ `ab aiki activate <bead-id>` sets `AB_ACTIVE_BEAD` env var
+- ✅ `ab aiki status` shows active bead
+- ✅ `ab show --provenance` queries Aiki (graceful fallback)
+
+**Aiki Changes (Needed)**:
+- ❌ Read `AB_ACTIVE_BEAD` from environment in flow hooks
+- ❌ Include `bead=<id>` in JJ change [aiki] blocks
+- ❌ Include `bead=<id>` in task event metadata
+- ❌ Query support: `aiki task list --bead=<id>`
+
+**Implementation**:
+```rust
+// cli/src/flows/bundled.yaml
+change.completed:
+  - let: active_bead = $env.AB_ACTIVE_BEAD
+  - if: $active_bead
+    then:
+      - let: metadata = |
+          [aiki]
+          author=$event.agent
+          session=$event.session_id
+          task=$event.task_id
+          bead=$active_bead
+          [/aiki]
+      - jj: describe --message "$metadata"
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                    Unified Agent Platform                      │
-├───────────────────────────────────────────────────────────────┤
-│                                                                │
-│   ┌──────────────┐         ┌──────────────┐                    │
-│   │   AllBeads   │ ←─────→ │    Aiki      │                    │
-│   │   Sheriff    │ Agent   │   Daemon     │                    │
-│   │   Daemon     │ Mail    │              │                    │
-│   └──────┬───────┘         └──────┬───────┘                    │
-│          │                        │                            │
-│          │   Shared SQLite        │                            │
-│          │   + Agent Mail         │                            │
-│          ↓                        ↓                            │
-│   ┌─────────────────────────────────────────┐                  │
-│   │         Unified Agent Coordinator        │                  │
-│   │                                          │                  │
-│   │  • Bead assignment + provenance linking  │                  │
-│   │  • Autonomous review → bead status       │                  │
-│   │  • Cross-repo change coordination        │                  │
-│   │  • Quality gates per bead/epic           │                  │
-│   └─────────────────────────────────────────┘                  │
-│                                                                │
-└───────────────────────────────────────────────────────────────┘
+
+**Benefits**:
+- Loose coupling - systems remain independent
+- Graceful degradation - works without Aiki installed
+- Simple to implement - just metadata fields
+
+---
+
+### Phase 2: Bidirectional Queries
+
+**Goal**: Query tasks/beads across the boundary
+
+**AllBeads Queries**:
+```bash
+# Show Aiki tasks linked to a bead
+ab show ab-3gh --tasks
+
+# Output:
+ab-3gh: Auth Service Changes
+  Status: in_progress
+  Aiki Tasks:
+    zkmqwyx - Fix JWT validation bug [in_progress]
+    zkmqwyx.1 - Add null check [closed]
+    zkmqwyx.2 - Update tests [open]
 ```
 
-**Additional Capabilities:**
-- Aiki publishes review results to Agent Mail
-- AllBeads updates bead status based on review outcomes
-- Sheriff coordinates Aiki provenance across repos
-- Unified TUI showing both issues and provenance
+**Aiki Queries**:
+```bash
+# Show tasks for a bead
+aiki task list --bead=ab-3gh
+
+# Output (XML):
+<aiki_task cmd="list" status="ok">
+  <list total="3" bead="ab-3gh">
+    <task id="zkmqwyx" name="Fix JWT validation bug" status="in_progress"/>
+    <task id="zkmqwyx.1" name="Add null check" status="closed"/>
+    <task id="zkmqwyx.2" name="Update tests" status="open"/>
+  </list>
+</aiki_task>
+```
+
+**Implementation Requirements**:
+
+AllBeads side (`src/main.rs`):
+```rust
+// Enhance existing query_aiki_provenance function
+fn query_aiki_tasks(bead_id: &str, repo_path: &Path) -> Result<Vec<AikiTaskSummary>> {
+    let output = Command::new("aiki")
+        .args(&["task", "list", &format!("--bead={}", bead_id), "--format=xml"])
+        .current_dir(repo_path)
+        .output()?;
+
+    // Parse XML and return task list
+}
+```
+
+Aiki side (`cli/src/tasks/manager.rs`):
+```rust
+// Add bead filtering to ready queue calculation
+pub fn ready_queue_for_bead(&self, bead_id: &str) -> Vec<Task> {
+    self.tasks.values()
+        .filter(|t| t.status == TaskStatus::Open)
+        .filter(|t| t.bead.as_ref() == Some(bead_id))
+        .sorted_by_priority()
+        .collect()
+}
+```
+
+---
+
+### Phase 3: Agent Mail Integration for Status Sync
+
+**Goal**: Aiki task completions can update AllBeads bead status
+
+**Flow**:
+```
+Aiki Task Closed
+    ↓
+Aiki sends Agent Mail message
+    ↓
+AllBeads Sheriff receives message
+    ↓
+Sheriff checks if all Aiki tasks for bead are closed
+    ↓
+If yes: Auto-close AllBeads bead
+```
+
+**Aiki Changes**:
+```rust
+// cli/src/tasks/manager.rs - When closing task
+pub fn close_task(&mut self, task_id: &str) -> Result<()> {
+    // ... existing close logic ...
+
+    // If task has bead link, notify via Agent Mail
+    if let Some(bead_id) = task.bead {
+        self.notify_bead_update(bead_id, task_id, "task_closed")?;
+    }
+}
+
+fn notify_bead_update(&self, bead_id: &str, task_id: &str, event: &str) -> Result<()> {
+    // Send HTTP POST to localhost:7878 (Postmaster)
+    let client = reqwest::blocking::Client::new();
+    client.post("http://localhost:7878/send")
+        .json(&json!({
+            "from": "aiki@localhost",
+            "to": "sheriff@localhost",
+            "type": "Notify",
+            "payload": {
+                "message": format!("Task {} closed for bead {}", task_id, bead_id),
+                "bead_id": bead_id,
+                "task_id": task_id,
+                "event": event
+            }
+        }))
+        .send()?;
+    Ok(())
+}
+```
+
+**AllBeads Changes**:
+```rust
+// src/sheriff/sync.rs - Sheriff poll cycle
+fn handle_aiki_notifications(&mut self) -> Result<()> {
+    // Check for Aiki task notifications
+    let messages = self.postmaster.list_for("sheriff@localhost")?;
+
+    for msg in messages.iter().filter(|m| m.from.user == "aiki") {
+        if let MessageType::Notify(n) = &msg.message_type {
+            if let Some(bead_id) = &n.bead_id {
+                // Check if all Aiki tasks for this bead are complete
+                if self.all_aiki_tasks_closed(bead_id)? {
+                    // Auto-close the bead
+                    self.close_bead(bead_id, "All Aiki tasks completed")?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+```
+
+**Benefits**:
+- Automatic synchronization without polling
+- Leverages existing Agent Mail infrastructure
+- Optional - works even if Agent Mail not available
+
+---
+
+### Phase 4: Unified TUI (Future)
+
+**Goal**: View both AllBeads beads and Aiki tasks in one interface
+
+**New TUI Tab**: "Tasks" view
+- Shows AllBeads beads in current context
+- Expands to show linked Aiki tasks
+- Hierarchical tree view:
+  ```
+  [Epic] ab-2xf: Implement Multi-Tenant Auth
+    [Task] ab-3gh: Auth Service Changes [in_progress]
+      └─ [Aiki] zkmqwyx: Fix JWT validation bug [in_progress]
+         ├─ [Aiki] zkmqwyx.1: Add null check [closed]
+         └─ [Aiki] zkmqwyx.2: Update tests [open]
+    [Task] ab-4jk: Frontend Login Flow [open]
+  ```
+
+**Implementation**: New view in `src/tui/tasks_unified_view.rs`
 
 ---
 
 ## Use Cases
 
-### Use Case 1: Automatic Bead-to-Change Linking
+### Use Case 1: Epic Decomposition
 
-**Scenario:** Developer works on a feature tracked by bead `rk-456`
-
-```bash
-# Start work
-$ ab update rk-456 --status=in_progress
-Activated bead: rk-456 (RFC-049: Sync Package)
-
-# AI agent makes changes (Aiki captures provenance)
-# ... Claude Code edits files ...
-
-# View what changed for this bead
-$ aiki log --bead=rk-456
-Changes for bead rk-456:
-
-  abc12345 (Claude Code, 2 min ago)
-    Modified: src/sync.rs (+47, -12)
-    Review: PASSED (attempt 2)
-
-  def67890 (Claude Code, 5 min ago)
-    Modified: src/lib.rs (+3, -0)
-    Review: PASSED (attempt 1)
-```
-
-**Value:** Complete traceability from issue to every edit made toward it
-
-### Use Case 2: Quality Gates Per Epic
-
-**Scenario:** High-priority epic requires stricter review
-
-```yaml
-# .aiki/config.yml (auto-detected from bead labels)
-review:
-  policies:
-    - match:
-        bead_labels: ["P0", "security"]
-      require:
-        autonomous_review: strict
-        human_review: required
-        test_coverage: ">80%"
-
-    - match:
-        bead_labels: ["P4", "chore"]
-      require:
-        autonomous_review: advisory
-        human_review: optional
-```
-
-**Value:** Review strictness adapts to work priority automatically
-
-### Use Case 3: Cross-Repo Provenance
-
-**Scenario:** Change in `rookery` repo relates to bead in `ethertext` context
+**Scenario**: Large epic needs breakdown into repo-specific tasks, then code-level subtasks
 
 ```bash
-# AllBeads knows bead et-6tl depends on rk-ufu
-$ ab show et-6tl
-et-6tl: BLOCKED: Rookery Phase 1 must complete
-  Blocked by: rk-ufu (in_progress)
+# Create epic in AllBeads
+ab create --title "Implement Multi-Tenant Auth" --type epic --priority 0
 
-# Developer works on rk-ufu in rookery repo
-$ cd ~/Workspace/rookery
-$ ab update rk-ufu --status=in_progress
+# Create repo-specific beads
+ab create --title "Auth Service Changes" --type task --priority 1
+ab dep add ab-3gh ab-2xf  # Auth service depends on epic
 
-# AI makes changes, Aiki records provenance with bead_id
-# When rk-ufu closes, AllBeads can query Aiki for:
-#   - Total changes made
-#   - Review pass/fail ratio
-#   - Agent attribution summary
+# Switch to auth-service repo
+cd ~/auth-service
 
-$ ab show rk-ufu --provenance
-rk-ufu: RFC-049/050: Sync Package
-  Status: closed
-  Provenance Summary (from Aiki):
-    Total changes: 23
-    Agents: Claude Code (21), Human (2)
-    Reviews: 19 passed, 4 required iteration
-    Time in review loop: 4m 32s (saved est. 2h)
+# Activate the bead for Aiki tracking
+ab aiki activate ab-3gh
+
+# Create Aiki tasks
+aiki task add "Fix JWT validation bug"
+aiki task add "Update middleware" --parent zkmqwyx
+aiki task add "Add integration tests" --parent zkmqwyx
+
+# Work on tasks
+aiki task start zkmqwyx.1
+# ... make code changes ...
+aiki task close
+
+# When all Aiki tasks done, Aiki notifies AllBeads
+# AllBeads auto-closes ab-3gh
 ```
 
-**Value:** Cross-repo dependency tracking with per-bead provenance
+### Use Case 2: Cross-Repo Coordination
 
-### Use Case 4: Agent Mail for Review Events
-
-**Scenario:** Aiki review failure notifies AllBeads to update status
-
-```
-Agent Mail Message:
-  From: aiki-daemon@localhost
-  To: allbeads-sheriff@localhost
-  Type: NOTIFY
-  Payload:
-    event: review_failed
-    bead_id: ab-123
-    change_id: xyz789
-    issues:
-      - type: security
-        severity: critical
-        message: "API key hardcoded in auth.rs:45"
-    attempts: 3
-    recommendation: escalate_to_human
-
-Sheriff Response:
-  - Updates bead ab-123 status to "blocked"
-  - Adds comment: "Aiki review failed: security issue detected"
-  - Notifies assigned developer via preferred channel
-```
-
-**Value:** Automated status updates based on code quality
-
-### Use Case 5: Enterprise Compliance Audit
-
-**Scenario:** Auditor needs to verify all changes to payment code
+**Scenario**: Change requires updates in multiple repos
 
 ```bash
-# AllBeads: Find all beads touching payment
-$ ab search --label=payment --status=closed
-pay-001: Add Stripe integration
-pay-002: Refactor checkout flow
-pay-003: Fix currency rounding
+# AllBeads tracks the cross-repo epic
+ab create --title "Migrate to New API" --type epic
 
-# Aiki: Get signed provenance for each bead
-$ aiki audit --bead=pay-001 --verify
-Audit Report for bead pay-001
+# Create beads for each affected repo
+ab create --title "Backend API Changes" --type task
+ab create --title "Frontend Client Updates" --type task
+ab create --title "Mobile App Updates" --type task
 
-Changes: 47
-  ✓ All changes cryptographically signed
-  ✓ All signatures valid (GPG: user@company.com)
+# Add dependencies
+ab dep add ab-5mn ab-4kl  # Frontend depends on backend
+ab dep add ab-6op ab-4kl  # Mobile depends on backend
 
-Attribution:
-  Claude Code: 38 changes (81%)
-  Human: 9 changes (19%)
+# In backend repo
+cd ~/backend
+ab aiki activate ab-4kl
+aiki task add "Update endpoint contracts"
+aiki task add "Migrate database schema"
 
-Reviews:
-  Passed on first attempt: 31
-  Required iteration: 16
-  Maximum iterations: 3
-
-Compliance:
-  ✓ All auth/* changes had human review
-  ✓ No hardcoded secrets detected
-  ✓ Test coverage >80% for all changes
+# AllBeads Sheriff shows cross-repo status
+ab ready  # Shows what's unblocked across all repos
 ```
 
-**Value:** Regulatory-grade audit trail linking issues to verified changes
+### Use Case 3: Agent Handoff
+
+**Scenario**: One agent starts work, another agent continues
+
+```bash
+# Agent 1 in Claude Code
+cd ~/auth-service
+ab aiki activate ab-3gh
+aiki task start zkmqwyx
+# ... makes some changes ...
+aiki task stop --reason "Need security review"
+
+# Agent 2 in Cursor
+cd ~/auth-service
+aiki task list  # Sees stopped task
+aiki task show zkmqwyx  # Reads context
+aiki task start zkmqwyx  # Resumes work
+# ... completes the task ...
+aiki task close
+```
 
 ---
 
-## Implementation Phases
+## Implementation Plan
 
-### Phase 1: Environment Variable Bridge (2-3 weeks)
+### Phase 1: Metadata Linking (2-3 days)
 
-**AllBeads Changes:**
-1. `bd update --status=in_progress` sets `AB_ACTIVE_BEAD` env var
-2. `bd close` unsets the variable
-3. Shell hook maintains variable across terminal sessions
+**Aiki Work**:
+1. Add `bead` field to task events
+2. Read `AB_ACTIVE_BEAD` from environment in flows
+3. Include `bead=<id>` in JJ change [aiki] blocks
+4. Add `--bead` filter to `aiki task list`
 
-**Aiki Changes:**
-1. Hook handler reads `AB_ACTIVE_BEAD` if present
-2. Includes `bead_id=<value>` in provenance block
-3. `aiki log --bead=<id>` filters by bead
+**AllBeads Work**:
+1. ✅ Already complete
 
-**Integration Test:**
-```bash
-$ ab update ab-123 --status=in_progress
-$ echo $AB_ACTIVE_BEAD
-ab-123
-$ # ... AI makes changes ...
-$ aiki log --bead=ab-123
-# Shows all changes tagged with ab-123
-```
+**Testing**:
+- Create bead, activate it, create Aiki tasks, verify linking
 
-### Phase 2: Provenance Queries (4-6 weeks)
+### Phase 2: Bidirectional Queries (3-5 days)
 
-**AllBeads Changes:**
-1. `ab show <id> --provenance` queries Aiki for change summary
-2. Provenance summary in TUI kanban view
-3. Cross-repo aggregation of per-bead provenance
+**Aiki Work**:
+1. Implement `aiki task list --bead=<id>` with XML output
+2. Add task summary to `aiki show` output
 
-**Aiki Changes:**
-1. `aiki summary --bead=<id>` returns structured summary
-2. JSON output for programmatic consumption
-3. Handles repos where Aiki is not initialized (graceful fallback)
+**AllBeads Work**:
+1. Enhance `ab show --tasks` to query Aiki
+2. Display Aiki tasks in bead details
 
-### Phase 3: Agent Mail Integration (6-8 weeks)
+**Testing**:
+- Query tasks from beads, verify accurate results
+- Test graceful fallback when Aiki not installed
 
-**AllBeads Changes:**
-1. Sheriff subscribes to Aiki events via Agent Mail
-2. Auto-updates bead status based on review outcomes
-3. Blocked status when review fails repeatedly
+### Phase 3: Agent Mail Integration (5-7 days)
 
-**Aiki Changes:**
-1. Publishes review events to Agent Mail
-2. Configurable event types (review_passed, review_failed, escalated)
-3. Message format compatible with AllBeads protocol
+**Aiki Work**:
+1. Add Agent Mail client to Aiki
+2. Send notifications on task state changes
+3. Configure Postmaster endpoint
 
-### Phase 4: Unified Daemon (Future)
+**AllBeads Work**:
+1. Handle Aiki notifications in Sheriff
+2. Auto-update bead status based on task completions
+3. Add policy: "close bead when all tasks done"
 
-**Considerations:**
-- Shared SQLite for provenance + issues
-- Single daemon managing both JJ sync and bead sync
-- Unified TUI with kanban + provenance views
-- Common configuration format
+**Testing**:
+- Create bead, create tasks, close tasks, verify bead auto-closes
+- Test with Postmaster unavailable (graceful degradation)
 
----
+### Phase 4: Unified TUI (10-14 days)
 
-## Technical Considerations
+**AllBeads Work**:
+1. Create new `tasks_unified_view.rs`
+2. Hierarchical tree widget for beads + tasks
+3. Keyboard navigation (expand/collapse)
+4. Add to TUI tab bar
 
-### JJ + Git Coexistence
-
-Both systems use Git, but differently:
-- **AllBeads:** Pure Git (`.git/`), beads stored in `.beads/` directory
-- **Aiki:** JJ with internal Git backend (`.jj/repo/store/git`), non-colocated
-
-**Resolution:** They don't conflict. Aiki's JJ is separate from the working Git repo. AllBeads continues using standard Git. The repos can have both `.beads/` (AllBeads) and `.jj/` (Aiki) directories.
-
-### Session vs Bead Granularity
-
-- **Aiki Session:** Single Claude Code session, may touch multiple beads
-- **Bead:** Single issue, may span multiple sessions
-
-**Resolution:** Bead ID is additional metadata, not replacement for session. A session tagged with `bead_id=X` means "this session was working on bead X." Multiple sessions can work on same bead.
-
-### Multi-Repo Aggregation
-
-AllBeads aggregates beads from multiple repos. Aiki's provenance is per-repo.
-
-**Resolution:**
-1. Each repo has its own Aiki installation
-2. AllBeads queries each repo's Aiki independently
-3. Sheriff aggregates provenance summaries into unified view
-4. Cross-repo change correlation via shared bead IDs
-
-### Performance
-
-Both systems run daemons. Resource usage considerations:
-- **AllBeads Sheriff:** Polls repos on interval (configurable, default 30s)
-- **Aiki Hooks:** Triggered on each file edit (~7-8ms per edit)
-
-**Resolution:**
-- Hooks are lightweight, no performance concern
-- Daemons could share process if deeply integrated
-- Initial phases keep them separate (simpler)
-
----
-
-## Open Questions
-
-### Q1: Bidirectional or Unidirectional?
-
-**Option A:** AllBeads → Aiki (AllBeads provides context, Aiki consumes)
-- Simpler
-- Aiki doesn't need to know about AllBeads
-- Bead ID is just another metadata field
-
-**Option B:** Bidirectional (Both systems share state)
-- Richer integration
-- Aiki can update bead status
-- Requires Agent Mail or similar protocol
-
-**Recommendation:** Start with Option A, evolve to B if valuable
-
-### Q2: Single Binary or Separate Tools?
-
-**Option A:** Separate binaries (`ab`, `aiki`)
-- Each tool remains independently useful
-- Simpler development and deployment
-- Users install what they need
-
-**Option B:** Single binary (`ab` subsumes `aiki` or vice versa)
-- Unified experience
-- Single install
-- Tighter integration
-
-**Recommendation:** Keep separate. Integration via environment variables and protocols, not binary merger.
-
-### Q3: Who Owns the Daemon?
-
-If we have Agent Mail integration, who runs the daemon?
-
-**Option A:** Separate daemons communicating via Agent Mail
-- Clean separation of concerns
-- Either can run without the other
-- More processes to manage
-
-**Option B:** AllBeads Sheriff hosts Aiki as plugin
-- Single daemon
-- Aiki becomes AllBeads component
-- Tighter coupling
-
-**Recommendation:** Option A for now. Keep systems independent.
-
-### Q4: Shared Configuration?
-
-Should config files be shared or separate?
-
-```yaml
-# Option A: Separate configs
-# ~/.config/allbeads/config.yaml
-# ~/.config/aiki/config.yaml
-
-# Option B: Nested config
-# ~/.config/allbeads/config.yaml
-aiki:
-  enabled: true
-  autonomous_review: strict
-
-# Option C: Reference config
-# ~/.config/allbeads/config.yaml
-integrations:
-  aiki:
-    config_path: ~/.config/aiki/config.yaml
-```
-
-**Recommendation:** Option C - reference, don't duplicate
+**Testing**:
+- Navigate tree, verify task details
+- Test with/without Aiki installation
 
 ---
 
 ## Success Metrics
 
-### Phase 1 (Environment Bridge)
-- [ ] Bead ID appears in Aiki provenance for 100% of tracked edits
-- [ ] `aiki log --bead=X` returns correct filtered results
-- [ ] No performance regression in either tool
+### Phase 1
+- ✅ Beads linked to Aiki tasks via metadata
+- ✅ JJ changes include bead ID in [aiki] blocks
+- ✅ Query tasks by bead ID
 
-### Phase 2 (Provenance Queries)
-- [ ] `ab show --provenance` works for all contexts
-- [ ] Provenance summary accurate vs raw Aiki data
-- [ ] <100ms latency for provenance queries
+### Phase 2
+- ✅ `ab show <id> --tasks` displays Aiki tasks
+- ✅ `aiki task list --bead=<id>` filters correctly
+- ✅ Cross-query works in both directions
 
-### Phase 3 (Agent Mail)
-- [ ] Review events delivered reliably to Sheriff
-- [ ] Bead status updates correctly on review outcomes
-- [ ] No message loss under normal conditions
+### Phase 3
+- ✅ Closing all Aiki tasks auto-closes AllBeads bead
+- ✅ Sheriff receives and processes Aiki notifications
+- ✅ No manual sync required
 
-### Long-term
-- [ ] Users report improved traceability
-- [ ] Enterprise customers cite integration for compliance
-- [ ] Reduced time debugging "who changed what and why"
-
----
-
-## Appendix: Related Work
-
-### Similar Integrations
-
-**GitHub + Jira:** Bidirectional sync of issues ↔ PRs
-- Lesson: Keep sync simple, handle conflicts gracefully
-
-**Linear + GitHub:** Issue tracking + code review
-- Lesson: Tight integration valued by teams
-
-**Datadog + PagerDuty:** Monitoring → Alerting
-- Lesson: Event-driven integration scales well
-
-### Why Not Just Use Git Commit Messages?
-
-Git commits already have messages. Why add Aiki provenance?
-
-1. **Granularity:** Git commits are batched; Aiki tracks every edit
-2. **Attribution:** Git author is human; Aiki tracks which AI agent
-3. **Iteration:** Git shows final; Aiki shows attempts and corrections
-4. **Verification:** Git commits can be rewritten; Aiki signs cryptographically
-
-AllBeads linking to Aiki provenance is richer than linking to Git commits.
+### Phase 4
+- ✅ Unified TUI shows both beads and tasks
+- ✅ Tree navigation works smoothly
+- ✅ Agents use unified view for context
 
 ---
 
-## Next Steps
+## Open Questions
 
-1. **Spike (1 week):** Implement env var bridge in both tools
-2. **Test (1 week):** Validate with real multi-session workflow
-3. **Document (ongoing):** Update CLAUDE.md files in both repos
-4. **Iterate:** Based on actual usage patterns
+### Q1: Should AllBeads beads auto-create Aiki tasks?
+
+**Option A**: Manual - User creates tasks explicitly
+**Option B**: Auto - Starting a bead auto-creates Aiki task
+
+**Recommendation**: Manual for Phase 1, auto in Phase 2+ with flag
+
+### Q2: What happens when Aiki tasks exist but bead is closed?
+
+**Option A**: Orphaned - Aiki tasks remain open
+**Option B**: Auto-close - AllBeads closing bead closes Aiki tasks
+**Option C**: Warning - Prevent closing bead with open tasks
+
+**Recommendation**: Option C for safety, Option B as advanced feature
+
+### Q3: Should Aiki support multiple beads per task?
+
+**Current**: One task → one bead (optional)
+**Future**: One task → multiple beads?
+
+**Recommendation**: Keep single-bead for simplicity
 
 ---
 
-*This spec is exploratory. Implementation should validate assumptions with minimal investment before committing to deep integration.*
+## Comparison to Old Spec
+
+**Major Changes from Original 2026-01-11 Spec**:
+
+1. **Removed Review System References**: Aiki doesn't have review system
+2. **Changed from provenance focus to task integration**: More accurate to what Aiki provides
+3. **Hierarchical decomposition model**: Strategic (AllBeads) → Tactical (Aiki)
+4. **Realistic implementation phases**: Based on actual codebases
+5. **Agent Mail for sync**: Leverages existing AllBeads infrastructure
+
+**Kept from Original**:
+- Loose coupling philosophy
+- Environment variable bridge (Phase 1)
+- Graceful fallback when Aiki unavailable
+- Both systems remain independently useful
+
+---
+
+## Summary
+
+This integration connects AllBeads' cross-repo orchestration with Aiki's single-repo task management:
+
+- **Phase 1**: Link via metadata (bead ID in Aiki tasks)
+- **Phase 2**: Bidirectional queries (see tasks from beads, vice versa)
+- **Phase 3**: Auto-sync via Agent Mail (task completion → bead updates)
+- **Phase 4**: Unified TUI (single view for strategic + tactical work)
+
+The key is **hierarchical decomposition**: AllBeads tracks "what work spans repos", Aiki tracks "how work happens in this repo".
