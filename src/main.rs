@@ -1081,8 +1081,29 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             handle_prime_command(&graph)?;
         }
 
-        Commands::Onboard { full } => {
-            handle_onboard_command(full, &graph)?;
+        Commands::Onboard {
+            target,
+            non_interactive,
+            skip_clone,
+            skip_beads,
+            skip_skills,
+            skip_hooks,
+            skip_issues,
+            context_name,
+            path,
+        } => {
+            handle_onboard_repository(
+                &target,
+                non_interactive,
+                skip_clone,
+                skip_beads,
+                skip_skills,
+                skip_hooks,
+                skip_issues,
+                context_name.as_deref(),
+                path.as_deref(),
+                &config_for_commands,
+            )?;
         }
 
         Commands::Update {
@@ -7791,6 +7812,72 @@ fn handle_onboard_command(
         println!();
         println!("Run `ab onboard --full` for the complete workflow guide.");
     }
+
+    Ok(())
+}
+
+/// Handle the `onboard` command - onboard a repository into AllBeads
+///
+/// This implements the 9-stage onboarding workflow from SPEC-onboarding.md:
+/// 1. Discovery/Selection
+/// 2. Clone (if needed)
+/// 3. Initialize Beads (via bd init)
+/// 4. Populate Issues
+/// 5. Add Skills (marketplace config)
+/// 6. Integrations (optional)
+/// 7. CI/CD Detection
+/// 8. Add to AllBeads Config
+/// 9. Summary
+#[allow(clippy::too_many_arguments)]
+fn handle_onboard_repository(
+    target: &str,
+    non_interactive: bool,
+    skip_clone: bool,
+    skip_beads: bool,
+    skip_skills: bool,
+    _skip_hooks: bool, // Handled by bd init
+    skip_issues: bool,
+    context_name: Option<&str>,
+    custom_path: Option<&str>,
+    config: &AllBeadsConfig,
+) -> allbeads::Result<()> {
+    println!("🚀 AllBeads Repository Onboarding");
+    println!();
+
+    // TODO: Implement onboarding stages
+    // Stage 1: Discovery & Validation
+    println!("Target: {}", target);
+    println!("Mode: {}", if non_interactive { "non-interactive" } else { "interactive" });
+    println!();
+
+    // Stage configuration summary
+    println!("Configuration:");
+    println!("  Clone:       {}", if skip_clone { "skip" } else { "enabled" });
+    println!("  Beads:       {}", if skip_beads { "skip" } else { "enabled (bd init)" });
+    println!("  Skills:      {}", if skip_skills { "skip" } else { "enabled" });
+    println!("  Issues:      {}", if skip_issues { "skip" } else { "enabled" });
+    if let Some(name) = context_name {
+        println!("  Context:     {}", name);
+    }
+    if let Some(path) = custom_path {
+        println!("  Path:        {}", path);
+    } else {
+        println!("  Workspace:   {}", config.workspace_directory().display());
+    }
+    println!();
+
+    println!("⚠️  Onboarding implementation in progress (ab-pp6i)");
+    println!();
+    println!("This command will:");
+    println!("  1. Parse repository URL/path");
+    println!("  2. Clone repository (if needed)");
+    println!("  3. Run `bd init` (with mode selection)");
+    println!("  4. Import issues (GitHub/JIRA/Janitor)");
+    println!("  5. Configure .claude/settings.json (marketplace skills)");
+    println!("  6. Add to AllBeads contexts");
+    println!("  7. Display onboarding summary");
+    println!();
+    println!("For now, use: ab onboard-repo <path>");
 
     Ok(())
 }

@@ -60,7 +60,8 @@
       "Skill(allbeads:*)",
       "Skill(beads:show)",
       "Skill(beads:stats)",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "Bash(bd init --help:*)"
     ]
   }
 }

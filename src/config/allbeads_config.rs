@@ -92,6 +92,17 @@ pub struct AllBeadsConfig {
     /// Visualization settings
     #[serde(default)]
     pub visualization: VisualizationConfig,
+
+    /// Default workspace directory for cloning repositories
+    /// Defaults to ~/Workspace if not specified
+    #[serde(default = "default_workspace_dir")]
+    pub workspace_directory: PathBuf,
+}
+
+fn default_workspace_dir() -> PathBuf {
+    let mut path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+    path.push("Workspace");
+    path
 }
 
 impl AllBeadsConfig {
@@ -101,6 +112,7 @@ impl AllBeadsConfig {
             contexts: Vec::new(),
             agent_mail: AgentMailConfig::default(),
             visualization: VisualizationConfig::default(),
+            workspace_directory: default_workspace_dir(),
         }
     }
 
@@ -195,6 +207,11 @@ impl AllBeadsConfig {
     /// Get all context names
     pub fn context_names(&self) -> Vec<&str> {
         self.contexts.iter().map(|c| c.name.as_str()).collect()
+    }
+
+    /// Get the workspace directory for cloning repositories
+    pub fn workspace_directory(&self) -> &Path {
+        &self.workspace_directory
     }
 }
 
@@ -328,5 +345,31 @@ mod tests {
         assert!(yaml.contains("name: work"));
         assert!(yaml.contains("agent_mail:"));
         assert!(yaml.contains("visualization:"));
+    }
+
+    #[test]
+    fn test_workspace_directory_default() {
+        let config = AllBeadsConfig::new();
+        let workspace = config.workspace_directory();
+
+        // Should end with "Workspace"
+        assert!(workspace.ends_with("Workspace"));
+    }
+
+    #[test]
+    fn test_workspace_directory_custom() {
+        let mut config = AllBeadsConfig::new();
+        config.workspace_directory = PathBuf::from("/custom/workspace");
+
+        assert_eq!(config.workspace_directory(), Path::new("/custom/workspace"));
+    }
+
+    #[test]
+    fn test_workspace_directory_serialization() {
+        let config = AllBeadsConfig::new();
+        let yaml = serde_yaml::to_string(&config).unwrap();
+
+        // workspace_directory should be in the YAML
+        assert!(yaml.contains("workspace_directory:"));
     }
 }

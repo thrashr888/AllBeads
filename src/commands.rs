@@ -46,7 +46,8 @@ Usage:
   quickstart         Quickstart guide for AllBeads
   context            Manage contexts (Boss repositories)
                        - onboarding: Track repo adoption and onboarding status
-  onboard-repo       Interactive onboarding for current repository
+  onboard            Onboard a repository (clone, bd init, skills, add context)
+  onboard-repo       Interactive onboarding for current repository (deprecated: use 'onboard')
   folder             Manage tracked folders (Dry→Wet progression)
   clear-cache        Clear the local cache
 
@@ -529,6 +530,48 @@ pub enum Commands {
     #[command(subcommand)]
     Context(ContextCommands),
 
+    /// Onboard a repository into AllBeads
+    ///
+    /// Supports GitHub URLs, local paths, or current directory.
+    /// Clones if needed, runs bd init, configures skills, and adds to AllBeads context.
+    Onboard {
+        /// Repository URL, local path, or current directory ('.')
+        /// Examples: https://github.com/user/repo, git@github.com:user/repo.git, /path/to/repo, .
+        target: String,
+
+        /// Use defaults without interactive prompts
+        #[arg(long)]
+        non_interactive: bool,
+
+        /// Skip cloning (repository already exists locally)
+        #[arg(long)]
+        skip_clone: bool,
+
+        /// Skip beads initialization (bd init)
+        #[arg(long)]
+        skip_beads: bool,
+
+        /// Skip skills marketplace configuration
+        #[arg(long)]
+        skip_skills: bool,
+
+        /// Skip Git hooks installation (handled by bd init)
+        #[arg(long)]
+        skip_hooks: bool,
+
+        /// Skip issue import/population
+        #[arg(long)]
+        skip_issues: bool,
+
+        /// Override context name (default: repo name)
+        #[arg(long)]
+        context_name: Option<String>,
+
+        /// Override clone path (default: workspace_directory/repo_name)
+        #[arg(long)]
+        path: Option<String>,
+    },
+
     /// Interactive onboarding for current repository
     #[command(name = "onboard-repo")]
     OnboardRepo {
@@ -629,13 +672,6 @@ pub enum Commands {
     
     Prime,
 
-    /// Onboard to a project (for AI agents)
-    
-    Onboard {
-        /// Show detailed workflow guide
-        #[arg(long)]
-        full: bool,
-    },
 
     /// Send a message to human operator
     
