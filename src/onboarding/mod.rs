@@ -3,10 +3,14 @@
 //! This module helps track and guide the onboarding process for repositories
 //! into the AllBeads ecosystem, from initial tracking to full adoption.
 
+pub mod workflow;
+
 use crate::config::BossContext;
 use crate::git::BossRepo;
 use crate::Result;
 use std::path::PathBuf;
+
+pub use workflow::OnboardingWorkflow;
 
 /// Onboarding stage for a repository
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -133,6 +137,9 @@ pub struct OnboardingStatus {
 
     /// Has integration configured
     pub has_integration: bool,
+
+    /// Has GitHub Actions configured
+    pub has_ci: bool,
 }
 
 impl OnboardingStatus {
@@ -159,8 +166,11 @@ impl OnboardingStatus {
                     // Check for integration
                     let has_integration = Self::has_integration(&repo);
 
+                    // Check for CI
+                    let has_ci = Self::has_ci(&repo);
+
                     if has_integration {
-                        if issue_count > 5 && has_skills {
+                        if issue_count > 5 && has_skills && has_ci {
                             OnboardingStage::FullyOnboarded
                         } else {
                             OnboardingStage::IntegrationConfigured
@@ -188,6 +198,7 @@ impl OnboardingStatus {
 
         let has_skills = Self::has_skills(&repo);
         let has_integration = Self::has_integration(&repo);
+        let has_ci = Self::has_ci(&repo);
 
         Ok(OnboardingStatus {
             context_name: context.name.clone(),
@@ -197,6 +208,7 @@ impl OnboardingStatus {
             issue_count,
             has_skills,
             has_integration,
+            has_ci,
         })
     }
 
@@ -229,6 +241,27 @@ impl OnboardingStatus {
         let github_config = repo.beads_dir().join("github.yaml");
 
         jira_config.exists() || github_config.exists()
+    }
+
+    /// Check if repository has CI/CD configured
+    fn has_ci(repo: &BossRepo) -> bool {
+        // Check for GitHub Actions workflows
+        let gh_actions = repo.path().join(".github/workflows");
+
+        // Check if workflows directory exists and has any .yml or .yaml files
+        if gh_actions.exists() {
+            if let Ok(entries) = std::fs::read_dir(gh_actions) {
+                for entry in entries.flatten() {
+                    if let Some(ext) = entry.path().extension() {
+                        if ext == "yml" || ext == "yaml" {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        false
     }
 }
 
@@ -334,6 +367,18 @@ impl OnboardingReport {
 
             if let Some(count) = status.issue_count {
                 eprintln!("    Issues: {}", count);
+            }
+
+            if status.has_skills {
+                eprintln!("    Skills: ✓");
+            }
+
+            if status.has_integration {
+                eprintln!("    Integration: ✓");
+            }
+
+            if status.has_ci {
+                eprintln!("    CI/CD: ✓ (GitHub Actions)");
             }
 
             // Print next steps

@@ -239,6 +239,20 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_context_command(ctx_cmd, &cli.config);
     }
 
+    // Handle onboard-repo command (don't need graph)
+    if let Commands::OnboardRepo {
+        ref path,
+        yes,
+        skip_init,
+        skip_claude,
+        skip_context,
+    } = command
+    {
+        use allbeads::onboarding::OnboardingWorkflow;
+        let workflow = OnboardingWorkflow::new(path, yes, skip_init, skip_claude, skip_context)?;
+        return workflow.run();
+    }
+
     // Handle folder tracking commands (don't need graph)
     if let Commands::Folder(ref folder_cmd) = command {
         return handle_folder_command(folder_cmd);
@@ -1703,6 +1717,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
         Commands::Context(_)
         | Commands::Init { .. }
+        | Commands::OnboardRepo { .. }
         | Commands::Mail(_)
         | Commands::Folder(_)
         | Commands::Jira(_)
@@ -1719,7 +1734,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Hooks(_)
         | Commands::Aiki(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, and Aiki commands should be handled before aggregation")
+            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, and Aiki commands should be handled before aggregation")
         }
     }
 

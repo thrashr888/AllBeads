@@ -46,6 +46,7 @@ Usage:
   quickstart         Quickstart guide for AllBeads
   context            Manage contexts (Boss repositories)
                        - onboarding: Track repo adoption and onboarding status
+  onboard-repo       Interactive onboarding for current repository
   folder             Manage tracked folders (Dry→Wet progression)
   clear-cache        Clear the local cache
 
@@ -527,6 +528,30 @@ pub enum Commands {
     /// Manage contexts (Boss repositories)
     #[command(subcommand)]
     Context(ContextCommands),
+
+    /// Interactive onboarding for current repository
+    #[command(name = "onboard-repo")]
+    OnboardRepo {
+        /// Path to repository (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Skip interactive prompts and use defaults
+        #[arg(short, long)]
+        yes: bool,
+
+        /// Skip bd init (assume already initialized)
+        #[arg(long)]
+        skip_init: bool,
+
+        /// Skip CLAUDE.md setup
+        #[arg(long)]
+        skip_claude: bool,
+
+        /// Skip adding to AllBeads contexts
+        #[arg(long)]
+        skip_context: bool,
+    },
 
     /// Manage tracked folders (Dry→Wet progression)
     #[command(subcommand)]
