@@ -129,6 +129,9 @@ pub struct OnboardingStatus {
     /// Repository URL
     pub url: String,
 
+    /// Organization (extracted from URL)
+    pub organization: Option<String>,
+
     /// Number of issues (if available)
     pub issue_count: Option<usize>,
 
@@ -216,6 +219,7 @@ impl OnboardingStatus {
             stage,
             path,
             url: context.url.clone(),
+            organization: context.organization(),
             issue_count,
             has_skills,
             has_integration,

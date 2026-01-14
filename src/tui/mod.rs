@@ -166,6 +166,7 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Char('k') | KeyCode::Up => app.contexts_view.previous(),
                         KeyCode::Char('r') => app.force_refresh_contexts_view(),
                         KeyCode::Char('s') => app.contexts_view.cycle_sort(),
+                        KeyCode::Char('o') => app.contexts_view.cycle_org_filter(),
                         KeyCode::Enter => app.contexts_view.toggle_detail(),
                         KeyCode::Esc => app.contexts_view.close_detail(),
                         _ => {}

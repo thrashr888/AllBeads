@@ -59,6 +59,12 @@ pub struct ContextsView {
     pub show_detail: bool,
     /// Whether a refresh is needed (deferred loading)
     pub needs_refresh: bool,
+    /// Current organization filter (None = show all)
+    pub org_filter: Option<String>,
+    /// Available organizations (extracted from contexts)
+    pub available_orgs: Vec<String>,
+    /// Full config (cached for filtering)
+    pub config: Option<AllBeadsConfig>,
 }
 
 impl ContextsView {
@@ -72,6 +78,9 @@ impl ContextsView {
             sort_mode: SortMode::ByName,
             show_detail: false,
             needs_refresh: false,
+            org_filter: None,
+            available_orgs: Vec::new(),
+            config: None,
         }
     }
 
@@ -82,7 +91,30 @@ impl ContextsView {
 
     /// Refresh the contexts data
     pub fn refresh(&mut self, config: &AllBeadsConfig) {
-        if let Ok(mut report) = OnboardingReport::from_contexts(&config.contexts) {
+        // Cache config for filtering
+        self.config = Some(config.clone());
+
+        // Extract available organizations
+        self.available_orgs = Self::extract_organizations(&config.contexts);
+
+        // Filter contexts by organization if filter is active
+        let filtered_contexts: Vec<_> = if let Some(ref org) = self.org_filter {
+            config
+                .contexts
+                .iter()
+                .filter(|ctx| {
+                    ctx.organization()
+                        .as_ref()
+                        .map(|o| o == org)
+                        .unwrap_or(false)
+                })
+                .cloned()
+                .collect()
+        } else {
+            config.contexts.clone()
+        };
+
+        if let Ok(mut report) = OnboardingReport::from_contexts(&filtered_contexts) {
             // Apply current sort mode
             Self::apply_sort(self.sort_mode, &mut report);
             self.report = Some(report);
@@ -184,6 +216,56 @@ impl ContextsView {
     pub fn close_detail(&mut self) {
         self.show_detail = false;
     }
+
+    /// Extract unique organizations from contexts
+    fn extract_organizations(contexts: &[crate::config::BossContext]) -> Vec<String> {
+        let mut orgs: Vec<String> = contexts
+            .iter()
+            .filter_map(|ctx| ctx.organization())
+            .collect();
+        orgs.sort();
+        orgs.dedup();
+        orgs
+    }
+
+    /// Cycle to next organization filter
+    /// Cycles through: All → Org1 → Org2 → ... → All
+    pub fn cycle_org_filter(&mut self) {
+        if self.available_orgs.is_empty() {
+            // No orgs available, stay at All
+            return;
+        }
+
+        self.org_filter = match &self.org_filter {
+            None => {
+                // Currently showing All, switch to first org
+                self.available_orgs.first().cloned()
+            }
+            Some(current_org) => {
+                // Find current org index and move to next
+                if let Some(idx) = self.available_orgs.iter().position(|o| o == current_org) {
+                    if idx + 1 < self.available_orgs.len() {
+                        // Move to next org
+                        self.available_orgs.get(idx + 1).cloned()
+                    } else {
+                        // Wrap back to All
+                        None
+                    }
+                } else {
+                    // Current org not found, reset to All
+                    None
+                }
+            }
+        };
+
+        // Reapply filter by refreshing from cached config
+        if let Some(ref config) = self.config.clone() {
+            self.refresh(config);
+        }
+
+        // Reset selection to top
+        self.list_state.select(Some(0));
+    }
 }
 
 impl Default for ContextsView {
@@ -220,7 +302,7 @@ pub fn draw(f: &mut Frame, contexts_view: &mut ContextsView, area: Rect) {
         draw_context_details(f, contexts_view, chunks[3]);
 
         // Help text
-        let help = Paragraph::new("↑↓: navigate | s: sort | r: refresh | Enter: details | Esc: close | Tab: switch view | q: quit")
+        let help = Paragraph::new("↑↓: navigate | s: sort | o: org filter | r: refresh | Enter: details | Esc: close | Tab: switch | q: quit")
             .style(Style::default().fg(Color::DarkGray))
             .block(Block::default().borders(Borders::TOP));
         f.render_widget(help, chunks[4]);
@@ -247,7 +329,7 @@ pub fn draw(f: &mut Frame, contexts_view: &mut ContextsView, area: Rect) {
 
         // Help text
         let help = Paragraph::new(
-            "↑↓: navigate | s: sort | r: refresh | Enter: details | Tab: switch view | q: quit",
+            "↑↓: navigate | s: sort | o: org filter | r: refresh | Enter: details | Tab: switch | q: quit",
         )
         .style(Style::default().fg(Color::DarkGray))
         .block(Block::default().borders(Borders::TOP));
@@ -317,7 +399,14 @@ fn draw_title(f: &mut Frame, contexts_view: &ContextsView, area: Rect) {
                 0
             }
         );
-        let right = format!("Sort: {}", contexts_view.sort_mode.name());
+
+        // Show org filter and sort mode
+        let org_text = if let Some(ref org) = contexts_view.org_filter {
+            format!("Org: {} | ", org)
+        } else {
+            "".to_string()
+        };
+        let right = format!("{}Sort: {}", org_text, contexts_view.sort_mode.name());
         (left, right)
     } else {
         ("Contexts - Loading...".to_string(), String::new())
@@ -502,6 +591,13 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                         Span::styled(status.url.clone(), Style::default().fg(Color::Blue)),
                     ]),
                 ];
+
+                if let Some(ref org) = status.organization {
+                    lines.push(Line::from(vec![
+                        Span::styled("Organization: ", Style::default().fg(Color::DarkGray)),
+                        Span::styled(org.clone(), Style::default().fg(Color::Magenta)),
+                    ]));
+                }
 
                 if let Some(ref path) = status.path {
                     lines.push(Line::from(vec![

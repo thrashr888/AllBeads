@@ -171,6 +171,48 @@ impl BossContext {
             path
         }
     }
+
+    /// Extract organization or user from the repository URL
+    ///
+    /// Parses the org/user from URLs like:
+    /// - `https://github.com/thrashr888/AllBeads.git` → `Some("thrashr888")`
+    /// - `https://github.ibm.com/Paul-Thrasher/repo.git` → `Some("Paul-Thrasher")`
+    /// - `git@github.com:hashicorp/terraform.git` → `Some("hashicorp")`
+    /// - `/local/path` → `None`
+    pub fn organization(&self) -> Option<String> {
+        let url = &self.url;
+
+        // Handle SSH format: git@github.com:org/repo.git
+        if url.starts_with("git@") {
+            if let Some(colon_pos) = url.find(':') {
+                let path = &url[colon_pos + 1..];
+                return path
+                    .trim_end_matches(".git")
+                    .split('/')
+                    .next()
+                    .map(String::from);
+            }
+        }
+
+        // Handle HTTPS format: https://github.com/org/repo.git
+        if url.starts_with("http://") || url.starts_with("https://") {
+            // Parse the URL
+            if let Some(domain_start) = url.find("://") {
+                let after_protocol = &url[domain_start + 3..];
+                // Skip domain (github.com, github.ibm.com, etc.)
+                if let Some(slash_pos) = after_protocol.find('/') {
+                    let path = &after_protocol[slash_pos + 1..];
+                    return path
+                        .trim_end_matches(".git")
+                        .split('/')
+                        .next()
+                        .map(String::from);
+                }
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(test)]
@@ -269,5 +311,85 @@ mod tests {
 
         context.add_rig(rig);
         assert_eq!(context.rigs.len(), 1);
+    }
+
+    #[test]
+    fn test_organization_https() {
+        let context = BossContext::new(
+            "test",
+            "https://github.com/thrashr888/AllBeads.git",
+            AuthStrategy::SshAgent,
+        );
+        assert_eq!(context.organization(), Some("thrashr888".to_string()));
+    }
+
+    #[test]
+    fn test_organization_https_enterprise() {
+        let context = BossContext::new(
+            "test",
+            "https://github.ibm.com/Paul-Thrasher/terraform-managed-resources-mcp.git",
+            AuthStrategy::GhEnterpriseToken,
+        );
+        assert_eq!(context.organization(), Some("Paul-Thrasher".to_string()));
+    }
+
+    #[test]
+    fn test_organization_https_hashicorp() {
+        let context = BossContext::new(
+            "test",
+            "https://github.com/hashicorp/terraform.git",
+            AuthStrategy::SshAgent,
+        );
+        assert_eq!(context.organization(), Some("hashicorp".to_string()));
+    }
+
+    #[test]
+    fn test_organization_ssh() {
+        let context = BossContext::new(
+            "test",
+            "git@github.com:thrashr888/AllBeads.git",
+            AuthStrategy::SshAgent,
+        );
+        assert_eq!(context.organization(), Some("thrashr888".to_string()));
+    }
+
+    #[test]
+    fn test_organization_ssh_enterprise() {
+        let context = BossContext::new(
+            "test",
+            "git@github.ibm.com:Paul-Thrasher/repo.git",
+            AuthStrategy::GhEnterpriseToken,
+        );
+        assert_eq!(context.organization(), Some("Paul-Thrasher".to_string()));
+    }
+
+    #[test]
+    fn test_organization_no_git_suffix() {
+        let context = BossContext::new(
+            "test",
+            "https://github.com/thrashr888/AllBeads",
+            AuthStrategy::SshAgent,
+        );
+        assert_eq!(context.organization(), Some("thrashr888".to_string()));
+    }
+
+    #[test]
+    fn test_organization_invalid_url() {
+        let context = BossContext::new(
+            "test",
+            "/local/path",
+            AuthStrategy::SshAgent,
+        );
+        assert_eq!(context.organization(), None);
+    }
+
+    #[test]
+    fn test_organization_no_path() {
+        let context = BossContext::new(
+            "test",
+            "https://github.com",
+            AuthStrategy::SshAgent,
+        );
+        assert_eq!(context.organization(), None);
     }
 }
