@@ -151,7 +151,7 @@ impl App {
     }
 
     /// Switch to next tab
-    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Stats -> Swarm (if available) -> Kanban
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Aiki -> Swarm (if available) -> Stats -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
@@ -167,16 +167,16 @@ impl App {
             Tab::Mail => Tab::Graph,
             Tab::Graph => Tab::Timeline,
             Tab::Timeline => Tab::Governance,
-            Tab::Governance => Tab::Stats,
-            Tab::Stats => Tab::Aiki,
+            Tab::Governance => Tab::Aiki,
             Tab::Aiki => {
                 if has_swarm {
                     Tab::Swarm
                 } else {
-                    Tab::Kanban
+                    Tab::Stats
                 }
             }
-            Tab::Swarm => Tab::Kanban,
+            Tab::Swarm => Tab::Stats,
+            Tab::Stats => Tab::Kanban,
         };
 
         // Refresh data when switching to specific tabs

@@ -129,14 +129,14 @@ fn draw_governance_tab(f: &mut Frame, app: &mut App) {
 
 fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     // Create owned strings for tab titles
-    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Stats, Aiki, Swarm (if available)
+    // Tab order: Kanban, Mail (if available), Graph, Timeline, Governance, Aiki, Swarm (if available), Stats
     let mut tab_titles: Vec<String> = vec!["Kanban".to_string()];
     let mut graph_index = 1;
     let mut timeline_index = 2;
     let mut governance_index = 3;
-    let mut stats_index = 4;
-    let mut aiki_index = 5;
-    let mut swarm_index = 6;
+    let mut aiki_index = 4;
+    let mut swarm_index = 5;
+    let mut stats_index = 6;
 
     // Add mail tab if available
     if app.has_mail() {
@@ -149,9 +149,9 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         graph_index = 2;
         timeline_index = 3;
         governance_index = 4;
-        stats_index = 5;
-        aiki_index = 6;
-        swarm_index = 7;
+        aiki_index = 5;
+        swarm_index = 6;
+        stats_index = 7;
     }
 
     // Graph tab is always present
@@ -162,9 +162,6 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
 
     // Governance tab is always present
     tab_titles.push("Governance".to_string());
-
-    // Stats tab is always present
-    tab_titles.push("Stats".to_string());
 
     // Aiki tab is always present
     let beads_with_tasks = app.aiki_view.beads_with_tasks.len();
@@ -184,6 +181,9 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         }
     }
 
+    // Stats tab is always present (always at the end)
+    tab_titles.push("Stats".to_string());
+
     // Calculate selected index
     let tab_index = match app.current_tab {
         Tab::Kanban => 0,
@@ -191,9 +191,9 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
         Tab::Graph => graph_index,
         Tab::Timeline => timeline_index,
         Tab::Governance => governance_index,
-        Tab::Stats => stats_index,
         Tab::Aiki => aiki_index,
         Tab::Swarm => swarm_index,
+        Tab::Stats => stats_index,
     };
 
     let tabs = Tabs::new(
