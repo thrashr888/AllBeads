@@ -112,17 +112,32 @@ impl Aggregator {
     /// Clone all repositories that don't exist locally
     fn clone_all(&mut self) -> Result<()> {
         let mut errors = Vec::new();
+        let mut cloned_count = 0;
 
         for (name, repo) in &mut self.repos {
+            // Check if repo needs cloning (doesn't exist)
+            let needs_clone = repo.status()? == crate::git::RepoStatus::NotCloned;
+            if needs_clone {
+                eprintln!("  📦 Cloning {} from {}...", name, repo.context().url);
+            }
+
             if let Err(e) = repo.clone_if_needed() {
                 let err_msg = format!("Failed to clone {}: {}", name, e);
                 tracing::error!("{}", err_msg);
+                eprintln!("  ⚠️  {}", err_msg);
                 errors.push(err_msg);
 
                 if !self.agg_config.skip_errors {
                     return Err(e);
                 }
+            } else if needs_clone {
+                // Successfully cloned
+                cloned_count += 1;
             }
+        }
+
+        if cloned_count > 0 {
+            eprintln!("  ✓ Cloned {} repositories", cloned_count);
         }
 
         if !errors.is_empty() && !self.agg_config.skip_errors {

@@ -45,6 +45,7 @@ Usage:
   setup              Setup wizard for configuration
   quickstart         Quickstart guide for AllBeads
   context            Manage contexts (Boss repositories)
+                       - onboarding: Track repo adoption and onboarding status
   folder             Manage tracked folders (Dry→Wet progression)
   clear-cache        Clear the local cache
 
@@ -1195,6 +1196,17 @@ pub enum ContextCommands {
     Remove {
         /// Context name to remove
         name: String,
+    },
+
+    /// Show onboarding status for all contexts
+    Onboarding {
+        /// Show detailed onboarding guide for each repo
+        #[arg(long)]
+        full: bool,
+
+        /// Show only summary statistics
+        #[arg(long)]
+        summary: bool,
     },
 }
 

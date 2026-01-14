@@ -36,6 +36,7 @@ pub mod governance;
 pub mod integrations;
 pub mod mail;
 pub mod manifest;
+pub mod onboarding;
 pub mod plugin;
 pub mod sheriff;
 pub mod swarm;

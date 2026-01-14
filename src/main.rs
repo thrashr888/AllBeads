@@ -410,16 +410,20 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             cached_graph
         } else {
             tracing::info!("Cache miss, aggregating from Boss repositories");
+            eprintln!("⏳ Loading beads from repositories...");
             let mut aggregator = Aggregator::new(config, agg_config)?;
             let graph = aggregator.aggregate()?;
             cache.store_graph(&graph)?;
+            eprintln!("✓ Loaded {} beads from {} contexts", graph.beads.len(), graph.rigs.len());
             graph
         }
     } else {
         tracing::info!("Cache expired, aggregating from Boss repositories");
+        eprintln!("⏳ Refreshing beads from repositories...");
         let mut aggregator = Aggregator::new(config, agg_config)?;
         let graph = aggregator.aggregate()?;
         cache.store_graph(&graph)?;
+        eprintln!("✓ Loaded {} beads from {} contexts", graph.beads.len(), graph.rigs.len());
         graph
     };
 
@@ -4930,6 +4934,36 @@ fn handle_context_command(
                     "Context '{}' not found",
                     name
                 )));
+            }
+        }
+
+        ContextCommands::Onboarding { full, summary } => {
+            use allbeads::onboarding::OnboardingReport;
+
+            // Generate onboarding report
+            let report = OnboardingReport::from_contexts(&config.contexts)?;
+
+            if *summary {
+                report.print_summary();
+            } else {
+                report.print();
+            }
+
+            // In full mode, show additional guidance
+            if *full {
+                eprintln!("\n📚 Getting Started with AllBeads Onboarding:\n");
+                eprintln!("1. URL-only contexts will be cloned automatically when you run:");
+                eprintln!("   cargo run -- list -C <context-name>");
+                eprintln!("\n2. Once cloned, initialize beads in each repository:");
+                eprintln!("   cd <repo-path> && bd init");
+                eprintln!("\n3. Start tracking issues:");
+                eprintln!("   bd create --title=\"Your first issue\" --type=task --priority=2");
+                eprintln!("\n4. Enable integrations (optional):");
+                eprintln!("   cargo run -- jira status");
+                eprintln!("   cargo run -- github status");
+                eprintln!("\n5. Launch the TUI to see everything:");
+                eprintln!("   cargo run -- tui");
+                eprintln!();
             }
         }
     }
