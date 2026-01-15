@@ -3,7 +3,9 @@
 //! Allows searching for GitHub repositories and selecting them for onboarding.
 
 use crate::config::AllBeadsConfig;
-use crate::governance::scanner::{OnboardingPriority, ScanFilter, ScannedRepo};
+use crate::governance::scanner::{
+    GitHubScanner, OnboardingPriority, ScanFilter, ScanOptions, ScannedRepo,
+};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -11,6 +13,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
+use std::sync::mpsc;
+use std::thread;
 
 /// Search mode for the picker
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +58,10 @@ pub struct GitHubPickerView {
     pub has_searched: bool,
     /// Input mode (for entering search query)
     pub input_mode: bool,
+    /// Channel for receiving search results
+    pub result_receiver: Option<mpsc::Receiver<Result<Vec<ScannedRepo>, String>>>,
+    /// Whether a search is pending
+    pub search_pending: bool,
 }
 
 impl Default for GitHubPickerView {
@@ -79,6 +87,78 @@ impl GitHubPickerView {
             managed_repos: Vec::new(),
             has_searched: false,
             input_mode: true,
+            result_receiver: None,
+            search_pending: false,
+        }
+    }
+
+    /// Execute search in a background thread
+    pub fn execute_search(&mut self) {
+        if self.search_query.is_empty() {
+            self.error = Some("Please enter a username or organization".to_string());
+            return;
+        }
+
+        let query = self.search_query.clone();
+        let mode = self.search_mode;
+        let filters = self.filters.clone();
+
+        // Create channel for results
+        let (tx, rx) = mpsc::channel();
+        self.result_receiver = Some(rx);
+        self.is_loading = true;
+        self.search_pending = true;
+        self.error = None;
+
+        // Spawn background thread to run async search
+        thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let result = rt.block_on(async {
+                // Get GITHUB_TOKEN from environment
+                let token = std::env::var("GITHUB_TOKEN").ok();
+                let scanner = GitHubScanner::new(token);
+
+                let options = ScanOptions {
+                    concurrency: 10,
+                    use_search_api: true,
+                    show_progress: false,
+                };
+
+                let scan_result = match mode {
+                    SearchMode::User => scanner.scan_user_with_options(&query, &filters, &options).await,
+                    SearchMode::Org => scanner.scan_org_with_options(&query, &filters, &options).await,
+                };
+
+                match scan_result {
+                    Ok(result) => Ok(result.repositories),
+                    Err(e) => Err(format!("Scan failed: {}", e)),
+                }
+            });
+
+            let _ = tx.send(result);
+        });
+    }
+
+    /// Check for completed search results
+    pub fn poll_results(&mut self) {
+        if let Some(ref rx) = self.result_receiver {
+            // Non-blocking check for results
+            if let Ok(result) = rx.try_recv() {
+                match result {
+                    Ok(repos) => {
+                        self.repos = repos;
+                        self.repos.sort_by(|a, b| a.onboarding_priority.cmp(&b.onboarding_priority));
+                        self.has_searched = true;
+                        self.list_state.select(Some(0));
+                    }
+                    Err(e) => {
+                        self.error = Some(e);
+                    }
+                }
+                self.is_loading = false;
+                self.search_pending = false;
+                self.result_receiver = None;
+            }
         }
     }
 

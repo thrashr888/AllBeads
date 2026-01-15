@@ -84,6 +84,9 @@ fn run_app<B: ratatui::backend::Backend>(
         // Handle deferred context loading after draw so loading message shows
         app.do_contexts_refresh();
 
+        // Poll for GitHub search results
+        app.github_picker_view.poll_results();
+
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 // Global keys
@@ -178,8 +181,9 @@ fn run_app<B: ratatui::backend::Backend>(
                             // Input mode - capture characters for search query
                             match key.code {
                                 KeyCode::Enter => {
-                                    // Execute search or exit input mode
+                                    // Execute search and exit input mode
                                     app.github_picker_view.toggle_input_mode();
+                                    app.github_picker_view.execute_search();
                                 }
                                 KeyCode::Esc => app.github_picker_view.toggle_input_mode(),
                                 KeyCode::Backspace => app.github_picker_view.pop_char(),
@@ -195,6 +199,10 @@ fn run_app<B: ratatui::backend::Backend>(
                                 KeyCode::Char('/') => app.github_picker_view.toggle_input_mode(),
                                 KeyCode::Enter => app.github_picker_view.toggle_detail(),
                                 KeyCode::Esc => app.github_picker_view.close_detail(),
+                                KeyCode::Char('s') => {
+                                    // Re-execute search
+                                    app.github_picker_view.execute_search();
+                                }
                                 _ => {}
                             }
                         }
