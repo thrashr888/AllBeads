@@ -26,6 +26,18 @@ pub enum AgentType {
     Windsurf,
     /// Amazon Q Developer
     AmazonQ,
+    /// AWS Kiro
+    Kiro,
+    /// OpenCode
+    OpenCode,
+    /// Droid (Factory)
+    Droid,
+    /// OpenAI Codex
+    Codex,
+    /// Google Gemini CLI
+    Gemini,
+    /// Generic Agent (.agent - used by VSCode, Speckit, OpenAI, Antigravity, etc.)
+    GenericAgent,
     /// Unknown or custom agent
     Unknown,
 }
@@ -42,6 +54,12 @@ impl AgentType {
             AgentType::Continue => "Continue",
             AgentType::Windsurf => "Windsurf",
             AgentType::AmazonQ => "Amazon Q",
+            AgentType::Kiro => "AWS Kiro",
+            AgentType::OpenCode => "OpenCode",
+            AgentType::Droid => "Droid",
+            AgentType::Codex => "OpenAI Codex",
+            AgentType::Gemini => "Google Gemini",
+            AgentType::GenericAgent => "Generic Agent",
             AgentType::Unknown => "Unknown",
         }
     }
@@ -57,6 +75,12 @@ impl AgentType {
             AgentType::Continue => "continue",
             AgentType::Windsurf => "windsurf",
             AgentType::AmazonQ => "amazonq",
+            AgentType::Kiro => "kiro",
+            AgentType::OpenCode => "opencode",
+            AgentType::Droid => "droid",
+            AgentType::Codex => "codex",
+            AgentType::Gemini => "gemini",
+            AgentType::GenericAgent => "agent",
             AgentType::Unknown => "unknown",
         }
     }
@@ -205,6 +229,36 @@ pub fn detect_agents(repo_path: &Path) -> AgentScanResult {
 
     // Amazon Q detection
     if let Some(detection) = detect_amazonq(repo_path) {
+        result.detections.push(detection);
+    }
+
+    // Kiro detection
+    if let Some(detection) = detect_kiro(repo_path) {
+        result.detections.push(detection);
+    }
+
+    // OpenCode detection
+    if let Some(detection) = detect_opencode(repo_path) {
+        result.detections.push(detection);
+    }
+
+    // Droid detection
+    if let Some(detection) = detect_droid(repo_path) {
+        result.detections.push(detection);
+    }
+
+    // Codex detection
+    if let Some(detection) = detect_codex(repo_path) {
+        result.detections.push(detection);
+    }
+
+    // Gemini detection
+    if let Some(detection) = detect_gemini(repo_path) {
+        result.detections.push(detection);
+    }
+
+    // Generic Agent detection (last, as it's a catch-all)
+    if let Some(detection) = detect_generic_agent(repo_path) {
         result.detections.push(detection);
     }
 
@@ -451,6 +505,106 @@ fn detect_amazonq(repo_path: &Path) -> Option<AgentDetection> {
             AgentDetection::new(AgentType::AmazonQ, DetectionConfidence::High)
                 .with_config_path(&amazonq_dir)
                 .with_evidence(".amazonq/ directory found"),
+        );
+    }
+
+    None
+}
+
+/// Detect AWS Kiro configuration
+fn detect_kiro(repo_path: &Path) -> Option<AgentDetection> {
+    let kiro_dir = repo_path.join(".kiro");
+
+    if kiro_dir.exists() {
+        return Some(
+            AgentDetection::new(AgentType::Kiro, DetectionConfidence::High)
+                .with_config_path(&kiro_dir)
+                .with_evidence(".kiro/ directory found"),
+        );
+    }
+
+    None
+}
+
+/// Detect OpenCode configuration
+fn detect_opencode(repo_path: &Path) -> Option<AgentDetection> {
+    let opencode_json = repo_path.join("opencode.json");
+    let opencode_dir = repo_path.join(".opencode");
+
+    if opencode_json.exists() {
+        return Some(
+            AgentDetection::new(AgentType::OpenCode, DetectionConfidence::High)
+                .with_config_path(&opencode_json)
+                .with_evidence("opencode.json found"),
+        );
+    }
+
+    if opencode_dir.exists() {
+        return Some(
+            AgentDetection::new(AgentType::OpenCode, DetectionConfidence::High)
+                .with_config_path(&opencode_dir)
+                .with_evidence(".opencode/ directory found"),
+        );
+    }
+
+    None
+}
+
+/// Detect Droid (Factory) configuration
+fn detect_droid(repo_path: &Path) -> Option<AgentDetection> {
+    let factory_dir = repo_path.join(".factory");
+
+    if factory_dir.exists() {
+        return Some(
+            AgentDetection::new(AgentType::Droid, DetectionConfidence::High)
+                .with_config_path(&factory_dir)
+                .with_evidence(".factory/ directory found"),
+        );
+    }
+
+    None
+}
+
+/// Detect OpenAI Codex configuration
+fn detect_codex(repo_path: &Path) -> Option<AgentDetection> {
+    let codex_dir = repo_path.join(".codex");
+
+    if codex_dir.exists() {
+        return Some(
+            AgentDetection::new(AgentType::Codex, DetectionConfidence::High)
+                .with_config_path(&codex_dir)
+                .with_evidence(".codex/ directory found"),
+        );
+    }
+
+    None
+}
+
+/// Detect Google Gemini CLI configuration
+fn detect_gemini(repo_path: &Path) -> Option<AgentDetection> {
+    let gemini_dir = repo_path.join(".gemini");
+
+    if gemini_dir.exists() {
+        return Some(
+            AgentDetection::new(AgentType::Gemini, DetectionConfidence::High)
+                .with_config_path(&gemini_dir)
+                .with_evidence(".gemini/ directory found"),
+        );
+    }
+
+    None
+}
+
+/// Detect Generic Agent configuration (.agent)
+/// Used by VSCode, Speckit, OpenAI, Google Antigravity, and others
+fn detect_generic_agent(repo_path: &Path) -> Option<AgentDetection> {
+    let agent_dir = repo_path.join(".agent");
+
+    if agent_dir.exists() {
+        return Some(
+            AgentDetection::new(AgentType::GenericAgent, DetectionConfidence::High)
+                .with_config_path(&agent_dir)
+                .with_evidence(".agent/ directory found (VSCode/Speckit/OpenAI/Antigravity)"),
         );
     }
 

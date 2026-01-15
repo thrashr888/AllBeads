@@ -8698,6 +8698,12 @@ fn handle_agents_command(
                     "continue" => Some(AgentType::Continue),
                     "windsurf" => Some(AgentType::Windsurf),
                     "amazonq" => Some(AgentType::AmazonQ),
+                    "kiro" => Some(AgentType::Kiro),
+                    "opencode" => Some(AgentType::OpenCode),
+                    "droid" | "factory" => Some(AgentType::Droid),
+                    "codex" => Some(AgentType::Codex),
+                    "gemini" => Some(AgentType::Gemini),
+                    "agent" | "generic" => Some(AgentType::GenericAgent),
                     _ => None,
                 }
             });
