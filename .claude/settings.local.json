@@ -19,6 +19,7 @@
       "Bash(bd epic:*)",
       "Bash(bd graph:*)",
       "Bash(bd help:*)",
+      "Bash(bd init --help:*)",
       "Bash(bd list:*)",
       "Bash(bd q:*)",
       "Bash(bd ready:*)",
@@ -61,7 +62,8 @@
       "Skill(beads:show)",
       "Skill(beads:stats)",
       "WebFetch(domain:docs.rs)",
-      "Bash(bd init --help:*)"
+      "WebFetch(domain:github.com)",
+      "Bash(GITHUB_TOKEN=* cargo run:*)"
     ]
   }
 }

@@ -4,14 +4,28 @@
 //! - Repositories not yet managed by AllBeads
 //! - Repositories with agent configurations (adoption opportunities)
 //! - Repository metadata for prioritization
+//!
+//! # Scanning Strategy
+//!
+//! Two modes are available:
+//! 1. **Search Mode** (default, fast): Uses GitHub Search API to find agent config files
+//!    across all repos in a single query per file type. Much faster for large accounts.
+//! 2. **Per-Repo Mode** (thorough): Checks each repo individually via Contents API.
+//!    More thorough but slower and uses more API quota.
+//!
+//! The scanner uses parallel batch processing (configurable concurrency) to maximize
+//! throughput while respecting rate limits.
 
 use crate::config::AllBeadsConfig;
 use crate::governance::agents::AgentType;
 use crate::Result;
 use chrono::{DateTime, Utc};
+use futures::stream::{self, StreamExt};
 use reqwest::{header, Client};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::io::{self, Write};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// GitHub repository from REST API
@@ -143,6 +157,45 @@ pub struct ScanFilter {
     pub topics: Vec<String>,
 }
 
+/// Scan options
+#[derive(Debug, Clone)]
+pub struct ScanOptions {
+    /// Number of concurrent agent detection requests (default: 10)
+    pub concurrency: usize,
+    /// Use GitHub Search API instead of per-repo checks (faster)
+    pub use_search_api: bool,
+    /// Show progress output
+    pub show_progress: bool,
+}
+
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            concurrency: 10,
+            use_search_api: true,
+            show_progress: true,
+        }
+    }
+}
+
+/// GitHub code search result
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct SearchCodeResult {
+    total_count: u32,
+    items: Vec<SearchCodeItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SearchCodeItem {
+    repository: SearchRepoRef,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SearchRepoRef {
+    full_name: String,
+}
+
 /// GitHub scanner client
 pub struct GitHubScanner {
     client: Client,
@@ -189,16 +242,62 @@ impl GitHubScanner {
 
     /// Scan a user's repositories
     pub async fn scan_user(&self, username: &str, filter: &ScanFilter) -> Result<ScanResult> {
-        let repos = self.list_user_repos(username).await?;
-        self.process_repos(repos, ScanSource::User(username.to_string()), filter)
+        self.scan_user_with_options(username, filter, &ScanOptions::default())
             .await
+    }
+
+    /// Scan a user's repositories with options
+    pub async fn scan_user_with_options(
+        &self,
+        username: &str,
+        filter: &ScanFilter,
+        options: &ScanOptions,
+    ) -> Result<ScanResult> {
+        if options.show_progress {
+            eprint!("Fetching repository list for {}...", username);
+            io::stderr().flush().ok();
+        }
+        let repos = self.list_user_repos(username).await?;
+        if options.show_progress {
+            eprintln!(" found {} repos", repos.len());
+        }
+        self.process_repos_with_options(
+            repos,
+            ScanSource::User(username.to_string()),
+            filter,
+            options,
+        )
+        .await
     }
 
     /// Scan an organization's repositories
     pub async fn scan_org(&self, org: &str, filter: &ScanFilter) -> Result<ScanResult> {
-        let repos = self.list_org_repos(org).await?;
-        self.process_repos(repos, ScanSource::Organization(org.to_string()), filter)
+        self.scan_org_with_options(org, filter, &ScanOptions::default())
             .await
+    }
+
+    /// Scan an organization's repositories with options
+    pub async fn scan_org_with_options(
+        &self,
+        org: &str,
+        filter: &ScanFilter,
+        options: &ScanOptions,
+    ) -> Result<ScanResult> {
+        if options.show_progress {
+            eprint!("Fetching repository list for {}...", org);
+            io::stderr().flush().ok();
+        }
+        let repos = self.list_org_repos(org).await?;
+        if options.show_progress {
+            eprintln!(" found {} repos", repos.len());
+        }
+        self.process_repos_with_options(
+            repos,
+            ScanSource::Organization(org.to_string()),
+            filter,
+            options,
+        )
+        .await
     }
 
     /// List all repos for a user
@@ -293,22 +392,37 @@ impl GitHubScanner {
         Ok(all_repos)
     }
 
-    /// Process raw repos into scan results
+    /// Process raw repos into scan results (default options)
+    #[allow(dead_code)]
     async fn process_repos(
         &self,
         repos: Vec<GitHubRepo>,
         source: ScanSource,
         filter: &ScanFilter,
     ) -> Result<ScanResult> {
-        let now = Utc::now();
+        self.process_repos_with_options(repos, source, filter, &ScanOptions::default())
+            .await
+    }
 
-        // Load managed repos from AllBeads config
+    /// Process raw repos into scan results with options
+    async fn process_repos_with_options(
+        &self,
+        repos: Vec<GitHubRepo>,
+        source: ScanSource,
+        filter: &ScanFilter,
+        options: &ScanOptions,
+    ) -> Result<ScanResult> {
+        let now = Utc::now();
         let managed_repos = self.get_managed_repos();
 
-        let mut scanned_repos = Vec::new();
+        // First pass: filter repos and collect metadata
+        if options.show_progress {
+            eprintln!("Filtering repositories...");
+        }
+
+        let mut filtered_repos: Vec<(GitHubRepo, Option<DateTime<Utc>>, DateTime<Utc>, Option<i64>, bool)> = Vec::new();
 
         for repo in repos {
-            // Parse dates
             let last_push = repo
                 .pushed_at
                 .as_ref()
@@ -355,17 +469,34 @@ impl GitHubScanner {
                 }
             }
 
-            // Check if managed
             let managed = managed_repos.contains(&repo.full_name.to_lowercase())
                 || managed_repos.contains(&repo.name.to_lowercase());
 
-            // Detect agents by checking for known files via API
-            let detected_agents = self
-                .detect_agents_via_api(&repo.full_name, &repo.default_branch)
-                .await
+            filtered_repos.push((repo, last_push, created_at, days_since_push, managed));
+        }
+
+        if options.show_progress {
+            eprintln!("  {} repos after filtering", filtered_repos.len());
+        }
+
+        // Second pass: detect agents
+        // Use GitHub Search API if enabled (much faster for many repos)
+        let agent_map: HashMap<String, Vec<AgentType>> = if options.use_search_api && self.token.is_some() {
+            self.detect_agents_via_search(&source, options).await?
+        } else {
+            // Fallback: parallel per-repo checks
+            self.detect_agents_parallel(&filtered_repos, options).await?
+        };
+
+        // Build final results
+        let mut scanned_repos = Vec::new();
+
+        for (repo, last_push, created_at, days_since_push, managed) in filtered_repos {
+            let detected_agents = agent_map
+                .get(&repo.full_name.to_lowercase())
+                .cloned()
                 .unwrap_or_default();
 
-            // Calculate priority
             let onboarding_priority = self.calculate_priority(
                 &repo,
                 days_since_push,
@@ -398,7 +529,6 @@ impl GitHubScanner {
 
         // Sort by priority then by stars
         scanned_repos.sort_by(|a, b| {
-            // First by priority (High < Medium < Low < Skip)
             let priority_order = |p: &OnboardingPriority| -> u8 {
                 match p {
                     OnboardingPriority::High => 0,
@@ -412,12 +542,14 @@ impl GitHubScanner {
             if pa != pb {
                 return pa.cmp(&pb);
             }
-            // Then by stars (descending)
             b.stars.cmp(&a.stars)
         });
 
-        // Calculate summary
         let summary = self.calculate_summary(&scanned_repos);
+
+        if options.show_progress {
+            eprintln!("Scan complete!");
+        }
 
         Ok(ScanResult {
             timestamp: now,
@@ -425,6 +557,157 @@ impl GitHubScanner {
             repositories: scanned_repos,
             summary,
         })
+    }
+
+    /// Detect agents using GitHub Search API (one search per agent type)
+    /// This is MUCH faster than per-repo checks for large accounts
+    async fn detect_agents_via_search(
+        &self,
+        source: &ScanSource,
+        options: &ScanOptions,
+    ) -> Result<HashMap<String, Vec<AgentType>>> {
+        let mut agent_map: HashMap<String, Vec<AgentType>> = HashMap::new();
+
+        // Agent file patterns to search
+        let searches = vec![
+            ("filename:CLAUDE.md", AgentType::Claude),
+            ("filename:.cursorrules", AgentType::Cursor),
+            ("path:.github filename:copilot-instructions.md", AgentType::Copilot),
+            ("filename:.aider.conf.yml", AgentType::Aider),
+            ("path:.kiro", AgentType::Kiro),
+            ("path:.codex", AgentType::Codex),
+            ("path:.gemini", AgentType::Gemini),
+            ("path:.agent", AgentType::GenericAgent),
+        ];
+
+        let qualifier = match source {
+            ScanSource::User(u) => format!("user:{}", u),
+            ScanSource::Organization(o) => format!("org:{}", o),
+        };
+
+        if options.show_progress {
+            eprintln!("Detecting agents via GitHub Search API ({} file patterns)...", searches.len());
+        }
+
+        for (i, (query, agent_type)) in searches.iter().enumerate() {
+            if options.show_progress {
+                eprint!("  [{}/{}] Searching for {}...", i + 1, searches.len(), agent_type.name());
+                io::stderr().flush().ok();
+            }
+
+            let full_query = format!("{} {}", query, qualifier);
+            let url = format!(
+                "{}/search/code?q={}&per_page=100",
+                self.base_url,
+                urlencoding::encode(&full_query)
+            );
+
+            let mut request = self.client.get(&url);
+            if let Some(ref token) = self.token {
+                request = request.bearer_auth(token);
+            }
+
+            match request.send().await {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        if let Ok(result) = response.json::<SearchCodeResult>().await {
+                            let count = result.items.len();
+                            for item in result.items {
+                                let repo_name = item.repository.full_name.to_lowercase();
+                                agent_map
+                                    .entry(repo_name)
+                                    .or_default()
+                                    .push(*agent_type);
+                            }
+                            if options.show_progress {
+                                eprintln!(" {} repos", count);
+                            }
+                        } else if options.show_progress {
+                            eprintln!(" (parse error)");
+                        }
+                    } else if options.show_progress {
+                        eprintln!(" (API error: {})", response.status());
+                    }
+                }
+                Err(_) if options.show_progress => {
+                    eprintln!(" (network error)");
+                }
+                Err(_) => {}
+            }
+
+            // Small delay to avoid rate limiting
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        Ok(agent_map)
+    }
+
+    /// Detect agents in parallel batches (fallback when search API unavailable)
+    async fn detect_agents_parallel(
+        &self,
+        repos: &[(GitHubRepo, Option<DateTime<Utc>>, DateTime<Utc>, Option<i64>, bool)],
+        options: &ScanOptions,
+    ) -> Result<HashMap<String, Vec<AgentType>>> {
+        let total = repos.len();
+        let agent_map: Arc<tokio::sync::Mutex<HashMap<String, Vec<AgentType>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        if options.show_progress {
+            eprintln!(
+                "Detecting agents via per-repo checks ({} repos, {} concurrent)...",
+                total, options.concurrency
+            );
+        }
+
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        // Process repos in parallel batches
+        let _results: Vec<_> = stream::iter(repos.iter().enumerate())
+            .map(|(_idx, (repo, _, _, _, _))| {
+                let client = self.client.clone();
+                let token = self.token.clone();
+                let base_url = self.base_url.clone();
+                let full_name = repo.full_name.clone();
+                let default_branch = repo.default_branch.clone();
+                let agent_map = agent_map.clone();
+                let counter = counter.clone();
+                let show_progress = options.show_progress;
+                let total = total;
+
+                async move {
+                    let agents = detect_agents_for_repo(
+                        &client,
+                        token.as_deref(),
+                        &base_url,
+                        &full_name,
+                        &default_branch,
+                    )
+                    .await;
+
+                    let count = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
+                    if show_progress {
+                        let pct = (count as f64 / total as f64) * 100.0;
+                        eprint!("\r  [{}/{}] {:.0}% - {}                    ", count, total, pct, full_name);
+                        io::stderr().flush().ok();
+                    }
+
+                    let mut map = agent_map.lock().await;
+                    if !agents.is_empty() {
+                        map.insert(full_name.to_lowercase(), agents);
+                    }
+                }
+            })
+            .buffer_unordered(options.concurrency)
+            .collect()
+            .await;
+
+        if options.show_progress {
+            eprintln!();
+        }
+
+        let map = agent_map.lock().await;
+        Ok(map.clone())
     }
 
     /// Get list of managed repos from AllBeads config
@@ -450,6 +733,7 @@ impl GitHubScanner {
     }
 
     /// Detect agents by checking for config files via GitHub Contents API
+    #[allow(dead_code)]
     async fn detect_agents_via_api(
         &self,
         full_name: &str,
@@ -575,6 +859,55 @@ impl GitHubScanner {
 
         summary
     }
+}
+
+/// Standalone function to detect agents for a single repo (used in parallel processing)
+async fn detect_agents_for_repo(
+    client: &Client,
+    token: Option<&str>,
+    base_url: &str,
+    full_name: &str,
+    default_branch: &str,
+) -> Vec<AgentType> {
+    let mut agents = Vec::new();
+
+    let checks = vec![
+        ("CLAUDE.md", AgentType::Claude),
+        (".claude", AgentType::Claude),
+        (".github/copilot-instructions.md", AgentType::Copilot),
+        (".cursorrules", AgentType::Cursor),
+        (".aider.conf.yml", AgentType::Aider),
+        (".cody", AgentType::Cody),
+        (".continue", AgentType::Continue),
+        (".windsurf", AgentType::Windsurf),
+        (".amazonq", AgentType::AmazonQ),
+        (".kiro", AgentType::Kiro),
+        (".opencode", AgentType::OpenCode),
+        (".factory", AgentType::Droid),
+        (".codex", AgentType::Codex),
+        (".gemini", AgentType::Gemini),
+        (".agent", AgentType::GenericAgent),
+    ];
+
+    for (path, agent_type) in checks {
+        let url = format!(
+            "{}/repos/{}/contents/{}?ref={}",
+            base_url, full_name, path, default_branch
+        );
+
+        let mut request = client.head(&url);
+        if let Some(t) = token {
+            request = request.bearer_auth(t);
+        }
+
+        if let Ok(response) = request.send().await {
+            if response.status().is_success() && !agents.contains(&agent_type) {
+                agents.push(agent_type);
+            }
+        }
+    }
+
+    agents
 }
 
 /// Print scan results in a formatted way
