@@ -533,6 +533,10 @@ pub enum Commands {
         /// Examples: https://github.com/user/repo, git@github.com:user/repo.git, /path/to/repo, .
         target: String,
 
+        /// Use guided step-by-step wizard with interactive menus
+        #[arg(short, long)]
+        wizard: bool,
+
         /// Use defaults without interactive prompts
         #[arg(long)]
         non_interactive: bool,

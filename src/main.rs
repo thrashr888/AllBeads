@@ -1143,6 +1143,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
         Commands::Onboard {
             target,
+            wizard,
             non_interactive,
             skip_clone,
             skip_beads,
@@ -1152,18 +1153,33 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             context_name,
             path,
         } => {
-            handle_onboard_repository(
-                &target,
-                non_interactive,
-                skip_clone,
-                skip_beads,
-                skip_skills,
-                skip_hooks,
-                skip_issues,
-                context_name.as_deref(),
-                path.as_deref(),
-                &config_for_commands,
-            )?;
+            if wizard {
+                // Use the guided wizard
+                use allbeads::onboarding::OnboardingWizard;
+                let repo_path = if target == "." {
+                    std::env::current_dir()?
+                } else if target.starts_with("http") || target.starts_with("git@") {
+                    eprintln!("Wizard mode requires a local path. Use without --wizard for URLs.");
+                    return Ok(());
+                } else {
+                    std::path::PathBuf::from(&target)
+                };
+                let mut wiz = OnboardingWizard::new(&repo_path)?;
+                wiz.run()?;
+            } else {
+                handle_onboard_repository(
+                    &target,
+                    non_interactive,
+                    skip_clone,
+                    skip_beads,
+                    skip_skills,
+                    skip_hooks,
+                    skip_issues,
+                    context_name.as_deref(),
+                    path.as_deref(),
+                    &config_for_commands,
+                )?;
+            }
         }
 
         Commands::Update {

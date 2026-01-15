@@ -4,9 +4,11 @@
 //! into the AllBeads ecosystem, from initial tracking to full adoption.
 //!
 //! - `workflow`: Interactive onboarding workflow (status tracking)
+//! - `wizard`: Guided step-by-step onboarding wizard with BSICH status
 //! - `repository`: Repository onboarding operations (clone, init, configure)
 
 pub mod repository;
+pub mod wizard;
 pub mod workflow;
 
 use crate::config::BossContext;
@@ -14,6 +16,7 @@ use crate::git::BossRepo;
 use crate::Result;
 use std::path::PathBuf;
 
+pub use wizard::OnboardingWizard;
 pub use workflow::OnboardingWorkflow;
 
 /// Onboarding stage for a repository
