@@ -197,7 +197,27 @@ fn run_app<B: ratatui::backend::Backend>(
                                 KeyCode::Char('k') | KeyCode::Up => app.github_picker_view.previous(),
                                 KeyCode::Char('m') => app.github_picker_view.toggle_mode(),
                                 KeyCode::Char('/') => app.github_picker_view.toggle_input_mode(),
-                                KeyCode::Enter => app.github_picker_view.toggle_detail(),
+                                KeyCode::Enter => {
+                                    // If in detail view and repo not managed, mark for onboard
+                                    if app.github_picker_view.show_detail {
+                                        if let Some(repo) = app.github_picker_view.selected_repo() {
+                                            if !app.github_picker_view.is_managed(&repo.name) {
+                                                app.github_picker_view.mark_for_onboard();
+                                            }
+                                        }
+                                        app.github_picker_view.close_detail();
+                                    } else {
+                                        app.github_picker_view.toggle_detail();
+                                    }
+                                }
+                                KeyCode::Char('o') => {
+                                    // Quick onboard without opening detail
+                                    if let Some(repo) = app.github_picker_view.selected_repo() {
+                                        if !app.github_picker_view.is_managed(&repo.name) {
+                                            app.github_picker_view.mark_for_onboard();
+                                        }
+                                    }
+                                }
                                 KeyCode::Esc => app.github_picker_view.close_detail(),
                                 KeyCode::Char('s') => {
                                     // Re-execute search

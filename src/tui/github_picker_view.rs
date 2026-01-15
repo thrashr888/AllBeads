@@ -62,6 +62,10 @@ pub struct GitHubPickerView {
     pub result_receiver: Option<mpsc::Receiver<Result<Vec<ScannedRepo>, String>>>,
     /// Whether a search is pending
     pub search_pending: bool,
+    /// Repository marked for onboarding (clone_url)
+    pub pending_onboard: Option<String>,
+    /// Status message to display
+    pub status_message: Option<String>,
 }
 
 impl Default for GitHubPickerView {
@@ -89,7 +93,35 @@ impl GitHubPickerView {
             input_mode: true,
             result_receiver: None,
             search_pending: false,
+            pending_onboard: None,
+            status_message: None,
         }
+    }
+
+    /// Mark the currently selected repo for onboarding
+    pub fn mark_for_onboard(&mut self) {
+        // Clone data first to avoid borrow issues
+        let repo_info = self.selected_repo().map(|r| (r.name.clone(), r.clone_url.clone()));
+
+        if let Some((name, clone_url)) = repo_info {
+            if !self.is_managed(&name) {
+                self.pending_onboard = Some(clone_url);
+                self.status_message = Some(format!(
+                    "Marked '{}' for onboarding. Press 'q' to exit and run onboard.",
+                    name
+                ));
+            }
+        }
+    }
+
+    /// Get the pending onboard URL and clear it
+    pub fn take_pending_onboard(&mut self) -> Option<String> {
+        self.pending_onboard.take()
+    }
+
+    /// Clear status message
+    pub fn clear_status(&mut self) {
+        self.status_message = None;
     }
 
     /// Execute search in a background thread
@@ -272,28 +304,55 @@ impl GitHubPickerView {
 
     /// Render the view
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        // Split into header, search bar, and results
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
+        // Split into header, search bar, status (optional), and results
+        let has_status = self.status_message.is_some();
+        let constraints = if has_status {
+            vec![
+                Constraint::Length(3), // Header
+                Constraint::Length(3), // Search bar
+                Constraint::Length(3), // Status bar
+                Constraint::Min(0),    // Results
+            ]
+        } else {
+            vec![
                 Constraint::Length(3), // Header
                 Constraint::Length(3), // Search bar
                 Constraint::Min(0),    // Results
-            ])
+            ]
+        };
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
             .split(area);
 
         self.render_header(frame, chunks[0]);
         self.render_search_bar(frame, chunks[1]);
 
-        if self.show_detail {
+        if has_status {
+            self.render_status_bar(frame, chunks[2]);
+            if self.show_detail {
+                self.render_detail(frame, chunks[3]);
+            } else {
+                self.render_results(frame, chunks[3]);
+            }
+        } else if self.show_detail {
             self.render_detail(frame, chunks[2]);
         } else {
             self.render_results(frame, chunks[2]);
         }
     }
 
+    fn render_status_bar(&self, frame: &mut Frame, area: Rect) {
+        let msg = self.status_message.as_deref().unwrap_or("");
+        let status = Paragraph::new(msg)
+            .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            .block(Block::default().borders(Borders::ALL).title("Status"));
+        frame.render_widget(status, area);
+    }
+
     fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let mode_text = format!("[m] Mode: {} | [/] Search | [Enter] Select | [Tab] Switch view", self.search_mode.name());
+        let mode_text = format!("[m] Mode: {} | [/] Search | [o] Onboard | [Enter] Detail | [Tab] Switch view", self.search_mode.name());
         let header = Paragraph::new(mode_text)
             .style(Style::default().fg(Color::Cyan))
             .block(Block::default().borders(Borders::ALL).title("GitHub Repo Picker"));
@@ -467,7 +526,7 @@ impl GitHubPickerView {
         if !is_managed {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("Press Enter to onboard this repository", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                Span::styled("Press Enter to mark for onboarding", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
             ]));
         }
 
