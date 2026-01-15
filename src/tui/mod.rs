@@ -208,7 +208,9 @@ fn run_app<B: ratatui::backend::Backend>(
                             // Navigation mode
                             match key.code {
                                 KeyCode::Char('j') | KeyCode::Down => app.github_picker_view.next(),
-                                KeyCode::Char('k') | KeyCode::Up => app.github_picker_view.previous(),
+                                KeyCode::Char('k') | KeyCode::Up => {
+                                    app.github_picker_view.previous()
+                                }
                                 KeyCode::Char('m') => app.github_picker_view.toggle_mode(),
                                 KeyCode::Char('/') => app.github_picker_view.toggle_input_mode(),
                                 KeyCode::Char(' ') => {
@@ -230,7 +232,9 @@ fn run_app<B: ratatui::backend::Backend>(
                                     if !app.github_picker_view.marked_repos.is_empty() {
                                         app.onboard_requested = true;
                                         return Ok(());
-                                    } else if let Some(repo) = app.github_picker_view.selected_repo() {
+                                    } else if let Some(repo) =
+                                        app.github_picker_view.selected_repo()
+                                    {
                                         // No marked repos - onboard current selection if not managed
                                         if !app.github_picker_view.is_managed(&repo.name) {
                                             let url = repo.clone_url.clone();

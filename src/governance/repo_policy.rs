@@ -292,7 +292,10 @@ pub fn check_policy(repo_path: &Path, policy: &RepoPolicy) -> PolicyCheckResult 
                     &policy.name,
                     policy.enforcement,
                     format!("Missing: {}", missing.join(", ")),
-                    Some(format!("Create the required file(s): {}", missing.join(", "))),
+                    Some(format!(
+                        "Create the required file(s): {}",
+                        missing.join(", ")
+                    )),
                 )
             }
         }
@@ -319,7 +322,10 @@ pub fn check_policy(repo_path: &Path, policy: &RepoPolicy) -> PolicyCheckResult 
                 policy_name: policy.name.clone(),
                 passed: true,
                 enforcement: policy.enforcement,
-                message: format!("Onboarding score check (minimum: {}%) - not yet implemented", minimum),
+                message: format!(
+                    "Onboarding score check (minimum: {}%) - not yet implemented",
+                    minimum
+                ),
                 remediation: None,
             }
         }
@@ -350,10 +356,7 @@ pub fn check_policy(repo_path: &Path, policy: &RepoPolicy) -> PolicyCheckResult 
                             &policy.name,
                             policy.enforcement,
                             format!("Unapproved agent detected: {}", agent.name()),
-                            Some(format!(
-                                "Only allowed agents: {}",
-                                allowed.join(", ")
-                            )),
+                            Some(format!("Only allowed agents: {}", allowed.join(", "))),
                         );
                     }
                 }
@@ -484,6 +487,8 @@ mod tests {
         });
 
         assert!(config.has_exemption("test-repo", "require-beads").is_some());
-        assert!(config.has_exemption("other-repo", "require-beads").is_none());
+        assert!(config
+            .has_exemption("other-repo", "require-beads")
+            .is_none());
     }
 }

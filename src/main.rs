@@ -1025,7 +1025,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
             // Handle onboarding request from GitHub picker
             if !tui_result.repos_to_onboard.is_empty() {
-                println!("\nOnboarding {} repositories...\n", tui_result.repos_to_onboard.len());
+                println!(
+                    "\nOnboarding {} repositories...\n",
+                    tui_result.repos_to_onboard.len()
+                );
                 for repo_url in &tui_result.repos_to_onboard {
                     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
                     handle_onboard_repository(
@@ -1043,7 +1046,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     println!();
                 }
                 println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                println!("✓ Onboarding complete for {} repositories", tui_result.repos_to_onboard.len());
+                println!(
+                    "✓ Onboarding complete for {} repositories",
+                    tui_result.repos_to_onboard.len()
+                );
             }
         }
 
@@ -5200,6 +5206,113 @@ fn handle_context_command(
                 eprintln!();
             }
         }
+
+        ContextCommands::New {
+            name,
+            description,
+            private,
+            org,
+            readme: _,
+            gitignore,
+            license,
+            template,
+            init_beads,
+            init_agents,
+            path,
+            no_clone,
+            wizard,
+            non_interactive,
+        } => {
+            use allbeads::context_new::{
+                create_new_repository, NewRepoConfig, NewRepoPrompt,
+            };
+
+            // Determine mode: wizard, non-interactive, or standard
+            let repo_config = if *wizard {
+                // Interactive TUI wizard
+                let prompt = NewRepoPrompt::new();
+                prompt.run()?
+            } else if *non_interactive {
+                // Non-interactive: require name
+                let repo_name = name.clone().ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(
+                        "Repository name required in non-interactive mode. Use --name <name>"
+                            .to_string(),
+                    )
+                })?;
+                NewRepoConfig {
+                    name: repo_name,
+                    description: description.clone(),
+                    private: *private,
+                    org: org.clone(),
+                    gitignore: gitignore.clone(),
+                    license: license.clone(),
+                    template: template.clone(),
+                    init_beads: *init_beads,
+                    init_agents: init_agents
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .collect(),
+                    clone_path: path.clone(),
+                    no_clone: *no_clone,
+                }
+            } else {
+                // Standard mode: prompt for missing required fields
+                let prompt = NewRepoPrompt::new();
+                prompt.run_with_defaults(
+                    name.clone(),
+                    description.clone(),
+                    *private,
+                    org.clone(),
+                    gitignore.clone(),
+                    license.clone(),
+                    template.clone(),
+                    *init_beads,
+                    init_agents.clone(),
+                    path.clone(),
+                    *no_clone,
+                )?
+            };
+
+            // Create the repository
+            let result = create_new_repository(&repo_config)?;
+
+            // Add to config if we have a local path
+            if let Some(ref local_path) = result.local_path {
+                let auth_strategy = if result.clone_url.starts_with("https://") {
+                    AuthStrategy::PersonalAccessToken
+                } else {
+                    AuthStrategy::SshAgent
+                };
+
+                let mut new_context =
+                    BossContext::new(&result.repo_name, &result.clone_url, auth_strategy);
+                new_context.path = Some(local_path.clone());
+
+                config.add_context(new_context);
+                config.save(&config_file)?;
+
+                println!(
+                    "\n{} Added context '{}' to AllBeads config",
+                    style::success("✓"),
+                    result.repo_name
+                );
+            }
+
+            // Summary
+            println!("\n{}", style::header("Repository Created Successfully"));
+            println!("  Name:   {}", result.repo_name);
+            println!("  URL:    {}", result.html_url);
+            if let Some(ref path) = result.local_path {
+                println!("  Path:   {}", path.display());
+            }
+            if result.beads_initialized {
+                println!("  Beads:  initialized");
+            }
+            if !result.agents_configured.is_empty() {
+                println!("  Agents: {}", result.agents_configured.join(", "));
+            }
+        }
     }
 
     Ok(())
@@ -8739,25 +8852,26 @@ fn handle_agents_command(
             }
 
             // Filter by agent type if specified
-            let agent_filter: Option<AgentType> = agent.as_ref().and_then(|a| {
-                match a.to_lowercase().as_str() {
-                    "claude" => Some(AgentType::Claude),
-                    "copilot" => Some(AgentType::Copilot),
-                    "cursor" => Some(AgentType::Cursor),
-                    "aider" => Some(AgentType::Aider),
-                    "cody" => Some(AgentType::Cody),
-                    "continue" => Some(AgentType::Continue),
-                    "windsurf" => Some(AgentType::Windsurf),
-                    "amazonq" => Some(AgentType::AmazonQ),
-                    "kiro" => Some(AgentType::Kiro),
-                    "opencode" => Some(AgentType::OpenCode),
-                    "droid" | "factory" => Some(AgentType::Droid),
-                    "codex" => Some(AgentType::Codex),
-                    "gemini" => Some(AgentType::Gemini),
-                    "agent" | "generic" => Some(AgentType::GenericAgent),
-                    _ => None,
-                }
-            });
+            let agent_filter: Option<AgentType> =
+                agent
+                    .as_ref()
+                    .and_then(|a| match a.to_lowercase().as_str() {
+                        "claude" => Some(AgentType::Claude),
+                        "copilot" => Some(AgentType::Copilot),
+                        "cursor" => Some(AgentType::Cursor),
+                        "aider" => Some(AgentType::Aider),
+                        "cody" => Some(AgentType::Cody),
+                        "continue" => Some(AgentType::Continue),
+                        "windsurf" => Some(AgentType::Windsurf),
+                        "amazonq" => Some(AgentType::AmazonQ),
+                        "kiro" => Some(AgentType::Kiro),
+                        "opencode" => Some(AgentType::OpenCode),
+                        "droid" | "factory" => Some(AgentType::Droid),
+                        "codex" => Some(AgentType::Codex),
+                        "gemini" => Some(AgentType::Gemini),
+                        "agent" | "generic" => Some(AgentType::GenericAgent),
+                        _ => None,
+                    });
 
             if *json {
                 let filtered: Vec<_> = all_detections
@@ -8767,8 +8881,7 @@ fn handle_agents_command(
                             .detections
                             .iter()
                             .filter(|d| {
-                                let agent_match =
-                                    agent_filter.map_or(true, |af| d.agent == af);
+                                let agent_match = agent_filter.map_or(true, |af| d.agent == af);
                                 let conf_match = !*high_confidence
                                     || d.confidence
                                         == allbeads::governance::DetectionConfidence::High;
@@ -8888,7 +9001,11 @@ fn handle_agents_command(
 
             storage.record_scan(&context_name, path, &result)?;
 
-            println!("✓ Recorded agent scan for {} ({} agents detected)", context_name, result.detections.len());
+            println!(
+                "✓ Recorded agent scan for {} ({} agents detected)",
+                context_name,
+                result.detections.len()
+            );
             if result.has_agents() {
                 for detection in &result.detections {
                     println!("  • {}", detection.agent.name());
@@ -9135,7 +9252,11 @@ fn handle_governance_command(
                     Enforcement::SoftMandatory => "soft_mandatory",
                     Enforcement::HardMandatory => "hard_mandatory",
                 };
-                let status = if policy.enabled { "enabled" } else { "disabled" };
+                let status = if policy.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
                 println!("  {} {} ({}) - {}", icon, name, enforcement_label, status);
                 println!("    {}", policy.description);
             }
@@ -9188,14 +9309,15 @@ fn handle_governance_command(
             let results = check_all_policies(&repo_path, &repo_name, &config);
 
             // Filter by enforcement level if specified
-            let enforcement_filter: Option<Enforcement> = enforcement.as_ref().and_then(|e| {
-                match e.to_lowercase().as_str() {
-                    "advisory" => Some(Enforcement::Advisory),
-                    "soft_mandatory" | "soft" => Some(Enforcement::SoftMandatory),
-                    "hard_mandatory" | "hard" => Some(Enforcement::HardMandatory),
-                    _ => None,
-                }
-            });
+            let enforcement_filter: Option<Enforcement> =
+                enforcement
+                    .as_ref()
+                    .and_then(|e| match e.to_lowercase().as_str() {
+                        "advisory" => Some(Enforcement::Advisory),
+                        "soft_mandatory" | "soft" => Some(Enforcement::SoftMandatory),
+                        "hard_mandatory" | "hard" => Some(Enforcement::HardMandatory),
+                        _ => None,
+                    });
 
             // Collect violations (failed checks)
             let violations: Vec<_> = results
@@ -9278,9 +9400,10 @@ fn handle_governance_command(
             let mut config = RepoPolicyConfig::load(&policy_config_path)?;
 
             // Check if exemption already exists
-            let already_exists = config.exemptions.iter().any(|e| {
-                e.repo == *repo && e.policy == *policy
-            });
+            let already_exists = config
+                .exemptions
+                .iter()
+                .any(|e| e.repo == *repo && e.policy == *policy);
 
             if already_exists {
                 println!("⚠️  Exemption already exists for {} / {}", repo, policy);
@@ -9317,9 +9440,9 @@ fn handle_governance_command(
             let mut config = RepoPolicyConfig::load(&policy_config_path)?;
 
             let original_len = config.exemptions.len();
-            config.exemptions.retain(|e| {
-                !(e.repo == *repo && e.policy == *policy)
-            });
+            config
+                .exemptions
+                .retain(|e| !(e.repo == *repo && e.policy == *policy));
 
             if config.exemptions.len() == original_len {
                 println!("⚠️  No exemption found for {} / {}", repo, policy);
@@ -9572,7 +9695,8 @@ async fn handle_scan_command(
 
             if parts.len() < 2 {
                 return Err(allbeads::AllBeadsError::Config(
-                    "Invalid repo URL. Expected format: user/repo or github.com/user/repo".to_string(),
+                    "Invalid repo URL. Expected format: user/repo or github.com/user/repo"
+                        .to_string(),
                 ));
             }
 

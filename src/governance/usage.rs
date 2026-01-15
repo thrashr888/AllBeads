@@ -208,7 +208,11 @@ impl UsageStorage {
     }
 
     /// Get the last scan timestamp for a repo
-    pub fn get_last_scan(&self, context_name: &str, repo_path: &str) -> Result<Option<DateTime<Utc>>> {
+    pub fn get_last_scan(
+        &self,
+        context_name: &str,
+        repo_path: &str,
+    ) -> Result<Option<DateTime<Utc>>> {
         let result: Option<String> = self
             .conn
             .query_row(
@@ -232,11 +236,9 @@ impl UsageStorage {
 
     /// Get total record count
     pub fn get_record_count(&self) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM usage_records",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM usage_records", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
@@ -263,7 +265,10 @@ pub fn print_usage_stats(stats: &UsageStats, trends: &[UsageTrend], days: u32) {
     println!("Summary:");
     println!("  Total repositories scanned: {}", stats.total_scans);
     println!("  Repositories with agents:   {}", stats.repos_with_agents);
-    println!("  Repositories without:       {}", stats.repos_without_agents);
+    println!(
+        "  Repositories without:       {}",
+        stats.repos_without_agents
+    );
     println!("  Adoption rate:              {:.1}%", stats.adoption_rate);
     println!();
 

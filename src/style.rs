@@ -119,6 +119,11 @@ pub fn success(text: &str) -> StyledContent<String> {
     text.to_string().green()
 }
 
+/// Info text (cyan arrow for progress indicators)
+pub fn info(text: &str) -> StyledContent<String> {
+    text.to_string().cyan()
+}
+
 /// Warning text
 pub fn warning(text: &str) -> StyledContent<String> {
     text.to_string().yellow()

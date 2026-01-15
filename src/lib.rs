@@ -22,6 +22,7 @@ pub mod cache;
 pub mod coding_agent;
 pub mod config;
 pub mod context;
+pub mod context_new;
 pub mod error;
 pub mod git;
 pub mod graph;

@@ -98,7 +98,9 @@ impl GitHubPickerView {
     /// Toggle mark on the currently selected repo
     pub fn toggle_mark(&mut self) {
         // Clone data first to avoid borrow issues
-        let repo_info = self.selected_repo().map(|r| (r.name.clone(), r.clone_url.clone()));
+        let repo_info = self
+            .selected_repo()
+            .map(|r| (r.name.clone(), r.clone_url.clone()));
 
         if let Some((name, clone_url)) = repo_info {
             if self.is_managed(&name) {
@@ -161,8 +163,16 @@ impl GitHubPickerView {
                 };
 
                 let scan_result = match mode {
-                    SearchMode::User => scanner.scan_user_with_options(&query, &filters, &options).await,
-                    SearchMode::Org => scanner.scan_org_with_options(&query, &filters, &options).await,
+                    SearchMode::User => {
+                        scanner
+                            .scan_user_with_options(&query, &filters, &options)
+                            .await
+                    }
+                    SearchMode::Org => {
+                        scanner
+                            .scan_org_with_options(&query, &filters, &options)
+                            .await
+                    }
                 };
 
                 match scan_result {
@@ -183,7 +193,8 @@ impl GitHubPickerView {
                 match result {
                     Ok(repos) => {
                         self.repos = repos;
-                        self.repos.sort_by(|a, b| a.onboarding_priority.cmp(&b.onboarding_priority));
+                        self.repos
+                            .sort_by(|a, b| a.onboarding_priority.cmp(&b.onboarding_priority));
                         self.has_searched = true;
                         self.list_state.select(Some(0));
                     }
@@ -200,11 +211,7 @@ impl GitHubPickerView {
 
     /// Load managed repos from config
     pub fn load_managed_repos(&mut self, config: &AllBeadsConfig) {
-        self.managed_repos = config
-            .contexts
-            .iter()
-            .map(|c| c.name.clone())
-            .collect();
+        self.managed_repos = config.contexts.iter().map(|c| c.name.clone()).collect();
     }
 
     /// Set search results
@@ -215,7 +222,8 @@ impl GitHubPickerView {
         self.error = None;
         self.list_state.select(Some(0));
         // Sort by priority (High first)
-        self.repos.sort_by(|a, b| a.onboarding_priority.cmp(&b.onboarding_priority));
+        self.repos
+            .sort_by(|a, b| a.onboarding_priority.cmp(&b.onboarding_priority));
     }
 
     /// Set error message
@@ -341,7 +349,11 @@ impl GitHubPickerView {
         );
         let header = Paragraph::new(mode_text)
             .style(Style::default().fg(Color::Cyan))
-            .block(Block::default().borders(Borders::ALL).title("GitHub Repo Picker"));
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("GitHub Repo Picker"),
+            );
         frame.render_widget(header, area);
     }
 
@@ -349,21 +361,33 @@ impl GitHubPickerView {
         let cursor = if self.input_mode { "_" } else { "" };
         let query_display = format!(
             "{} {} {}{}",
-            if self.search_mode == SearchMode::User { "User:" } else { "Org:" },
+            if self.search_mode == SearchMode::User {
+                "User:"
+            } else {
+                "Org:"
+            },
             self.search_query,
             cursor,
             if self.is_loading { " (Loading...)" } else { "" }
         );
 
         let style = if self.input_mode {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
 
-        let search_bar = Paragraph::new(query_display)
-            .style(style)
-            .block(Block::default().borders(Borders::ALL).title(if self.input_mode { "Search (type to enter, Enter to search)" } else { "Search" }));
+        let search_bar = Paragraph::new(query_display).style(style).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(if self.input_mode {
+                    "Search (type to enter, Enter to search)"
+                } else {
+                    "Search"
+                }),
+        );
         frame.render_widget(search_bar, area);
     }
 
@@ -418,7 +442,14 @@ impl GitHubPickerView {
                 let agents_str = if repo.detected_agents.is_empty() {
                     String::new()
                 } else {
-                    format!(" [{}]", repo.detected_agents.iter().map(|a| a.id()).collect::<Vec<_>>().join(", "))
+                    format!(
+                        " [{}]",
+                        repo.detected_agents
+                            .iter()
+                            .map(|a| a.id())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 };
 
                 let style = if is_managed {
@@ -435,9 +466,21 @@ impl GitHubPickerView {
                 };
 
                 let line = Line::from(vec![
-                    Span::styled(format!("{} ", mark_indicator), if is_marked { Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::DarkGray) }),
+                    Span::styled(
+                        format!("{} ", mark_indicator),
+                        if is_marked {
+                            Style::default()
+                                .fg(Color::Magenta)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(Color::DarkGray)
+                        },
+                    ),
                     Span::styled(format!("{} ", priority_indicator), style),
-                    Span::styled(format!("{}{}", repo.name, managed_indicator), style.add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("{}{}", repo.name, managed_indicator),
+                        style.add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled(agents_str, Style::default().fg(Color::Cyan)),
                     Span::styled(
                         format!(" ★{}", repo.stars),
@@ -452,8 +495,15 @@ impl GitHubPickerView {
         let title = format!(
             "Results ({} repos, {} managed{})",
             self.repos.len(),
-            self.repos.iter().filter(|r| self.is_managed(&r.name)).count(),
-            if marked_count > 0 { format!(", {} marked", marked_count) } else { String::new() }
+            self.repos
+                .iter()
+                .filter(|r| self.is_managed(&r.name))
+                .count(),
+            if marked_count > 0 {
+                format!(", {} marked", marked_count)
+            } else {
+                String::new()
+            }
         );
 
         let list = List::new(items)
@@ -486,7 +536,10 @@ impl GitHubPickerView {
 
         let mut lines = vec![
             Line::from(vec![
-                Span::styled("Repository: ", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Repository: ",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::raw(&repo.full_name),
             ]),
             Line::from(""),
@@ -506,19 +559,26 @@ impl GitHubPickerView {
                 Span::styled("Managed: ", Style::default().add_modifier(Modifier::BOLD)),
                 Span::styled(
                     if is_managed { "Yes ✓" } else { "No" },
-                    if is_managed { Style::default().fg(Color::Green) } else { Style::default().fg(Color::Yellow) },
+                    if is_managed {
+                        Style::default().fg(Color::Green)
+                    } else {
+                        Style::default().fg(Color::Yellow)
+                    },
                 ),
             ]),
         ];
 
         if is_managed {
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("AllBeads Status:", Style::default().add_modifier(Modifier::BOLD).fg(Color::Green)),
-            ]));
-            lines.push(Line::from(vec![
-                Span::raw("  This repository is tracked in AllBeads."),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                "AllBeads Status:",
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Green),
+            )]));
+            lines.push(Line::from(vec![Span::raw(
+                "  This repository is tracked in AllBeads.",
+            )]));
             lines.push(Line::from(vec![
                 Span::raw("  View details: "),
                 Span::styled("Tab to Contexts view", Style::default().fg(Color::Cyan)),
@@ -527,9 +587,10 @@ impl GitHubPickerView {
 
         if !repo.detected_agents.is_empty() {
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("Detected Agents: ", Style::default().add_modifier(Modifier::BOLD)),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                "Detected Agents: ",
+                Style::default().add_modifier(Modifier::BOLD),
+            )]));
             for agent in &repo.detected_agents {
                 lines.push(Line::from(vec![
                     Span::raw("  • "),
@@ -542,18 +603,27 @@ impl GitHubPickerView {
             let is_marked = self.is_marked(&repo.clone_url);
             lines.push(Line::from(""));
             if is_marked {
-                lines.push(Line::from(vec![
-                    Span::styled("[x] Marked for onboarding (Space/Enter to unmark)", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    "[x] Marked for onboarding (Space/Enter to unmark)",
+                    Style::default()
+                        .fg(Color::Magenta)
+                        .add_modifier(Modifier::BOLD),
+                )]));
             } else {
-                lines.push(Line::from(vec![
-                    Span::styled("[ ] Press Space or Enter to mark for onboarding", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    "[ ] Press Space or Enter to mark for onboarding",
+                    Style::default()
+                        .fg(Color::Green)
+                        .add_modifier(Modifier::BOLD),
+                )]));
             }
         }
 
-        let detail = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title(format!("Detail: {}", repo.name)));
+        let detail = Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!("Detail: {}", repo.name)),
+        );
         frame.render_widget(detail, area);
     }
 }

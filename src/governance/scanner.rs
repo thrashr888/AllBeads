@@ -337,7 +337,10 @@ impl GitHubScanner {
             .contexts
             .iter()
             .filter_map(|c| {
-                c.url.split('/').last().map(|s| s.trim_end_matches(".git").to_lowercase())
+                c.url
+                    .split('/')
+                    .last()
+                    .map(|s| s.trim_end_matches(".git").to_lowercase())
             })
             .collect();
         let managed = managed_repos.contains(&repo.to_lowercase());
@@ -566,7 +569,13 @@ impl GitHubScanner {
             eprintln!("Filtering repositories...");
         }
 
-        let mut filtered_repos: Vec<(GitHubRepo, Option<DateTime<Utc>>, DateTime<Utc>, Option<i64>, bool)> = Vec::new();
+        let mut filtered_repos: Vec<(
+            GitHubRepo,
+            Option<DateTime<Utc>>,
+            DateTime<Utc>,
+            Option<i64>,
+            bool,
+        )> = Vec::new();
 
         for repo in repos {
             let last_push = repo
@@ -627,12 +636,14 @@ impl GitHubScanner {
 
         // Second pass: detect agents
         // Use GitHub Search API if enabled (much faster for many repos)
-        let agent_map: HashMap<String, Vec<AgentType>> = if options.use_search_api && self.token.is_some() {
-            self.detect_agents_via_search(&source, options).await?
-        } else {
-            // Fallback: parallel per-repo checks
-            self.detect_agents_parallel(&filtered_repos, options).await?
-        };
+        let agent_map: HashMap<String, Vec<AgentType>> =
+            if options.use_search_api && self.token.is_some() {
+                self.detect_agents_via_search(&source, options).await?
+            } else {
+                // Fallback: parallel per-repo checks
+                self.detect_agents_parallel(&filtered_repos, options)
+                    .await?
+            };
 
         // Build final results
         let mut scanned_repos = Vec::new();
@@ -643,12 +654,8 @@ impl GitHubScanner {
                 .cloned()
                 .unwrap_or_default();
 
-            let onboarding_priority = self.calculate_priority(
-                &repo,
-                days_since_push,
-                &detected_agents,
-                managed,
-            );
+            let onboarding_priority =
+                self.calculate_priority(&repo, days_since_push, &detected_agents, managed);
 
             scanned_repos.push(ScannedRepo {
                 name: repo.name,
@@ -718,7 +725,10 @@ impl GitHubScanner {
         let searches = vec![
             ("filename:CLAUDE.md", AgentType::Claude),
             ("filename:.cursorrules", AgentType::Cursor),
-            ("path:.github filename:copilot-instructions.md", AgentType::Copilot),
+            (
+                "path:.github filename:copilot-instructions.md",
+                AgentType::Copilot,
+            ),
             ("filename:.aider.conf.yml", AgentType::Aider),
             ("path:.kiro", AgentType::Kiro),
             ("path:.codex", AgentType::Codex),
@@ -733,12 +743,20 @@ impl GitHubScanner {
         };
 
         if options.show_progress {
-            eprintln!("Detecting agents via GitHub Search API ({} file patterns)...", searches.len());
+            eprintln!(
+                "Detecting agents via GitHub Search API ({} file patterns)...",
+                searches.len()
+            );
         }
 
         for (i, (query, agent_type)) in searches.iter().enumerate() {
             if options.show_progress {
-                eprint!("  [{}/{}] Searching for {}...", i + 1, searches.len(), agent_type.name());
+                eprint!(
+                    "  [{}/{}] Searching for {}...",
+                    i + 1,
+                    searches.len(),
+                    agent_type.name()
+                );
                 io::stderr().flush().ok();
             }
 
@@ -759,7 +777,8 @@ impl GitHubScanner {
                     if response.status().is_success() {
                         if let Ok(result) = response.json::<SearchCodeResult>().await {
                             // Deduplicate repos - GitHub returns one result per file
-                            let mut unique_repos: std::collections::HashSet<String> = std::collections::HashSet::new();
+                            let mut unique_repos: std::collections::HashSet<String> =
+                                std::collections::HashSet::new();
                             for item in &result.items {
                                 unique_repos.insert(item.repository.full_name.to_lowercase());
                             }
@@ -796,7 +815,13 @@ impl GitHubScanner {
     /// Detect agents in parallel batches (fallback when search API unavailable)
     async fn detect_agents_parallel(
         &self,
-        repos: &[(GitHubRepo, Option<DateTime<Utc>>, DateTime<Utc>, Option<i64>, bool)],
+        repos: &[(
+            GitHubRepo,
+            Option<DateTime<Utc>>,
+            DateTime<Utc>,
+            Option<i64>,
+            bool,
+        )],
         options: &ScanOptions,
     ) -> Result<HashMap<String, Vec<AgentType>>> {
         let total = repos.len();
@@ -839,7 +864,10 @@ impl GitHubScanner {
 
                     if show_progress {
                         let pct = (count as f64 / total as f64) * 100.0;
-                        eprint!("\r  [{}/{}] {:.0}% - {}                    ", count, total, pct, full_name);
+                        eprint!(
+                            "\r  [{}/{}] {:.0}% - {}                    ",
+                            count, total, pct, full_name
+                        );
                         io::stderr().flush().ok();
                     }
 
@@ -977,7 +1005,8 @@ impl GitHubScanner {
     /// Calculate summary statistics
     fn calculate_summary(&self, repos: &[ScannedRepo]) -> ScanSummary {
         let mut summary = ScanSummary::default();
-        let mut agent_map: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        let mut agent_map: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
 
         for repo in repos {
             summary.total_repos += 1;
@@ -1063,7 +1092,8 @@ async fn detect_agents_for_repo(
 
 /// Print scan results in a formatted way
 pub fn print_scan_result(result: &ScanResult, show_all: bool) {
-    println!("GitHub {} Scan: {}",
+    println!(
+        "GitHub {} Scan: {}",
         match &result.source {
             ScanSource::User(_) => "User",
             ScanSource::Organization(_) => "Organization",
@@ -1101,7 +1131,10 @@ pub fn print_scan_result(result: &ScanResult, show_all: bool) {
         .collect();
 
     if result.summary.unmanaged_repos > 0 {
-        println!("Unmanaged Repositories ({}):", result.summary.unmanaged_repos);
+        println!(
+            "Unmanaged Repositories ({}):",
+            result.summary.unmanaged_repos
+        );
         println!();
     }
 

@@ -12,11 +12,11 @@ use std::process::Command;
 /// BSICH onboarding status indicator
 #[derive(Debug, Clone, Default)]
 pub struct BSICHStatus {
-    pub beads: bool,      // B: Beads tracking initialized
-    pub skills: bool,     // S: Skills/marketplace configured
+    pub beads: bool,       // B: Beads tracking initialized
+    pub skills: bool,      // S: Skills/marketplace configured
     pub integration: bool, // I: Integration (JIRA/GitHub) configured
-    pub cicd: bool,       // C: CI/CD detected
-    pub hooks: bool,      // H: Git hooks installed
+    pub cicd: bool,        // C: CI/CD detected
+    pub hooks: bool,       // H: Git hooks installed
 }
 
 impl BSICHStatus {
@@ -57,11 +57,11 @@ impl BSICHStatus {
 /// Beads initialization mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BeadsInitMode {
-    Standard,  // SQLite database + git hooks
-    NoDb,      // JSONL only, no SQLite
-    Stealth,   // Personal, git-ignored
-    Team,      // Team workflow setup
-    Skip,      // Skip beads initialization
+    Standard, // SQLite database + git hooks
+    NoDb,     // JSONL only, no SQLite
+    Stealth,  // Personal, git-ignored
+    Team,     // Team workflow setup
+    Skip,     // Skip beads initialization
 }
 
 impl BeadsInitMode {
@@ -318,7 +318,10 @@ impl OnboardingWizard {
 
                 if let Ok(output) = output {
                     let stdout = String::from_utf8_lossy(&output.stdout);
-                    println!("  {}", stdout.lines().take(10).collect::<Vec<_>>().join("\n  "));
+                    println!(
+                        "  {}",
+                        stdout.lines().take(10).collect::<Vec<_>>().join("\n  ")
+                    );
                     if stdout.lines().count() > 10 {
                         println!("  ...");
                     }
@@ -519,7 +522,13 @@ impl OnboardingWizard {
 
     fn get_remote_url(repo_path: &Path) -> Result<String> {
         let output = Command::new("git")
-            .args(["-C", repo_path.to_str().unwrap(), "remote", "get-url", "origin"])
+            .args([
+                "-C",
+                repo_path.to_str().unwrap(),
+                "remote",
+                "get-url",
+                "origin",
+            ])
             .output()
             .map_err(|e| crate::AllBeadsError::Config(format!("Failed to run git: {}", e)))?;
 

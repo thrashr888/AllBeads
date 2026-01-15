@@ -45,6 +45,7 @@ Usage:
   setup              Setup wizard for configuration
   quickstart         Quickstart guide for AllBeads
   context            Manage contexts (Boss repositories)
+                       - new: Create a new GitHub repo with AllBeads configured
                        - onboarding: Track repo adoption and onboarding status
   onboard            Onboard a repository (clone, bd init, skills, add context)
   onboard-repo       Interactive onboarding for current repository (deprecated: use 'onboard')
@@ -1542,6 +1543,64 @@ pub enum ContextCommands {
         /// Show only summary statistics
         #[arg(long)]
         summary: bool,
+    },
+
+    /// Create a new GitHub repository with AllBeads configured
+    New {
+        /// Repository name (e.g., myproject)
+        name: Option<String>,
+
+        /// Repository description
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Create as private repository
+        #[arg(long)]
+        private: bool,
+
+        /// Create in an organization (instead of user account)
+        #[arg(long)]
+        org: Option<String>,
+
+        /// Initialize with README.md
+        #[arg(long, default_value = "true")]
+        readme: bool,
+
+        /// .gitignore template (e.g., Rust, Node, Python)
+        #[arg(long)]
+        gitignore: Option<String>,
+
+        /// License (e.g., MIT, Apache-2.0, GPL-3.0)
+        #[arg(long)]
+        license: Option<String>,
+
+        /// AllBeads template to apply
+        #[arg(long)]
+        template: Option<String>,
+
+        /// Initialize beads (bd init)
+        #[arg(long, default_value = "true")]
+        init_beads: bool,
+
+        /// AI agents to configure (comma-separated: claude,cursor,copilot,aider)
+        #[arg(long, default_value = "claude")]
+        init_agents: String,
+
+        /// Local path for clone (default: workspace_directory/name)
+        #[arg(long)]
+        path: Option<String>,
+
+        /// Don't clone repository locally
+        #[arg(long)]
+        no_clone: bool,
+
+        /// Use interactive wizard
+        #[arg(short, long)]
+        wizard: bool,
+
+        /// Skip interactive prompts, use defaults
+        #[arg(long)]
+        non_interactive: bool,
     },
 }
 
