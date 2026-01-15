@@ -2,6 +2,7 @@
 
 use super::aiki_view::AikiView;
 use super::contexts_view::ContextsView;
+use super::github_picker_view::GitHubPickerView;
 use super::governance_view::GovernanceView;
 use super::graph_view::GraphView;
 use super::mail_view::MailView;
@@ -28,6 +29,7 @@ pub enum Tab {
     Swarm,
     Aiki,
     Contexts,
+    GitHubPicker,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +75,7 @@ pub struct App {
     pub swarm_view: SwarmView,
     pub aiki_view: AikiView,
     pub contexts_view: ContextsView,
+    pub github_picker_view: GitHubPickerView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
 }
@@ -105,6 +108,7 @@ impl App {
             swarm_view: SwarmView::new(),
             aiki_view,
             contexts_view: ContextsView::new(),
+            github_picker_view: GitHubPickerView::new(),
             postmaster: None,
             inbox_address: Address::human(),
         }
@@ -155,7 +159,7 @@ impl App {
     }
 
     /// Switch to next tab
-    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Aiki -> Swarm (if available) -> Contexts -> Stats -> Kanban
+    /// Tab order: Kanban -> Mail (if available) -> Graph -> Timeline -> Governance -> Aiki -> Swarm (if available) -> Contexts -> GitHubPicker -> Stats -> Kanban
     pub fn next_tab(&mut self) {
         let has_mail = self.has_mail();
         let has_swarm = self.has_swarm();
@@ -180,7 +184,8 @@ impl App {
                 }
             }
             Tab::Swarm => Tab::Contexts,
-            Tab::Contexts => Tab::Stats,
+            Tab::Contexts => Tab::GitHubPicker,
+            Tab::GitHubPicker => Tab::Stats,
             Tab::Stats => Tab::Kanban,
         };
 
@@ -194,7 +199,16 @@ impl App {
             Tab::Swarm => self.swarm_view.refresh(),
             Tab::Aiki => self.aiki_view.refresh(&self.graph),
             Tab::Contexts => self.refresh_contexts_view(),
+            Tab::GitHubPicker => self.refresh_github_picker_view(),
             _ => {}
+        }
+    }
+
+    /// Refresh GitHub picker view
+    pub fn refresh_github_picker_view(&mut self) {
+        use crate::config::AllBeadsConfig;
+        if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
+            self.github_picker_view.load_managed_repos(&config);
         }
     }
 

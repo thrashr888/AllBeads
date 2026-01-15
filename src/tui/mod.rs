@@ -5,6 +5,7 @@
 pub mod aiki_view;
 mod app;
 pub mod contexts_view;
+pub mod github_picker_view;
 pub mod governance_view;
 pub mod graph_view;
 pub mod mail_view;
@@ -16,6 +17,7 @@ mod ui;
 pub use aiki_view::AikiView;
 pub use app::{App, Tab};
 pub use contexts_view::ContextsView;
+pub use github_picker_view::GitHubPickerView;
 pub use governance_view::GovernanceView;
 pub use graph_view::GraphView;
 pub use stats_view::StatsView;
@@ -171,6 +173,32 @@ fn run_app<B: ratatui::backend::Backend>(
                         KeyCode::Esc => app.contexts_view.close_detail(),
                         _ => {}
                     },
+                    Tab::GitHubPicker => {
+                        if app.github_picker_view.input_mode {
+                            // Input mode - capture characters for search query
+                            match key.code {
+                                KeyCode::Enter => {
+                                    // Execute search or exit input mode
+                                    app.github_picker_view.toggle_input_mode();
+                                }
+                                KeyCode::Esc => app.github_picker_view.toggle_input_mode(),
+                                KeyCode::Backspace => app.github_picker_view.pop_char(),
+                                KeyCode::Char(c) => app.github_picker_view.push_char(c),
+                                _ => {}
+                            }
+                        } else {
+                            // Navigation mode
+                            match key.code {
+                                KeyCode::Char('j') | KeyCode::Down => app.github_picker_view.next(),
+                                KeyCode::Char('k') | KeyCode::Up => app.github_picker_view.previous(),
+                                KeyCode::Char('m') => app.github_picker_view.toggle_mode(),
+                                KeyCode::Char('/') => app.github_picker_view.toggle_input_mode(),
+                                KeyCode::Enter => app.github_picker_view.toggle_detail(),
+                                KeyCode::Esc => app.github_picker_view.close_detail(),
+                                _ => {}
+                            }
+                        }
+                    }
                 }
             }
         }
