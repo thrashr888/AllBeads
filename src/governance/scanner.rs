@@ -125,6 +125,7 @@ pub struct ScanSummary {
 pub enum ScanSource {
     User(String),
     Organization(String),
+    Repository(String),
 }
 
 impl std::fmt::Display for ScanSource {
@@ -132,6 +133,7 @@ impl std::fmt::Display for ScanSource {
         match self {
             ScanSource::User(u) => write!(f, "user:{}", u),
             ScanSource::Organization(o) => write!(f, "org:{}", o),
+            ScanSource::Repository(r) => write!(f, "repo:{}", r),
         }
     }
 }
@@ -302,6 +304,8 @@ impl GitHubScanner {
 
     /// Scan a single repository by owner and name
     pub async fn scan_single_repo(&self, owner: &str, repo: &str) -> Result<ScanResult> {
+        eprintln!("Fetching repository info for {}/{}...", owner, repo);
+
         let url = format!("{}/repos/{}/{}", self.base_url, owner, repo);
 
         let mut request = self.client.get(&url);
@@ -322,16 +326,124 @@ impl GitHubScanner {
 
         let github_repo: GitHubRepo = response.json().await?;
 
-        // Process just this one repo with default filter
-        let filter = ScanFilter::default();
-        let options = ScanOptions::default();
-        self.process_repos_with_options(
-            vec![github_repo],
-            ScanSource::User(owner.to_string()),
-            &filter,
-            &options,
-        )
-        .await
+        // For single repo, directly check for agent files instead of search API
+        eprintln!("Checking for agent configurations...");
+        let detected_agents = self.detect_agents_in_repo(owner, repo).await;
+
+        // Check if managed
+        let config_path = crate::config::AllBeadsConfig::default_path();
+        let config = crate::config::AllBeadsConfig::load(&config_path).unwrap_or_default();
+        let managed_repos: std::collections::HashSet<String> = config
+            .contexts
+            .iter()
+            .filter_map(|c| {
+                c.url.split('/').last().map(|s| s.trim_end_matches(".git").to_lowercase())
+            })
+            .collect();
+        let managed = managed_repos.contains(&repo.to_lowercase());
+
+        // Parse timestamps
+        let last_push = github_repo.pushed_at.as_ref().and_then(|pushed| {
+            chrono::DateTime::parse_from_rfc3339(pushed)
+                .ok()
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+        });
+        let created_at = chrono::DateTime::parse_from_rfc3339(&github_repo.created_at)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+            .unwrap_or_else(chrono::Utc::now);
+
+        let days_since_push = last_push.map(|dt| (chrono::Utc::now() - dt).num_days());
+
+        let onboarding_priority = if managed {
+            OnboardingPriority::Skip
+        } else if github_repo.archived || github_repo.disabled {
+            OnboardingPriority::Skip
+        } else if !detected_agents.is_empty() && days_since_push.map(|d| d <= 90).unwrap_or(false) {
+            OnboardingPriority::High
+        } else if days_since_push.map(|d| d <= 90).unwrap_or(false) {
+            OnboardingPriority::Medium
+        } else {
+            OnboardingPriority::Low
+        };
+
+        let scanned_repo = ScannedRepo {
+            name: github_repo.name.clone(),
+            full_name: github_repo.full_name.clone(),
+            url: github_repo.html_url.clone(),
+            clone_url: github_repo.clone_url.clone(),
+            description: github_repo.description.clone(),
+            language: github_repo.language.clone(),
+            stars: github_repo.stargazers_count,
+            forks: github_repo.forks_count,
+            is_fork: github_repo.fork,
+            is_archived: github_repo.archived,
+            is_private: github_repo.private,
+            created_at,
+            last_push,
+            default_branch: github_repo.default_branch.clone(),
+            topics: github_repo.topics.clone(),
+            managed,
+            detected_agents,
+            onboarding_priority,
+            days_since_push,
+        };
+
+        eprintln!("Scan complete!");
+
+        Ok(ScanResult {
+            timestamp: chrono::Utc::now(),
+            source: ScanSource::Repository(format!("{}/{}", owner, repo)),
+            repositories: vec![scanned_repo],
+            summary: ScanSummary {
+                total_repos: 1,
+                managed_repos: if managed { 1 } else { 0 },
+                unmanaged_repos: if managed { 0 } else { 1 },
+                ..Default::default()
+            },
+        })
+    }
+
+    /// Detect agents by directly checking repo contents (for single repo scans)
+    async fn detect_agents_in_repo(&self, owner: &str, repo: &str) -> Vec<AgentType> {
+        let mut agents = Vec::new();
+
+        // Check each agent file/directory
+        let checks = vec![
+            ("CLAUDE.md", AgentType::Claude),
+            (".cursorrules", AgentType::Cursor),
+            (".github/copilot-instructions.md", AgentType::Copilot),
+            (".aider.conf.yml", AgentType::Aider),
+            (".kiro", AgentType::Kiro),
+            (".codex", AgentType::Codex),
+            (".gemini", AgentType::Gemini),
+            ("AGENTS.md", AgentType::GenericAgent),
+        ];
+
+        for (path, agent_type) in checks {
+            let url = format!(
+                "{}/repos/{}/{}/contents/{}",
+                self.base_url, owner, repo, path
+            );
+
+            let mut request = self.client.get(&url);
+            if let Some(ref token) = self.token {
+                request = request.bearer_auth(token);
+            }
+
+            if let Ok(response) = request.send().await {
+                if response.status().is_success() {
+                    agents.push(agent_type);
+                    eprintln!("  Found: {}", agent_type.name());
+                }
+            }
+        }
+
+        if agents.is_empty() {
+            eprintln!("  No agent configurations found");
+        }
+
+        agents
     }
 
     /// List all repos for a user
@@ -617,6 +729,7 @@ impl GitHubScanner {
         let qualifier = match source {
             ScanSource::User(u) => format!("user:{}", u),
             ScanSource::Organization(o) => format!("org:{}", o),
+            ScanSource::Repository(r) => format!("repo:{}", r),
         };
 
         if options.show_progress {
@@ -954,10 +1067,12 @@ pub fn print_scan_result(result: &ScanResult, show_all: bool) {
         match &result.source {
             ScanSource::User(_) => "User",
             ScanSource::Organization(_) => "Organization",
+            ScanSource::Repository(_) => "Repository",
         },
         match &result.source {
             ScanSource::User(u) => u,
             ScanSource::Organization(o) => o,
+            ScanSource::Repository(r) => r,
         }
     );
     println!("═══════════════════════════════════════════════════════════════");
