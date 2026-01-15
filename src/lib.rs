@@ -34,6 +34,7 @@ pub mod tui;
 // Components (will be implemented in phases)
 pub mod boss_board;
 pub mod governance;
+pub mod handoff;
 pub mod integrations;
 pub mod mail;
 pub mod manifest;

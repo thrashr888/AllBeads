@@ -69,6 +69,7 @@ Usage:
   human              Send a message to human operator
   swarm              Agent swarm management commands
   agent              Coding agent configuration (Claude Code, Cursor, etc.)
+  handoff            Hand off a bead to an AI agent (fire and forget)
 
 {cyan}Analysis:{reset}
   janitor            Run janitor analysis on a repository
@@ -679,6 +680,28 @@ pub enum Commands {
     /// Coding agent configuration (Claude Code, Cursor, Copilot, etc.)
     #[command(subcommand, name = "agent")]
     CodingAgent(CodingAgentCommands),
+
+    /// Hand off a bead to an AI agent
+    Handoff {
+        /// Bead ID to hand off (e.g., ab-xyz)
+        id: Option<String>,
+
+        /// Agent to use (claude, opencode, codex, gemini, aider, cursor, etc.)
+        #[arg(short, long)]
+        agent: Option<String>,
+
+        /// Hand off all ready beads (no blockers)
+        #[arg(long)]
+        ready: bool,
+
+        /// List beads that have been handed off
+        #[arg(short, long)]
+        list: bool,
+
+        /// Dry run: show what would be done without launching agent
+        #[arg(long)]
+        dry_run: bool,
+    },
 
     // =========================================================================
     // ANALYSIS COMMANDS - Code and repository analysis

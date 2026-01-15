@@ -31,6 +31,7 @@ fn create_test_bead(id: &str, title: &str, status: Status, priority: Priority) -
         blocks: vec![],
         notes: None,
         aiki_tasks: vec![],
+        handoff: None,
     }
 }
 

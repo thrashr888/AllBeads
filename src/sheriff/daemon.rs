@@ -497,6 +497,7 @@ impl Sheriff {
                 issue_type: IssueType::Task,
                 notes: None,
                 aiki_tasks: Vec::new(),
+                handoff: None,
             };
 
             graph.beads.insert(bead.id.clone(), bead);

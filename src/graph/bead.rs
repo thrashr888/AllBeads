@@ -4,6 +4,7 @@
 //! Matches the beads JSONL schema for compatibility.
 
 use super::BeadId;
+use crate::handoff::AgentHandoff;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::collections::HashSet;
@@ -134,6 +135,10 @@ pub struct Bead {
     /// Linked Aiki task IDs (for integration with Aiki task system)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aiki_tasks: Vec<String>,
+
+    /// Agent handoff info (if handed off to an agent)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handoff: Option<AgentHandoff>,
 }
 
 impl Bead {
@@ -160,6 +165,7 @@ impl Bead {
             labels: HashSet::new(),
             notes: None,
             aiki_tasks: Vec::new(),
+            handoff: None,
         }
     }
 

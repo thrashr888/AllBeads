@@ -147,9 +147,9 @@ pub struct Issue {
     /// Simple list of issue IDs this depends on (from bd list)
     #[serde(default, alias = "blocked_by")]
     pub depends_on: Vec<String>,
-    /// Simple list of issue IDs blocked by this (from bd list)
-    #[serde(default, alias = "dependents")]
-    pub blocks: Vec<String>,
+    /// Beads blocked by this (from bd show --json as objects, or bd list as strings)
+    #[serde(default, alias = "dependents", deserialize_with = "deserialize_blocks")]
+    pub blocks: Vec<DependencyRef>,
     #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
@@ -169,6 +169,59 @@ impl Issue {
             self.depends_on.clone()
         }
     }
+}
+
+/// Custom deserializer for blocks field that handles both strings and objects
+fn deserialize_blocks<'de, D>(deserializer: D) -> std::result::Result<Vec<DependencyRef>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, SeqAccess, Visitor};
+    use std::fmt;
+
+    struct BlocksVisitor;
+
+    impl<'de> Visitor<'de> for BlocksVisitor {
+        type Value = Vec<DependencyRef>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a sequence of strings or dependency objects")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> std::result::Result<Vec<DependencyRef>, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut deps = Vec::new();
+
+            while let Some(value) = seq.next_element::<serde_json::Value>()? {
+                match value {
+                    serde_json::Value::String(s) => {
+                        deps.push(DependencyRef {
+                            id: s,
+                            title: None,
+                            status: None,
+                            dependency_type: None,
+                        });
+                    }
+                    serde_json::Value::Object(_) => {
+                        let dep: DependencyRef = serde_json::from_value(value)
+                            .map_err(de::Error::custom)?;
+                        deps.push(dep);
+                    }
+                    _ => {
+                        return Err(de::Error::custom(
+                            "expected string or object in blocks array",
+                        ));
+                    }
+                }
+            }
+
+            Ok(deps)
+        }
+    }
+
+    deserializer.deserialize_seq(BlocksVisitor)
 }
 
 /// A comment on an issue

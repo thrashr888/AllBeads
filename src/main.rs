@@ -293,6 +293,18 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_coding_agent_command(agent_cmd);
     }
 
+    // Handle handoff command (don't need graph)
+    if let Commands::Handoff {
+        ref id,
+        ref agent,
+        ready,
+        list,
+        dry_run,
+    } = command
+    {
+        return handle_handoff_command(id.as_deref(), agent.as_deref(), ready, list, dry_run);
+    }
+
     // Handle governance commands (don't need graph)
     if let Commands::Check {
         strict,
@@ -1933,6 +1945,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Human { .. }
         | Commands::Plugin(_)
         | Commands::CodingAgent(_)
+        | Commands::Handoff { .. }
         | Commands::Sync { .. }
         | Commands::Check { .. }
         | Commands::Hooks(_)
@@ -1941,7 +1954,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Governance(_)
         | Commands::Scan(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, Governance, and Scan commands should be handled before aggregation")
+            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Handoff, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, Governance, and Scan commands should be handled before aggregation")
         }
     }
 
@@ -4687,6 +4700,251 @@ fn handle_agent_detect(path: &str) -> allbeads::Result<()> {
 
     println!();
     println!("  Tip: Use 'ab agent init <agent>' to configure an agent.");
+
+    Ok(())
+}
+
+// ============================================================================
+// Handoff Command
+// ============================================================================
+
+fn handle_handoff_command(
+    id: Option<&str>,
+    agent: Option<&str>,
+    ready: bool,
+    list: bool,
+    dry_run: bool,
+) -> allbeads::Result<()> {
+    use allbeads::handoff::AgentType;
+    use std::process::Command;
+
+    // List handed off beads
+    if list {
+        return handle_handoff_list();
+    }
+
+    // Hand off all ready beads
+    if ready {
+        return handle_handoff_ready(agent);
+    }
+
+    // Hand off a specific bead
+    let bead_id = id.ok_or_else(|| {
+        allbeads::AllBeadsError::Config(
+            "Bead ID required. Usage: ab handoff <bead-id> [--agent <agent>]".to_string(),
+        )
+    })?;
+
+    // Parse agent type (or default to Claude)
+    let agent_type = if let Some(agent_name) = agent {
+        agent_name.parse::<AgentType>().map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Invalid agent '{}': {}", agent_name, e))
+        })?
+    } else {
+        AgentType::Claude
+    };
+
+    // Check if agent is available (skip in dry-run mode)
+    let agent_cmd = agent_type.command();
+    if !dry_run && !agent_type.is_web_agent() {
+        let check = Command::new(agent_cmd).arg("--version").output();
+        if check.is_err() || !check.unwrap().status.success() {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Agent '{}' not found. Is {} installed?",
+                agent_type.display_name(),
+                agent_cmd
+            )));
+        }
+    }
+
+    // Load bead to get context
+    let beads = Beads::new().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to initialize beads: {}", e))
+    })?;
+    let issue = beads.show(bead_id).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to load bead '{}': {}", bead_id, e))
+    })?;
+
+    // Build prompt from bead
+    let prompt = build_handoff_prompt(&issue);
+
+    // Display handoff info
+    println!();
+    println!("{}", style::header("Handoff"));
+    println!();
+    println!("  Bead:    {} - {}", style::highlight(bead_id), issue.title);
+    println!("  Agent:   {}", style::highlight(agent_type.display_name()));
+    println!("  Command: {} {}", agent_cmd, agent_type.prompt_args(&prompt).join(" "));
+    println!();
+
+    if dry_run {
+        println!("  {} Dry run - showing prompt that would be sent:", style::dim("→"));
+        println!();
+        println!("{}", style::dim("--- PROMPT START ---"));
+        println!("{}", prompt);
+        println!("{}", style::dim("--- PROMPT END ---"));
+        println!();
+        println!("  {} Would set AB_ACTIVE_BEAD={}", style::dim("→"), bead_id);
+        println!("  {} Would update bead status to in_progress", style::dim("→"));
+        return Ok(());
+    }
+
+    // Update bead status to in_progress
+    println!(
+        "  {} Updating bead status to in_progress...",
+        style::dim("→")
+    );
+    beads
+        .update(bead_id, Some("in_progress"), None, None, None)
+        .map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to update bead '{}': {}", bead_id, e))
+        })?;
+
+    println!(
+        "  {} Launching {}...",
+        style::success("✓"),
+        agent_type.display_name()
+    );
+    println!();
+
+    // Build args and launch
+    let args = agent_type.prompt_args(&prompt);
+
+    // Set environment variable for agent context
+    std::env::set_var("AB_ACTIVE_BEAD", bead_id);
+
+    // Launch the agent (replacing current process for CLI agents)
+    if !agent_type.is_web_agent() {
+        let status = Command::new(agent_cmd)
+            .args(&args)
+            .env("AB_ACTIVE_BEAD", bead_id)
+            .status()
+            .map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to launch {}: {}", agent_cmd, e))
+            })?;
+
+        if !status.success() {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Agent {} exited with error",
+                agent_type.display_name()
+            )));
+        }
+    } else {
+        // Web agents - open browser (fire and forget)
+        println!(
+            "  {} Web agent launch not yet implemented. Use CLI agents for now.",
+            style::warning("⚠")
+        );
+    }
+
+    Ok(())
+}
+
+fn build_handoff_prompt(issue: &beads::Issue) -> String {
+    let mut prompt = format!(
+        "You are working on bead {}.\n\n## Title\n{}\n",
+        issue.id, issue.title
+    );
+
+    if let Some(ref desc) = issue.description {
+        prompt.push_str(&format!("\n## Description\n{}\n", desc));
+    }
+
+    if !issue.dependencies.is_empty() {
+        prompt.push_str("\n## Dependencies (blocked by)\n");
+        for dep in &issue.dependencies {
+            prompt.push_str(&format!("- {}\n", dep.id));
+        }
+    }
+
+    if !issue.labels.is_empty() {
+        prompt.push_str(&format!("\n## Labels\n{}\n", issue.labels.join(", ")));
+    }
+
+    prompt.push_str("\n## Instructions\nPlease work on this issue. When done, commit your changes and update the bead status.\n");
+
+    prompt
+}
+
+fn handle_handoff_list() -> allbeads::Result<()> {
+    println!();
+    println!("{}", style::header("Handed Off Beads"));
+    println!();
+
+    // Load beads and filter by handoff status
+    let beads = Beads::new().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to initialize beads: {}", e))
+    })?;
+    let issues = beads.list(Some("in_progress"), None).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e))
+    })?;
+
+    if issues.is_empty() {
+        println!("  No beads currently in progress.");
+    } else {
+        for issue in &issues {
+            println!(
+                "  {} {} - {}",
+                style::highlight(&issue.id),
+                style::dim("→"),
+                issue.title
+            );
+        }
+    }
+
+    println!();
+    Ok(())
+}
+
+fn handle_handoff_ready(agent: Option<&str>) -> allbeads::Result<()> {
+    use allbeads::handoff::AgentType;
+
+    let agent_type = if let Some(name) = agent {
+        name.parse::<AgentType>().map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Invalid agent '{}': {}", name, e))
+        })?
+    } else {
+        AgentType::Claude
+    };
+
+    println!();
+    println!("{}", style::header("Ready Beads"));
+    println!();
+
+    // Load ready beads (unblocked open issues)
+    let beads = Beads::new().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to initialize beads: {}", e))
+    })?;
+    let ready_issues = beads.ready().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to get ready beads: {}", e))
+    })?;
+
+    if ready_issues.is_empty() {
+        println!("  No beads ready for handoff.");
+        return Ok(());
+    }
+
+    println!(
+        "  Found {} ready beads for {}:",
+        ready_issues.len(),
+        agent_type.display_name()
+    );
+    println!();
+
+    for issue in &ready_issues {
+        println!(
+            "  {} {} - {}",
+            style::dim("○"),
+            style::highlight(&issue.id),
+            issue.title
+        );
+    }
+
+    println!();
+    println!(
+        "  Use 'ab handoff <id> --agent {}' to hand off a specific bead.",
+        agent_type.command()
+    );
 
     Ok(())
 }

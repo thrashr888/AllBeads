@@ -301,6 +301,7 @@ impl Cache {
                 dependencies: Vec::new(), // Will load separately
                 blocks: Vec::new(),       // Will load separately
                 aiki_tasks: Vec::new(),   // Will load from JSONL
+                handoff: None,
             })
         })?;
 
