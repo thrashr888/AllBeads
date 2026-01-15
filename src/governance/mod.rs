@@ -28,8 +28,11 @@ pub mod agents;
 pub mod checker;
 pub mod config;
 pub mod policy;
+pub mod repo_policy;
 pub mod rules;
+pub mod scanner;
 pub mod storage;
+pub mod usage;
 
 pub use agents::{
     detect_agents, print_agent_scan, AgentDetection, AgentScanResult, AgentType,
@@ -38,5 +41,14 @@ pub use agents::{
 pub use checker::PolicyChecker;
 pub use config::{load_policies_for_context, PoliciesConfig};
 pub use policy::{Enforcement, Policy, PolicyConfig, PolicySeverity, PolicyType};
+pub use repo_policy::{
+    check_all_policies, check_policy, default_policies_path, PolicyCheckResult, PolicyExemption,
+    RepoPolicy, RepoPolicyCheck, RepoPolicyConfig,
+};
 pub use rules::PolicyRule;
+pub use scanner::{
+    print_scan_result, GitHubScanner, OnboardingPriority, ScanFilter, ScanResult, ScanSource,
+    ScanSummary, ScannedRepo,
+};
 pub use storage::PolicyStorage;
+pub use usage::{print_usage_stats, UsageRecord, UsageStats, UsageStorage, UsageTrend};

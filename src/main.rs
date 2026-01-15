@@ -344,6 +344,12 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_governance_command(gov_cmd, &cli.config);
     }
 
+    // Handle Scan commands (need async, no full graph)
+    if let Commands::Scan(ref scan_cmd) = command {
+        let rt = tokio::runtime::Runtime::new()?;
+        return rt.block_on(handle_scan_command(scan_cmd, &cli.config));
+    }
+
     // Handle sync command
     if let Commands::Sync {
         all,
@@ -1899,9 +1905,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Hooks(_)
         | Commands::Aiki(_)
         | Commands::Agents(_)
-        | Commands::Governance(_) => {
+        | Commands::Governance(_)
+        | Commands::Scan(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, and Governance commands should be handled before aggregation")
+            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, Governance, and Scan commands should be handled before aggregation")
         }
     }
 
@@ -8820,6 +8827,65 @@ fn handle_agents_command(
 
             Ok(())
         }
+
+        AgentsCommands::Track { context, path } => {
+            use allbeads::governance::UsageStorage;
+
+            let repo_path = std::path::Path::new(path);
+            let context_name = context.clone().unwrap_or_else(|| {
+                repo_path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            });
+
+            let result = detect_agents(repo_path);
+            let storage = UsageStorage::open_default()?;
+
+            storage.record_scan(&context_name, path, &result)?;
+
+            println!("✓ Recorded agent scan for {} ({} agents detected)", context_name, result.detections.len());
+            if result.has_agents() {
+                for detection in &result.detections {
+                    println!("  • {}", detection.agent.name());
+                }
+            }
+
+            Ok(())
+        }
+
+        AgentsCommands::Stats { days, json } => {
+            use allbeads::governance::{print_usage_stats, UsageStorage};
+
+            let storage = UsageStorage::open_default()?;
+            let stats = storage.get_stats(*days)?;
+            let trends = storage.get_trends(*days)?;
+
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "period_days": days,
+                        "total_scans": stats.total_scans,
+                        "repos_with_agents": stats.repos_with_agents,
+                        "repos_without_agents": stats.repos_without_agents,
+                        "adoption_rate": stats.adoption_rate,
+                        "agent_counts": stats.agent_counts,
+                        "trends": trends
+                    })
+                );
+            } else {
+                if stats.total_scans == 0 {
+                    println!("No usage data recorded yet.");
+                    println!();
+                    println!("Run 'ab agents track' to record agent scans.");
+                } else {
+                    print_usage_stats(&stats, &trends, *days);
+                }
+            }
+
+            Ok(())
+        }
     }
 }
 
@@ -8828,6 +8894,11 @@ fn handle_governance_command(
     cmd: &GovernanceCommands,
     _config_path: &Option<String>,
 ) -> allbeads::Result<()> {
+    use allbeads::governance::{
+        check_all_policies, check_policy, default_policies_path, Enforcement, PolicyExemption,
+        RepoPolicyConfig,
+    };
+
     match cmd {
         GovernanceCommands::Check {
             repo,
@@ -8837,43 +8908,157 @@ fn handle_governance_command(
             override_reason,
             json,
         } => {
-            println!("Governance Policy Check");
-            println!("═══════════════════════════════════════════════════════════════");
+            // Determine repo path and name
+            let repo_path = match repo {
+                Some(r) => std::path::PathBuf::from(r),
+                None => std::env::current_dir()?,
+            };
+            let repo_name = repo_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
 
-            if *advisory_only {
-                println!("Mode: Advisory (never blocks)");
-            } else if *strict {
-                println!("Mode: Strict (soft mandatory treated as hard)");
+            // Load policy config
+            let policy_config_path = default_policies_path();
+            let config = RepoPolicyConfig::load(&policy_config_path)?;
+
+            if !*json {
+                println!("Governance Policy Check");
+                println!("═══════════════════════════════════════════════════════════════");
+
+                if *advisory_only {
+                    println!("Mode: Advisory (never blocks)");
+                } else if *strict {
+                    println!("Mode: Strict (soft mandatory treated as hard)");
+                } else {
+                    println!("Mode: Normal");
+                }
+
+                println!("Repository: {} ({})", repo_name, repo_path.display());
+                if let Some(ref p) = policy {
+                    println!("Policy: {}", p);
+                }
+                if let Some(ref reason) = override_reason {
+                    println!("Override: {}", reason);
+                }
+                println!();
+            }
+
+            // Run policy checks
+            let results = if let Some(ref policy_name) = policy {
+                // Check specific policy
+                if let Some(p) = config.policies.get(policy_name) {
+                    vec![check_policy(&repo_path, p)]
+                } else {
+                    if !*json {
+                        println!("Policy '{}' not found", policy_name);
+                    }
+                    vec![]
+                }
             } else {
-                println!("Mode: Normal");
+                // Check all policies
+                check_all_policies(&repo_path, &repo_name, &config)
+            };
+
+            // Process results
+            let mut passed = 0;
+            let mut warnings = 0;
+            let mut failures = 0;
+            let mut blocked = false;
+
+            for result in &results {
+                let status_icon = if result.passed {
+                    passed += 1;
+                    "✓"
+                } else {
+                    match result.enforcement {
+                        Enforcement::Advisory => {
+                            warnings += 1;
+                            "⚠"
+                        }
+                        Enforcement::SoftMandatory => {
+                            if *advisory_only {
+                                warnings += 1;
+                                "⚠"
+                            } else if override_reason.is_some() {
+                                warnings += 1;
+                                "⚠"
+                            } else if *strict {
+                                failures += 1;
+                                blocked = true;
+                                "✗"
+                            } else {
+                                failures += 1;
+                                blocked = true;
+                                "✗"
+                            }
+                        }
+                        Enforcement::HardMandatory => {
+                            failures += 1;
+                            blocked = true;
+                            "✗"
+                        }
+                    }
+                };
+
+                if !*json {
+                    let enforcement_label = match result.enforcement {
+                        Enforcement::Advisory => "advisory",
+                        Enforcement::SoftMandatory => "soft_mandatory",
+                        Enforcement::HardMandatory => "hard_mandatory",
+                    };
+                    println!(
+                        "  {} {} ({}) - {}",
+                        status_icon, result.policy_name, enforcement_label, result.message
+                    );
+                    if !result.passed {
+                        if let Some(ref remediation) = result.remediation {
+                            println!("    └─ Remediation: {}", remediation);
+                        }
+                    }
+                }
             }
 
-            if let Some(ref r) = repo {
-                println!("Repository: {}", r);
-            }
-            if let Some(ref p) = policy {
-                println!("Policy: {}", p);
-            }
-            if let Some(ref reason) = override_reason {
-                println!("Override: {}", reason);
+            if !*json {
+                println!();
+                println!(
+                    "Summary: {} passed, {} warnings, {} failures",
+                    passed, warnings, failures
+                );
+                if blocked {
+                    if override_reason.is_some() {
+                        println!("⚠️  Policy check would block but override provided");
+                    } else {
+                        println!("✗ Policy check failed - operation blocked");
+                    }
+                } else {
+                    println!("✓ Policy check passed");
+                }
             }
 
-            println!();
-            println!("⚠️  Full policy checking not yet implemented");
-            println!();
-            println!("This will check:");
-            println!("  • require-beads: Repository has .beads/ initialized");
-            println!("  • require-agent-config: Repository has agent configuration");
-            println!("  • no-secrets-in-config: No secrets in configuration files");
-            println!();
-
-            // For JSON output
             if *json {
+                let results_json: Vec<_> = results
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "policy": r.policy_name,
+                            "passed": r.passed,
+                            "enforcement": format!("{:?}", r.enforcement).to_lowercase(),
+                            "message": r.message,
+                            "remediation": r.remediation
+                        })
+                    })
+                    .collect();
                 println!(
                     "{}",
                     serde_json::json!({
-                        "status": "not_implemented",
-                        "violations": []
+                        "repository": repo_name,
+                        "path": repo_path.display().to_string(),
+                        "passed": passed,
+                        "warnings": warnings,
+                        "failures": failures,
+                        "blocked": blocked,
+                        "results": results_json
                     })
                 );
             }
@@ -8882,19 +9067,56 @@ fn handle_governance_command(
         }
 
         GovernanceCommands::Status => {
+            let policy_config_path = default_policies_path();
+            let config = RepoPolicyConfig::load(&policy_config_path)?;
+
             println!("Governance Policy Status");
             println!("═══════════════════════════════════════════════════════════════");
             println!();
-            println!("Policies:");
-            println!("  ○ require-beads (soft_mandatory) - enabled");
-            println!("  ○ require-agent-config (advisory) - enabled");
-            println!("  ● no-secrets-in-config (hard_mandatory) - enabled");
-            println!("  ○ require-readme (advisory) - enabled");
+            println!("Config path: {}", policy_config_path.display());
+            println!();
+
+            println!("Policies ({}):", config.policies.len());
+            let mut policies: Vec<_> = config.policies.iter().collect();
+            policies.sort_by_key(|(name, _)| *name);
+
+            for (name, policy) in policies {
+                let icon = match policy.enforcement {
+                    Enforcement::Advisory => "○",
+                    Enforcement::SoftMandatory => "◐",
+                    Enforcement::HardMandatory => "●",
+                };
+                let enforcement_label = match policy.enforcement {
+                    Enforcement::Advisory => "advisory",
+                    Enforcement::SoftMandatory => "soft_mandatory",
+                    Enforcement::HardMandatory => "hard_mandatory",
+                };
+                let status = if policy.enabled { "enabled" } else { "disabled" };
+                println!("  {} {} ({}) - {}", icon, name, enforcement_label, status);
+                println!("    {}", policy.description);
+            }
+
+            if !config.exemptions.is_empty() {
+                println!();
+                println!("Exemptions ({}):", config.exemptions.len());
+                for exemption in &config.exemptions {
+                    let expires = exemption
+                        .expires
+                        .as_ref()
+                        .map(|e| format!(" (expires: {})", e))
+                        .unwrap_or_default();
+                    println!(
+                        "  {} / {} - {}{}",
+                        exemption.repo, exemption.policy, exemption.reason, expires
+                    );
+                }
+            }
+
             println!();
             println!("Enforcement levels:");
             println!("  ○ Advisory - warn only");
-            println!("  ◐ Soft Mandatory - blocks, can override");
-            println!("  ● Hard Mandatory - always blocks");
+            println!("  ◐ Soft Mandatory - blocks, can override with reason");
+            println!("  ● Hard Mandatory - always blocks, no override");
 
             Ok(())
         }
@@ -8904,24 +9126,97 @@ fn handle_governance_command(
             repo,
             json,
         } => {
-            println!("Policy Violations");
-            println!("═══════════════════════════════════════════════════════════════");
+            // Determine repo path and name
+            let repo_path = match repo {
+                Some(r) => std::path::PathBuf::from(r),
+                None => std::env::current_dir()?,
+            };
+            let repo_name = repo_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
 
-            if let Some(ref e) = enforcement {
-                println!("Filter: {} enforcement", e);
-            }
-            if let Some(ref r) = repo {
-                println!("Repository: {}", r);
-            }
+            // Load policy config
+            let policy_config_path = default_policies_path();
+            let config = RepoPolicyConfig::load(&policy_config_path)?;
 
-            println!();
-            println!("No violations detected (policy checking not yet implemented)");
+            // Run policy checks
+            let results = check_all_policies(&repo_path, &repo_name, &config);
+
+            // Filter by enforcement level if specified
+            let enforcement_filter: Option<Enforcement> = enforcement.as_ref().and_then(|e| {
+                match e.to_lowercase().as_str() {
+                    "advisory" => Some(Enforcement::Advisory),
+                    "soft_mandatory" | "soft" => Some(Enforcement::SoftMandatory),
+                    "hard_mandatory" | "hard" => Some(Enforcement::HardMandatory),
+                    _ => None,
+                }
+            });
+
+            // Collect violations (failed checks)
+            let violations: Vec<_> = results
+                .into_iter()
+                .filter(|r| !r.passed)
+                .filter(|r| {
+                    enforcement_filter
+                        .map(|f| r.enforcement == f)
+                        .unwrap_or(true)
+                })
+                .collect();
+
+            if !*json {
+                println!("Policy Violations");
+                println!("═══════════════════════════════════════════════════════════════");
+                println!("Repository: {} ({})", repo_name, repo_path.display());
+                if let Some(ref e) = enforcement {
+                    println!("Filter: {} enforcement", e);
+                }
+                println!();
+
+                if violations.is_empty() {
+                    println!("✓ No violations detected");
+                } else {
+                    println!("Found {} violation(s):", violations.len());
+                    println!();
+                    for v in &violations {
+                        let icon = match v.enforcement {
+                            Enforcement::Advisory => "⚠",
+                            Enforcement::SoftMandatory => "◐",
+                            Enforcement::HardMandatory => "●",
+                        };
+                        let enforcement_label = match v.enforcement {
+                            Enforcement::Advisory => "advisory",
+                            Enforcement::SoftMandatory => "soft_mandatory",
+                            Enforcement::HardMandatory => "hard_mandatory",
+                        };
+                        println!("  {} {} ({})", icon, v.policy_name, enforcement_label);
+                        println!("    {}", v.message);
+                        if let Some(ref remediation) = v.remediation {
+                            println!("    └─ Remediation: {}", remediation);
+                        }
+                    }
+                }
+            }
 
             if *json {
+                let violations_json: Vec<_> = violations
+                    .iter()
+                    .map(|v| {
+                        serde_json::json!({
+                            "policy": v.policy_name,
+                            "enforcement": format!("{:?}", v.enforcement).to_lowercase(),
+                            "message": v.message,
+                            "remediation": v.remediation
+                        })
+                    })
+                    .collect();
                 println!(
                     "{}",
                     serde_json::json!({
-                        "violations": []
+                        "repository": repo_name,
+                        "path": repo_path.display().to_string(),
+                        "count": violations.len(),
+                        "violations": violations_json
                     })
                 );
             }
@@ -8935,6 +9230,31 @@ fn handle_governance_command(
             reason,
             expires,
         } => {
+            let policy_config_path = default_policies_path();
+            let mut config = RepoPolicyConfig::load(&policy_config_path)?;
+
+            // Check if exemption already exists
+            let already_exists = config.exemptions.iter().any(|e| {
+                e.repo == *repo && e.policy == *policy
+            });
+
+            if already_exists {
+                println!("⚠️  Exemption already exists for {} / {}", repo, policy);
+                return Ok(());
+            }
+
+            // Add the new exemption
+            config.exemptions.push(PolicyExemption {
+                repo: repo.clone(),
+                policy: policy.clone(),
+                reason: reason.clone(),
+                expires: expires.clone(),
+                approved_by: std::env::var("USER").ok(),
+            });
+
+            // Save the config
+            config.save(&policy_config_path)?;
+
             println!("✓ Added exemption:");
             println!("  Repository: {}", repo);
             println!("  Policy: {}", policy);
@@ -8943,17 +9263,33 @@ fn handle_governance_command(
                 println!("  Expires: {}", exp);
             }
             println!();
-            println!("⚠️  Exemption storage not yet implemented");
+            println!("Saved to: {}", policy_config_path.display());
 
             Ok(())
         }
 
         GovernanceCommands::Unexempt { repo, policy } => {
+            let policy_config_path = default_policies_path();
+            let mut config = RepoPolicyConfig::load(&policy_config_path)?;
+
+            let original_len = config.exemptions.len();
+            config.exemptions.retain(|e| {
+                !(e.repo == *repo && e.policy == *policy)
+            });
+
+            if config.exemptions.len() == original_len {
+                println!("⚠️  No exemption found for {} / {}", repo, policy);
+                return Ok(());
+            }
+
+            // Save the config
+            config.save(&policy_config_path)?;
+
             println!("✓ Removed exemption:");
             println!("  Repository: {}", repo);
             println!("  Policy: {}", policy);
             println!();
-            println!("⚠️  Exemption storage not yet implemented");
+            println!("Saved to: {}", policy_config_path.display());
 
             Ok(())
         }
@@ -8976,6 +9312,132 @@ fn handle_governance_command(
                         "entries": []
                     })
                 );
+            }
+
+            Ok(())
+        }
+    }
+}
+
+/// Handle the `scan` command - scan GitHub user/org for repositories
+async fn handle_scan_command(
+    cmd: &commands::ScanCommands,
+    _config_path: &Option<String>,
+) -> allbeads::Result<()> {
+    use allbeads::governance::{print_scan_result, GitHubScanner, ScanFilter};
+
+    // Get GitHub token from environment
+    let token = std::env::var("GITHUB_TOKEN").ok();
+
+    if token.is_none() {
+        eprintln!("Warning: GITHUB_TOKEN not set. Rate limits will be strict and private repos won't be visible.");
+        eprintln!("Set GITHUB_TOKEN environment variable for better results.");
+        eprintln!();
+    }
+
+    let scanner = GitHubScanner::new(token);
+
+    match cmd {
+        commands::ScanCommands::User {
+            username,
+            min_stars,
+            language,
+            activity,
+            exclude_forks,
+            exclude_archived,
+            all,
+            json,
+        } => {
+            let filter = ScanFilter {
+                min_stars: *min_stars,
+                language: language.clone(),
+                activity_days: *activity,
+                exclude_forks: *exclude_forks,
+                exclude_archived: *exclude_archived,
+                exclude_private: false,
+                topics: Vec::new(),
+            };
+
+            let result = scanner.scan_user(username, &filter).await?;
+
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                print_scan_result(&result, *all);
+            }
+
+            Ok(())
+        }
+
+        commands::ScanCommands::Org {
+            org,
+            min_stars,
+            language,
+            activity,
+            exclude_forks,
+            exclude_archived,
+            exclude_private,
+            all,
+            json,
+        } => {
+            let filter = ScanFilter {
+                min_stars: *min_stars,
+                language: language.clone(),
+                activity_days: *activity,
+                exclude_forks: *exclude_forks,
+                exclude_archived: *exclude_archived,
+                exclude_private: *exclude_private,
+                topics: Vec::new(),
+            };
+
+            let result = scanner.scan_org(org, &filter).await?;
+
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                print_scan_result(&result, *all);
+            }
+
+            Ok(())
+        }
+
+        commands::ScanCommands::Compare { json } => {
+            // For now, just show a summary comparing managed vs GitHub
+            use allbeads::config::AllBeadsConfig;
+
+            let config_path = AllBeadsConfig::default_path();
+            let config = AllBeadsConfig::load(&config_path)?;
+
+            println!("Managed Contexts vs GitHub");
+            println!("═══════════════════════════════════════════════════════════════");
+            println!();
+            println!("Managed contexts in AllBeads: {}", config.contexts.len());
+            for ctx in &config.contexts {
+                let path_str = ctx
+                    .path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(no local path)".to_string());
+                println!("  • {} - {}", ctx.name, path_str);
+            }
+            println!();
+            println!("To scan GitHub for unmanaged repos, run:");
+            println!("  ab scan user <username>");
+            println!("  ab scan org <organization>");
+
+            if *json {
+                let contexts: Vec<_> = config
+                    .contexts
+                    .iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "name": c.name,
+                            "url": c.url,
+                            "path": c.path.as_ref().map(|p| p.display().to_string())
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::json!({ "contexts": contexts }));
             }
 
             Ok(())

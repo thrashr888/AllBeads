@@ -748,6 +748,10 @@ pub enum Commands {
     #[command(subcommand)]
     Governance(GovernanceCommands),
 
+    /// Scan GitHub user/org for repositories
+    #[command(subcommand)]
+    Scan(ScanCommands),
+
     // =========================================================================
     // CONFIG COMMANDS - Distributed configuration
     // =========================================================================
@@ -1047,6 +1051,28 @@ pub enum AgentsCommands {
 
     /// Show agent adoption summary
     Summary,
+
+    /// Record agent scan results to usage database
+    Track {
+        /// Context name (default: current directory name)
+        #[arg(long)]
+        context: Option<String>,
+
+        /// Path to repository (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+
+    /// Show historical usage statistics
+    Stats {
+        /// Number of days to show (default: 30)
+        #[arg(long, default_value = "30")]
+        days: u32,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1132,6 +1158,88 @@ pub enum GovernanceCommands {
         #[arg(long, default_value = "7")]
         days: u32,
 
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ScanCommands {
+    /// Scan a GitHub user's repositories
+    User {
+        /// GitHub username to scan
+        username: String,
+
+        /// Minimum number of stars
+        #[arg(long)]
+        min_stars: Option<u32>,
+
+        /// Filter by language
+        #[arg(long)]
+        language: Option<String>,
+
+        /// Only show repos with activity within N days
+        #[arg(long)]
+        activity: Option<u32>,
+
+        /// Exclude forks
+        #[arg(long)]
+        exclude_forks: bool,
+
+        /// Exclude archived repos
+        #[arg(long)]
+        exclude_archived: bool,
+
+        /// Show all results (including low priority)
+        #[arg(long)]
+        all: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Scan a GitHub organization's repositories
+    Org {
+        /// GitHub organization name to scan
+        org: String,
+
+        /// Minimum number of stars
+        #[arg(long)]
+        min_stars: Option<u32>,
+
+        /// Filter by language
+        #[arg(long)]
+        language: Option<String>,
+
+        /// Only show repos with activity within N days
+        #[arg(long)]
+        activity: Option<u32>,
+
+        /// Exclude forks
+        #[arg(long)]
+        exclude_forks: bool,
+
+        /// Exclude archived repos
+        #[arg(long)]
+        exclude_archived: bool,
+
+        /// Exclude private repos (requires auth token)
+        #[arg(long)]
+        exclude_private: bool,
+
+        /// Show all results (including low priority)
+        #[arg(long)]
+        all: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Compare scanned repos with managed contexts
+    Compare {
         /// Output as JSON
         #[arg(long)]
         json: bool,
