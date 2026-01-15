@@ -78,6 +78,8 @@ pub struct App {
     pub github_picker_view: GitHubPickerView,
     pub postmaster: Option<Arc<Mutex<Postmaster>>>,
     pub inbox_address: Address,
+    /// Flag indicating onboarding was requested from GitHub picker
+    pub onboard_requested: bool,
 }
 
 impl App {
@@ -111,6 +113,7 @@ impl App {
             github_picker_view: GitHubPickerView::new(),
             postmaster: None,
             inbox_address: Address::human(),
+            onboard_requested: false,
         }
     }
 

@@ -62,10 +62,8 @@ pub struct GitHubPickerView {
     pub result_receiver: Option<mpsc::Receiver<Result<Vec<ScannedRepo>, String>>>,
     /// Whether a search is pending
     pub search_pending: bool,
-    /// Repository marked for onboarding (clone_url)
-    pub pending_onboard: Option<String>,
-    /// Status message to display
-    pub status_message: Option<String>,
+    /// Repositories marked for onboarding (clone_urls)
+    pub marked_repos: Vec<String>,
 }
 
 impl Default for GitHubPickerView {
@@ -93,35 +91,41 @@ impl GitHubPickerView {
             input_mode: true,
             result_receiver: None,
             search_pending: false,
-            pending_onboard: None,
-            status_message: None,
+            marked_repos: Vec::new(),
         }
     }
 
-    /// Mark the currently selected repo for onboarding
-    pub fn mark_for_onboard(&mut self) {
+    /// Toggle mark on the currently selected repo
+    pub fn toggle_mark(&mut self) {
         // Clone data first to avoid borrow issues
         let repo_info = self.selected_repo().map(|r| (r.name.clone(), r.clone_url.clone()));
 
         if let Some((name, clone_url)) = repo_info {
-            if !self.is_managed(&name) {
-                self.pending_onboard = Some(clone_url);
-                self.status_message = Some(format!(
-                    "Marked '{}' for onboarding. Press 'q' to exit and run onboard.",
-                    name
-                ));
+            if self.is_managed(&name) {
+                return; // Can't mark already managed repos
+            }
+
+            if let Some(pos) = self.marked_repos.iter().position(|u| u == &clone_url) {
+                self.marked_repos.remove(pos);
+            } else {
+                self.marked_repos.push(clone_url);
             }
         }
     }
 
-    /// Get the pending onboard URL and clear it
-    pub fn take_pending_onboard(&mut self) -> Option<String> {
-        self.pending_onboard.take()
+    /// Check if a repo is marked for onboarding
+    pub fn is_marked(&self, clone_url: &str) -> bool {
+        self.marked_repos.contains(&clone_url.to_string())
     }
 
-    /// Clear status message
-    pub fn clear_status(&mut self) {
-        self.status_message = None;
+    /// Get all marked repos and clear the list
+    pub fn take_marked_repos(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.marked_repos)
+    }
+
+    /// Get count of marked repos
+    pub fn marked_count(&self) -> usize {
+        self.marked_repos.len()
     }
 
     /// Execute search in a background thread
@@ -304,55 +308,37 @@ impl GitHubPickerView {
 
     /// Render the view
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
-        // Split into header, search bar, status (optional), and results
-        let has_status = self.status_message.is_some();
-        let constraints = if has_status {
-            vec![
-                Constraint::Length(3), // Header
-                Constraint::Length(3), // Search bar
-                Constraint::Length(3), // Status bar
-                Constraint::Min(0),    // Results
-            ]
-        } else {
-            vec![
-                Constraint::Length(3), // Header
-                Constraint::Length(3), // Search bar
-                Constraint::Min(0),    // Results
-            ]
-        };
-
+        // Split into header, search bar, and results
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(constraints)
+            .constraints([
+                Constraint::Length(3), // Header
+                Constraint::Length(3), // Search bar
+                Constraint::Min(0),    // Results
+            ])
             .split(area);
 
         self.render_header(frame, chunks[0]);
         self.render_search_bar(frame, chunks[1]);
 
-        if has_status {
-            self.render_status_bar(frame, chunks[2]);
-            if self.show_detail {
-                self.render_detail(frame, chunks[3]);
-            } else {
-                self.render_results(frame, chunks[3]);
-            }
-        } else if self.show_detail {
+        if self.show_detail {
             self.render_detail(frame, chunks[2]);
         } else {
             self.render_results(frame, chunks[2]);
         }
     }
 
-    fn render_status_bar(&self, frame: &mut Frame, area: Rect) {
-        let msg = self.status_message.as_deref().unwrap_or("");
-        let status = Paragraph::new(msg)
-            .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
-            .block(Block::default().borders(Borders::ALL).title("Status"));
-        frame.render_widget(status, area);
-    }
-
     fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let mode_text = format!("[m] Mode: {} | [/] Search | [o] Onboard | [Enter] Detail | [Tab] Switch view", self.search_mode.name());
+        let marked_info = if self.marked_repos.is_empty() {
+            String::new()
+        } else {
+            format!(" | {} marked", self.marked_repos.len())
+        };
+        let mode_text = format!(
+            "[m] Mode: {} | [/] Search | [Space] Mark | [o] Onboard | [Tab] Switch{}",
+            self.search_mode.name(),
+            marked_info
+        );
         let header = Paragraph::new(mode_text)
             .style(Style::default().fg(Color::Cyan))
             .block(Block::default().borders(Borders::ALL).title("GitHub Repo Picker"));
@@ -411,11 +397,21 @@ impl GitHubPickerView {
             .iter()
             .map(|repo| {
                 let is_managed = self.is_managed(&repo.name);
+                let is_marked = self.is_marked(&repo.clone_url);
                 let priority_indicator = match repo.onboarding_priority {
                     OnboardingPriority::High => "🔴",
                     OnboardingPriority::Medium => "🟡",
                     OnboardingPriority::Low => "🟢",
                     OnboardingPriority::Skip => "⚪",
+                };
+
+                // Checkbox for marking (only show for non-managed repos)
+                let mark_indicator = if is_managed {
+                    "   " // Already managed, no checkbox
+                } else if is_marked {
+                    "[x]"
+                } else {
+                    "[ ]"
                 };
 
                 let managed_indicator = if is_managed { " ✓" } else { "" };
@@ -427,6 +423,8 @@ impl GitHubPickerView {
 
                 let style = if is_managed {
                     Style::default().fg(Color::Green)
+                } else if is_marked {
+                    Style::default().fg(Color::Magenta)
                 } else {
                     match repo.onboarding_priority {
                         OnboardingPriority::High => Style::default().fg(Color::Red),
@@ -437,6 +435,7 @@ impl GitHubPickerView {
                 };
 
                 let line = Line::from(vec![
+                    Span::styled(format!("{} ", mark_indicator), if is_marked { Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD) } else { Style::default().fg(Color::DarkGray) }),
                     Span::styled(format!("{} ", priority_indicator), style),
                     Span::styled(format!("{}{}", repo.name, managed_indicator), style.add_modifier(Modifier::BOLD)),
                     Span::styled(agents_str, Style::default().fg(Color::Cyan)),
@@ -449,10 +448,12 @@ impl GitHubPickerView {
             })
             .collect();
 
+        let marked_count = self.marked_repos.len();
         let title = format!(
-            "Results ({} repos, {} managed)",
+            "Results ({} repos, {} managed{})",
             self.repos.len(),
-            self.repos.iter().filter(|r| self.is_managed(&r.name)).count()
+            self.repos.iter().filter(|r| self.is_managed(&r.name)).count(),
+            if marked_count > 0 { format!(", {} marked", marked_count) } else { String::new() }
         );
 
         let list = List::new(items)
@@ -524,10 +525,17 @@ impl GitHubPickerView {
         }
 
         if !is_managed {
+            let is_marked = self.is_marked(&repo.clone_url);
             lines.push(Line::from(""));
-            lines.push(Line::from(vec![
-                Span::styled("Press Enter to mark for onboarding", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-            ]));
+            if is_marked {
+                lines.push(Line::from(vec![
+                    Span::styled("[x] Marked for onboarding (Space/Enter to unmark)", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled("[ ] Press Space or Enter to mark for onboarding", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                ]));
+            }
         }
 
         let detail = Paragraph::new(lines)

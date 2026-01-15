@@ -1021,7 +1021,19 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 .parent()
                 .map(|p| p.join("mail.db"));
 
-            allbeads::tui::run_with_mail(graph, mail_db_path, &tui_project_id)?;
+            let tui_result = allbeads::tui::run_with_mail(graph, mail_db_path, &tui_project_id)?;
+
+            // Handle onboarding request from GitHub picker
+            if !tui_result.repos_to_onboard.is_empty() {
+                println!("\nOnboarding {} repositories:", tui_result.repos_to_onboard.len());
+                for repo_url in &tui_result.repos_to_onboard {
+                    println!("  - {}", repo_url);
+                }
+                println!("\nTo onboard these repositories, run:");
+                for repo_url in &tui_result.repos_to_onboard {
+                    println!("  ab onboard {}", repo_url);
+                }
+            }
         }
 
         Commands::ClearCache => {

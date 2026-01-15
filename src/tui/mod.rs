@@ -36,16 +36,23 @@ use std::io;
 use std::path::PathBuf;
 
 /// Run the TUI application (without mail support)
-pub fn run(graph: FederatedGraph) -> Result<()> {
+pub fn run(graph: FederatedGraph) -> Result<TuiResult> {
     run_with_mail(graph, None, "default")
 }
 
+/// Result of running the TUI - may request onboarding
+pub struct TuiResult {
+    /// Repos to onboard (clone URLs), if onboarding was requested
+    pub repos_to_onboard: Vec<String>,
+}
+
 /// Run the TUI application with optional mail support
+/// Returns repos to onboard if the user pressed 'o' in GitHub picker
 pub fn run_with_mail(
     graph: FederatedGraph,
     mail_db_path: Option<PathBuf>,
     project_id: &str,
-) -> Result<()> {
+) -> Result<TuiResult> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -71,7 +78,14 @@ pub fn run_with_mail(
         eprintln!("Error: {:?}", err);
     }
 
-    Ok(())
+    // Check if onboarding was requested
+    let repos_to_onboard = if app.onboard_requested {
+        app.github_picker_view.take_marked_repos()
+    } else {
+        Vec::new()
+    };
+
+    Ok(TuiResult { repos_to_onboard })
 }
 
 fn run_app<B: ratatui::backend::Backend>(
@@ -197,25 +211,25 @@ fn run_app<B: ratatui::backend::Backend>(
                                 KeyCode::Char('k') | KeyCode::Up => app.github_picker_view.previous(),
                                 KeyCode::Char('m') => app.github_picker_view.toggle_mode(),
                                 KeyCode::Char('/') => app.github_picker_view.toggle_input_mode(),
+                                KeyCode::Char(' ') => {
+                                    // Toggle mark on current repo
+                                    app.github_picker_view.toggle_mark();
+                                }
                                 KeyCode::Enter => {
-                                    // If in detail view and repo not managed, mark for onboard
+                                    // Toggle detail view (or toggle mark in detail view)
                                     if app.github_picker_view.show_detail {
-                                        if let Some(repo) = app.github_picker_view.selected_repo() {
-                                            if !app.github_picker_view.is_managed(&repo.name) {
-                                                app.github_picker_view.mark_for_onboard();
-                                            }
-                                        }
+                                        // In detail view, toggle mark and close
+                                        app.github_picker_view.toggle_mark();
                                         app.github_picker_view.close_detail();
                                     } else {
                                         app.github_picker_view.toggle_detail();
                                     }
                                 }
                                 KeyCode::Char('o') => {
-                                    // Quick onboard without opening detail
-                                    if let Some(repo) = app.github_picker_view.selected_repo() {
-                                        if !app.github_picker_view.is_managed(&repo.name) {
-                                            app.github_picker_view.mark_for_onboard();
-                                        }
+                                    // Trigger onboarding of marked repos
+                                    if !app.github_picker_view.marked_repos.is_empty() {
+                                        app.onboard_requested = true;
+                                        return Ok(());
                                     }
                                 }
                                 KeyCode::Esc => app.github_picker_view.close_detail(),
