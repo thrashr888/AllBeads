@@ -577,3 +577,60 @@ pub fn commit_and_push_onboarding(path: &Path, non_interactive: bool) -> Result<
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_repo_url_https() {
+        let url = "https://github.com/user/repo.git";
+        let parsed = parse_repo_url(url);
+        assert!(parsed.is_ok());
+        let (name, org) = parsed.unwrap();
+        assert_eq!(name, "repo");
+        assert_eq!(org, "user");
+    }
+
+    #[test]
+    fn test_parse_repo_url_ssh() {
+        let url = "git@github.com:user/repo.git";
+        let parsed = parse_repo_url(url);
+        assert!(parsed.is_ok());
+        let (name, org) = parsed.unwrap();
+        assert_eq!(name, "repo");
+        assert_eq!(org, "user");
+    }
+
+    #[test]
+    fn test_parse_repo_url_without_git_suffix() {
+        let url = "https://github.com/user/repo";
+        let parsed = parse_repo_url(url);
+        assert!(parsed.is_ok());
+        let (name, _) = parsed.unwrap();
+        assert_eq!(name, "repo");
+    }
+
+    #[test]
+    fn test_parse_repo_url_invalid() {
+        let url = "not-a-valid-url";
+        let parsed = parse_repo_url(url);
+        assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn test_repo_info_struct() {
+        let info = RepoInfo {
+            name: "test-repo".to_string(),
+            path: PathBuf::from("/tmp/test-repo"),
+            url: Some("https://github.com/user/test-repo.git".to_string()),
+            organization: Some("user".to_string()),
+            exists_locally: false,
+        };
+
+        assert_eq!(info.name, "test-repo");
+        assert!(!info.exists_locally);
+        assert!(info.url.is_some());
+        assert!(info.organization.is_some());
+    }
+}

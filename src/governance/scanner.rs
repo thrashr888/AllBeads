@@ -1229,4 +1229,84 @@ mod tests {
         assert!(!filter.exclude_archived);
         assert!(filter.min_stars.is_none());
     }
+
+    #[test]
+    fn test_scan_source_display() {
+        let user = ScanSource::User("testuser".to_string());
+        let org = ScanSource::Organization("testorg".to_string());
+        let repo = ScanSource::Repository("user/repo".to_string());
+
+        assert_eq!(format!("{}", user), "user:testuser");
+        assert_eq!(format!("{}", org), "org:testorg");
+        assert_eq!(format!("{}", repo), "repo:user/repo");
+    }
+
+    #[test]
+    fn test_scan_summary_default() {
+        let summary = ScanSummary::default();
+        assert_eq!(summary.total_repos, 0);
+        assert_eq!(summary.managed_repos, 0);
+        assert_eq!(summary.unmanaged_repos, 0);
+        assert_eq!(summary.with_agents, 0);
+    }
+
+    #[test]
+    fn test_scanned_repo_priority_skip_for_managed() {
+        // A managed repo should be Skip priority
+        let repo = ScannedRepo {
+            name: "test".to_string(),
+            full_name: "user/test".to_string(),
+            url: "https://github.com/user/test".to_string(),
+            clone_url: "https://github.com/user/test.git".to_string(),
+            description: None,
+            language: None,
+            stars: 0,
+            forks: 0,
+            is_fork: false,
+            is_archived: false,
+            is_private: false,
+            created_at: chrono::Utc::now(),
+            last_push: Some(chrono::Utc::now()),
+            default_branch: "main".to_string(),
+            topics: vec![],
+            managed: true,
+            detected_agents: vec![],
+            onboarding_priority: OnboardingPriority::Skip,
+            days_since_push: Some(0),
+        };
+
+        assert!(repo.managed);
+        assert_eq!(repo.onboarding_priority, OnboardingPriority::Skip);
+    }
+
+    #[test]
+    fn test_github_scanner_new() {
+        let scanner = GitHubScanner::new(None);
+        assert!(scanner.token.is_none());
+
+        let scanner_with_token = GitHubScanner::new(Some("test_token".to_string()));
+        assert!(scanner_with_token.token.is_some());
+        assert_eq!(scanner_with_token.token.unwrap(), "test_token");
+    }
+
+    #[test]
+    fn test_scan_options_default() {
+        let options = ScanOptions::default();
+        assert!(options.show_progress);
+        assert!(options.use_search_api);
+        assert_eq!(options.concurrency, 10);
+    }
+
+    #[test]
+    fn test_scan_result_creation() {
+        let result = ScanResult {
+            timestamp: chrono::Utc::now(),
+            source: ScanSource::Repository("user/repo".to_string()),
+            repositories: vec![],
+            summary: ScanSummary::default(),
+        };
+
+        assert!(matches!(result.source, ScanSource::Repository(_)));
+        assert!(result.repositories.is_empty());
+    }
 }
