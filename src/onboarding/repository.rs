@@ -149,16 +149,18 @@ pub fn clone_repository(url: &str, path: &Path, non_interactive: bool) -> Result
         fs::create_dir_all(parent)?;
     }
 
-    // Clone using git
-    println!("  Cloning...");
-    let status = Command::new("git")
-        .args(["clone", url, &path.display().to_string()])
-        .status()?;
+    // Clone using git (capture output to avoid terminal corruption from progress)
+    println!("  Cloning {}...", url);
+    let output = Command::new("git")
+        .args(["clone", "--progress", url, &path.display().to_string()])
+        .stderr(std::process::Stdio::piped())
+        .output()?;
 
-    if !status.success() {
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(crate::AllBeadsError::Config(format!(
-            "Git clone failed with status: {}",
-            status
+            "Git clone failed: {}",
+            stderr.trim()
         )));
     }
 
