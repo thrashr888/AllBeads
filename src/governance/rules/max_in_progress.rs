@@ -106,7 +106,10 @@ mod tests {
     #[test]
     fn test_within_limit_passes() {
         let rule = MaxInProgressRule::new(3);
-        let policy = Policy::new("max-in-progress", PolicyType::MaxInProgress { max_count: 3 });
+        let policy = Policy::new(
+            "max-in-progress",
+            PolicyType::MaxInProgress { max_count: 3 },
+        );
 
         let graph = make_graph(vec![
             make_bead("test-1", Status::InProgress, Some("alice")),
@@ -121,7 +124,10 @@ mod tests {
     #[test]
     fn test_over_limit_fails() {
         let rule = MaxInProgressRule::new(2);
-        let policy = Policy::new("max-in-progress", PolicyType::MaxInProgress { max_count: 2 });
+        let policy = Policy::new(
+            "max-in-progress",
+            PolicyType::MaxInProgress { max_count: 2 },
+        );
 
         let graph = make_graph(vec![
             make_bead("test-1", Status::InProgress, Some("alice")),
@@ -138,7 +144,10 @@ mod tests {
     #[test]
     fn test_different_assignees_separate_counts() {
         let rule = MaxInProgressRule::new(2);
-        let policy = Policy::new("max-in-progress", PolicyType::MaxInProgress { max_count: 2 });
+        let policy = Policy::new(
+            "max-in-progress",
+            PolicyType::MaxInProgress { max_count: 2 },
+        );
 
         let graph = make_graph(vec![
             make_bead("test-1", Status::InProgress, Some("alice")),

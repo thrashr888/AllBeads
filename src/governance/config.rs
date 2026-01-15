@@ -69,8 +69,7 @@ impl PoliciesConfig {
         let content = std::fs::read_to_string(path.as_ref())
             .map_err(|e| format!("Failed to read policies file: {}", e))?;
 
-        serde_yaml::from_str(&content)
-            .map_err(|e| format!("Failed to parse policies YAML: {}", e))
+        serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse policies YAML: {}", e))
     }
 
     /// Load policies from the default location (.beads/policies.yaml)
@@ -188,7 +187,10 @@ pub fn load_policies_for_context(context_path: impl AsRef<Path>) -> Vec<Policy> 
     match PoliciesConfig::from_beads_dir(&beads_dir) {
         Ok(config) => config.to_policies(),
         Err(e) => {
-            eprintln!("Warning: Failed to load policies from {:?}: {}", beads_dir, e);
+            eprintln!(
+                "Warning: Failed to load policies from {:?}: {}",
+                beads_dir, e
+            );
             Vec::new()
         }
     }

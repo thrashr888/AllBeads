@@ -33,7 +33,9 @@ impl PolicyRule for CycleDetectionRule {
         for node in adj.keys() {
             if !visited.contains(node) {
                 let mut path = Vec::new();
-                if let Some(cycle) = detect_cycle_dfs(node, &adj, &mut visited, &mut rec_stack, &mut path) {
+                if let Some(cycle) =
+                    detect_cycle_dfs(node, &adj, &mut visited, &mut rec_stack, &mut path)
+                {
                     cycles.push(cycle);
                 }
             }
@@ -79,7 +81,11 @@ fn detect_cycle_dfs<'a>(
                     .iter()
                     .map(|id| id.as_str().to_string())
                     .collect();
-                return Some(format!("{} -> {}", cycle_path.join(" -> "), neighbor.as_str()));
+                return Some(format!(
+                    "{} -> {}",
+                    cycle_path.join(" -> "),
+                    neighbor.as_str()
+                ));
             }
         }
     }

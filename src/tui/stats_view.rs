@@ -118,9 +118,16 @@ pub fn draw(f: &mut Frame, stats_view: &StatsView, area: Rect) {
         .split(area);
 
     // Title
-    let title = Paragraph::new(format!("Project Statistics - {} Total Beads", stats_view.total))
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-        .block(Block::default().borders(Borders::BOTTOM));
+    let title = Paragraph::new(format!(
+        "Project Statistics - {} Total Beads",
+        stats_view.total
+    ))
+    .style(
+        Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+    )
+    .block(Block::default().borders(Borders::BOTTOM));
     f.render_widget(title, chunks[0]);
 
     // Status breakdown
@@ -142,7 +149,11 @@ pub fn draw(f: &mut Frame, stats_view: &StatsView, area: Rect) {
 fn draw_status_section(f: &mut Frame, stats: &StatsView, area: Rect) {
     let data = [
         ("Open", stats.status_open as u64, Color::White),
-        ("In Progress", stats.status_in_progress as u64, Color::Yellow),
+        (
+            "In Progress",
+            stats.status_in_progress as u64,
+            Color::Yellow,
+        ),
         ("Blocked", stats.status_blocked as u64, Color::Red),
         ("Closed", stats.status_closed as u64, Color::Green),
     ];
@@ -168,7 +179,11 @@ fn draw_status_section(f: &mut Frame, stats: &StatsView, area: Rect) {
         .bar_width(12)
         .bar_gap(2)
         .bar_style(Style::default().fg(Color::Cyan))
-        .value_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD));
+        .value_style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
 
     f.render_widget(bar_chart, area);
 }
@@ -203,7 +218,11 @@ fn draw_priority_section(f: &mut Frame, stats: &StatsView, area: Rect) {
         .bar_width(8)
         .bar_gap(1)
         .bar_style(Style::default().fg(Color::Cyan))
-        .value_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD));
+        .value_style(
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        );
 
     f.render_widget(bar_chart, area);
 }
@@ -235,15 +254,9 @@ fn draw_context_section(f: &mut Frame, stats: &StatsView, area: Rect) {
             };
 
             Line::from(vec![
-                Span::styled(
-                    format!("{:>12} ", name),
-                    Style::default().fg(Color::White),
-                ),
+                Span::styled(format!("{:>12} ", name), Style::default().fg(Color::White)),
                 Span::styled(bar, Style::default().fg(color)),
-                Span::styled(
-                    format!(" {}", count),
-                    Style::default().fg(Color::Yellow),
-                ),
+                Span::styled(format!(" {}", count), Style::default().fg(Color::Yellow)),
             ])
         })
         .collect();

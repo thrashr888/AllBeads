@@ -373,7 +373,10 @@ mod cli_tests {
         let output = run_ab(&["list", "-h"]);
         assert!(output.status.success(), "list -h should succeed");
         let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(stdout.contains("List beads"), "Should contain command description");
+        assert!(
+            stdout.contains("List beads"),
+            "Should contain command description"
+        );
     }
 
     #[test]

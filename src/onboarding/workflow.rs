@@ -353,7 +353,13 @@ bd update <id> --status=in_progress
     /// Get git remote URL
     fn get_remote_url(repo_path: &Path) -> Result<String> {
         let output = Command::new("git")
-            .args(["-C", repo_path.to_str().unwrap(), "remote", "get-url", "origin"])
+            .args([
+                "-C",
+                repo_path.to_str().unwrap(),
+                "remote",
+                "get-url",
+                "origin",
+            ])
             .output()
             .map_err(|e| crate::AllBeadsError::Config(format!("Failed to run git: {}", e)))?;
 

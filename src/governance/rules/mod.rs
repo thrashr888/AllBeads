@@ -83,10 +83,7 @@ pub trait PolicyRule: Send + Sync {
         }
 
         if failures.is_empty() {
-            CheckResult::pass(
-                &policy.name,
-                format!("All {} beads passed", total_checked),
-            )
+            CheckResult::pass(&policy.name, format!("All {} beads passed", total_checked))
         } else {
             CheckResult::fail(
                 &policy.name,

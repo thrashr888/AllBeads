@@ -61,7 +61,10 @@ struct ProvenanceSummary {
 ///
 /// Returns a structured summary of changes associated with the bead ID
 /// via Aiki's `summary --bead=<id>` command.
-fn query_aiki_provenance(bead_id: &str, context_path: Option<&Path>) -> allbeads::Result<ProvenanceSummary> {
+fn query_aiki_provenance(
+    bead_id: &str,
+    context_path: Option<&Path>,
+) -> allbeads::Result<ProvenanceSummary> {
     use std::process::Command;
 
     // Determine where to run the aiki command
@@ -74,7 +77,8 @@ fn query_aiki_provenance(bead_id: &str, context_path: Option<&Path>) -> allbeads
         .output()
         .map_err(|e| {
             allbeads::AllBeadsError::Config(format!(
-                "Failed to execute aiki command: {}. Is Aiki installed?", e
+                "Failed to execute aiki command: {}. Is Aiki installed?",
+                e
             ))
         })?;
 
@@ -88,9 +92,8 @@ fn query_aiki_provenance(bead_id: &str, context_path: Option<&Path>) -> allbeads
 
     // Parse JSON output
     let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(&stdout).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to parse Aiki output: {}", e))
-    })
+    serde_json::from_str(&stdout)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to parse Aiki output: {}", e)))
 }
 
 /// Display Aiki tasks linked to a bead
@@ -124,12 +127,17 @@ fn show_aiki_tasks_for_bead(bead: &allbeads::graph::Bead) -> allbeads::Result<()
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            println!("\n    {} Unable to fetch task details: {}",
-                style::error("✗"), stderr.trim());
+            println!(
+                "\n    {} Unable to fetch task details: {}",
+                style::error("✗"),
+                stderr.trim()
+            );
         }
         Err(_) => {
-            println!("\n    {} Aiki not available (task details unavailable)",
-                style::warning("⚠"));
+            println!(
+                "\n    {} Aiki not available (task details unavailable)",
+                style::warning("⚠")
+            );
         }
     }
 
@@ -198,14 +206,18 @@ fn parse_and_display_aiki_tasks(xml: &str, linked_tasks: &[String]) {
         for task_id in linked_tasks {
             if let Some((title, status)) = tasks.get(task_id) {
                 let status_display = style::status_style(status);
-                println!("      • {} - {} [{}]",
+                println!(
+                    "      • {} - {} [{}]",
                     style::highlight(task_id),
                     title,
-                    status_display);
+                    status_display
+                );
             } else {
-                println!("      • {} - {}",
+                println!(
+                    "      • {} - {}",
                     style::highlight(task_id),
-                    style::error("not found"));
+                    style::error("not found")
+                );
             }
         }
     }
@@ -303,7 +315,14 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         ref format,
     } = command
     {
-        return handle_check_command(strict, policy.as_deref(), fix, pre_commit, bead.as_deref(), format);
+        return handle_check_command(
+            strict,
+            policy.as_deref(),
+            fix,
+            pre_commit,
+            bead.as_deref(),
+            format,
+        );
     }
 
     if let Commands::Hooks(ref hooks_cmd) = command {
@@ -313,6 +332,16 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
     // Handle Aiki commands (don't need graph)
     if let Commands::Aiki(ref aiki_cmd) = command {
         return handle_aiki_command(aiki_cmd);
+    }
+
+    // Handle Agents commands (don't need graph)
+    if let Commands::Agents(ref agents_cmd) = command {
+        return handle_agents_command(agents_cmd, &cli.config);
+    }
+
+    // Handle Governance commands (need config but not full graph)
+    if let Commands::Governance(ref gov_cmd) = command {
+        return handle_governance_command(gov_cmd, &cli.config);
     }
 
     // Handle sync command
@@ -377,9 +406,13 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
     // Validate context filter - ensure all specified contexts exist
     if !context_filter.is_empty() {
-        let valid_context_names: Vec<&str> = config.contexts.iter().map(|c| c.name.as_str()).collect();
+        let valid_context_names: Vec<&str> =
+            config.contexts.iter().map(|c| c.name.as_str()).collect();
         for ctx in &context_filter {
-            if !valid_context_names.iter().any(|name| name.eq_ignore_ascii_case(ctx)) {
+            if !valid_context_names
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case(ctx))
+            {
                 eprintln!(
                     "Error: Context '{}' not found. Available contexts: {}",
                     ctx,
@@ -428,7 +461,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             let mut aggregator = Aggregator::new(config, agg_config)?;
             let graph = aggregator.aggregate()?;
             cache.store_graph(&graph)?;
-            eprintln!("✓ Loaded {} beads from {} contexts", graph.beads.len(), graph.rigs.len());
+            eprintln!(
+                "✓ Loaded {} beads from {} contexts",
+                graph.beads.len(),
+                graph.rigs.len()
+            );
             graph
         }
     } else {
@@ -437,7 +474,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         let mut aggregator = Aggregator::new(config, agg_config)?;
         let graph = aggregator.aggregate()?;
         cache.store_graph(&graph)?;
-        eprintln!("✓ Loaded {} beads from {} contexts", graph.beads.len(), graph.rigs.len());
+        eprintln!(
+            "✓ Loaded {} beads from {} contexts",
+            graph.beads.len(),
+            graph.rigs.len()
+        );
         graph
     };
 
@@ -446,7 +487,9 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         graph.beads.retain(|_, bead| {
             bead.labels.iter().any(|label| {
                 if let Some(ctx_name) = label.strip_prefix('@') {
-                    context_filter.iter().any(|f| f.eq_ignore_ascii_case(ctx_name))
+                    context_filter
+                        .iter()
+                        .any(|f| f.eq_ignore_ascii_case(ctx_name))
                 } else {
                     false
                 }
@@ -499,7 +542,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Show { id, provenance, tasks } => {
+        Commands::Show {
+            id,
+            provenance,
+            tasks,
+        } => {
             let bead_id = BeadId::new(&id);
             if let Some(bead) = graph.get_bead(&bead_id) {
                 print_bead_detailed(bead);
@@ -512,22 +559,29 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             println!("    Total changes: {}", prov.total_changes);
                             if !prov.agents.is_empty() {
                                 print!("    Agents: ");
-                                let agents_str: Vec<String> = prov.agents.iter()
+                                let agents_str: Vec<String> = prov
+                                    .agents
+                                    .iter()
                                     .map(|(agent, count)| format!("{} ({})", agent, count))
                                     .collect();
                                 println!("{}", agents_str.join(", "));
                             }
                             if let Some(reviews) = prov.reviews {
-                                println!("    Reviews: {} passed, {} required iteration",
-                                    reviews.passed, reviews.iterated);
+                                println!(
+                                    "    Reviews: {} passed, {} required iteration",
+                                    reviews.passed, reviews.iterated
+                                );
                             }
                             if let Some(time) = prov.time_in_review {
                                 println!("    Time in review loop: {}", time);
                             }
                         }
                         Err(e) => {
-                            eprintln!("\n  {} Unable to fetch provenance: {}",
-                                style::error("✗"), e);
+                            eprintln!(
+                                "\n  {} Unable to fetch provenance: {}",
+                                style::error("✗"),
+                                e
+                            );
                         }
                     }
                 }
@@ -1124,7 +1178,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
                 if let Some(ctx_name) = context_label {
                     // Find the context path
-                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx) = config_for_commands
+                        .contexts
+                        .iter()
+                        .find(|c| c.name == ctx_name)
+                    {
                         if let Some(ctx_path) = &ctx.path {
                             println!(
                                 "Updating {} in context @{}...",
@@ -1133,9 +1191,9 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             );
 
                             // Parse priority string to u8 if provided
-                            let priority_u8 = priority.as_ref().and_then(|p| {
-                                p.trim_start_matches('P').parse::<u8>().ok()
-                            });
+                            let priority_u8 = priority
+                                .as_ref()
+                                .and_then(|p| p.trim_start_matches('P').parse::<u8>().ok());
 
                             let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.update(
@@ -1181,7 +1239,8 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             // Parse issue-prefix from YAML
                             for line in content.lines() {
                                 if let Some(value) = line.strip_prefix("issue-prefix:") {
-                                    let ctx_prefix = value.trim().trim_matches('"').trim_matches('\'');
+                                    let ctx_prefix =
+                                        value.trim().trim_matches('"').trim_matches('\'');
                                     if ctx_prefix.eq_ignore_ascii_case(prefix) {
                                         return Some(ctx);
                                     }
@@ -1215,8 +1274,12 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
                 // Fallback: extract prefix from ID and find matching context
                 if let Some(prefix) = id.split('-').next() {
-                    if let Some(ctx) = find_context_by_prefix(prefix, &config_for_commands.contexts) {
-                        by_context.entry(ctx.name.clone()).or_default().push(id.clone());
+                    if let Some(ctx) = find_context_by_prefix(prefix, &config_for_commands.contexts)
+                    {
+                        by_context
+                            .entry(ctx.name.clone())
+                            .or_default()
+                            .push(id.clone());
                         continue;
                     }
                 }
@@ -1230,7 +1293,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
 
             for (ctx_name, bead_ids) in by_context {
-                if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                if let Some(ctx) = config_for_commands
+                    .contexts
+                    .iter()
+                    .find(|c| c.name == ctx_name)
+                {
                     if let Some(ctx_path) = &ctx.path {
                         println!(
                             "Closing {} bead(s) in context @{}...",
@@ -1285,7 +1352,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     .unwrap_or_else(|| "default".to_string())
             });
 
-            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+            if let Some(ctx) = config_for_commands
+                .contexts
+                .iter()
+                .find(|c| c.name == ctx_name)
+            {
                 if let Some(ctx_path) = &ctx.path {
                     println!("Creating bead in context @{}...", ctx_name);
 
@@ -1331,7 +1402,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
 
             for (ctx_name, bead_ids) in by_context {
-                if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                if let Some(ctx) = config_for_commands
+                    .contexts
+                    .iter()
+                    .find(|c| c.name == ctx_name)
+                {
                     if let Some(ctx_path) = &ctx.path {
                         println!(
                             "Reopening {} bead(s) in context @{}...",
@@ -1368,9 +1443,14 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             .find(|l| l.starts_with('@'))
                             .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.dep_add(&issue, &depends_on) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1391,9 +1471,14 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             .find(|l| l.starts_with('@'))
                             .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.dep_remove(&issue, &depends_on) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1419,9 +1504,14 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             .find(|l| l.starts_with('@'))
                             .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.label_add(&issue, &label) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1442,9 +1532,14 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             .find(|l| l.starts_with('@'))
                             .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.label_remove(&issue, &label) {
                                         Ok(output) => println!("{}", output.stdout),
                                         Err(e) => eprintln!("Error: {}", e),
@@ -1472,67 +1567,82 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Comments(comment_cmd) => {
-            match comment_cmd {
-                CommentCommands::List { issue } => {
-                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
-                    if let Some(bead) = graph.beads.get(&bead_id) {
-                        if let Some(ctx_name) = bead
-                            .labels
+        Commands::Comments(comment_cmd) => match comment_cmd {
+            CommentCommands::List { issue } => {
+                let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                if let Some(bead) = graph.beads.get(&bead_id) {
+                    if let Some(ctx_name) = bead
+                        .labels
+                        .iter()
+                        .find(|l| l.starts_with('@'))
+                        .map(|l| l.trim_start_matches('@'))
+                    {
+                        if let Some(ctx) = config_for_commands
+                            .contexts
                             .iter()
-                            .find(|l| l.starts_with('@'))
-                            .map(|l| l.trim_start_matches('@'))
+                            .find(|c| c.name == ctx_name)
                         {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
-                                if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
-                                    match bd.comments(&issue) {
-                                        Ok(comments) => {
-                                            if comments.is_empty() {
-                                                println!("No comments on {}", issue);
-                                            } else {
-                                                for comment in comments {
-                                                    println!("--- {} ({}) ---", comment.author, comment.created_at.unwrap_or_default());
-                                                    println!("{}\n", comment.content);
-                                                }
+                            if let Some(ctx_path) = &ctx.path {
+                                let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                match bd.comments(&issue) {
+                                    Ok(comments) => {
+                                        if comments.is_empty() {
+                                            println!("No comments on {}", issue);
+                                        } else {
+                                            for comment in comments {
+                                                println!(
+                                                    "--- {} ({}) ---",
+                                                    comment.author,
+                                                    comment.created_at.unwrap_or_default()
+                                                );
+                                                println!("{}\n", comment.content);
                                             }
                                         }
-                                        Err(e) => eprintln!("Error: {}", e),
                                     }
+                                    Err(e) => eprintln!("Error: {}", e),
                                 }
                             }
                         }
-                    } else {
-                        eprintln!("Bead {} not found", issue);
                     }
-                }
-                CommentCommands::Add { issue, content } => {
-                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
-                    if let Some(bead) = graph.beads.get(&bead_id) {
-                        if let Some(ctx_name) = bead
-                            .labels
-                            .iter()
-                            .find(|l| l.starts_with('@'))
-                            .map(|l| l.trim_start_matches('@'))
-                        {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
-                                if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
-                                    match bd.comment_add(&issue, &content) {
-                                        Ok(output) => println!("{}", output.stdout),
-                                        Err(e) => eprintln!("Error: {}", e),
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        eprintln!("Bead {} not found", issue);
-                    }
+                } else {
+                    eprintln!("Bead {} not found", issue);
                 }
             }
-        }
+            CommentCommands::Add { issue, content } => {
+                let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                if let Some(bead) = graph.beads.get(&bead_id) {
+                    if let Some(ctx_name) = bead
+                        .labels
+                        .iter()
+                        .find(|l| l.starts_with('@'))
+                        .map(|l| l.trim_start_matches('@'))
+                    {
+                        if let Some(ctx) = config_for_commands
+                            .contexts
+                            .iter()
+                            .find(|c| c.name == ctx_name)
+                        {
+                            if let Some(ctx_path) = &ctx.path {
+                                let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                match bd.comment_add(&issue, &content) {
+                                    Ok(output) => println!("{}", output.stdout),
+                                    Err(e) => eprintln!("Error: {}", e),
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("Bead {} not found", issue);
+                }
+            }
+        },
 
-        Commands::Q { title, issue_type, priority, context } => {
+        Commands::Q {
+            title,
+            issue_type,
+            priority,
+            context,
+        } => {
             // Find the target context
             let ctx_name = context.unwrap_or_else(|| {
                 let cwd = std::env::current_dir().unwrap_or_default();
@@ -1544,11 +1654,15 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     .unwrap_or_else(|| "default".to_string())
             });
 
-            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+            if let Some(ctx) = config_for_commands
+                .contexts
+                .iter()
+                .find(|c| c.name == ctx_name)
+            {
                 if let Some(ctx_path) = &ctx.path {
-                    let priority_u8 = priority.as_ref().and_then(|p| {
-                        p.trim_start_matches('P').parse::<u8>().ok()
-                    });
+                    let priority_u8 = priority
+                        .as_ref()
+                        .and_then(|p| p.trim_start_matches('P').parse::<u8>().ok());
 
                     let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                     match bd.quick_create_full(&title, issue_type.as_deref(), priority_u8) {
@@ -1580,7 +1694,12 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                                     if !epics.is_empty() {
                                         println!("Epics in @{}:", ctx.name);
                                         for epic in epics {
-                                            println!("  {} [P{}] - {}", epic.id, epic.priority.unwrap_or(2), epic.title);
+                                            println!(
+                                                "  {} [P{}] - {}",
+                                                epic.id,
+                                                epic.priority.unwrap_or(2),
+                                                epic.title
+                                            );
                                         }
                                     }
                                 }
@@ -1589,7 +1708,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         }
                     }
                 }
-                EpicCommands::Create { title, priority, context } => {
+                EpicCommands::Create {
+                    title,
+                    priority,
+                    context,
+                } => {
                     let ctx_name = context.clone().unwrap_or_else(|| {
                         let cwd = std::env::current_dir().unwrap_or_default();
                         config_for_commands
@@ -1600,7 +1723,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             .unwrap_or_else(|| "default".to_string())
                     });
 
-                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx) = config_for_commands
+                        .contexts
+                        .iter()
+                        .find(|c| c.name == ctx_name)
+                    {
                         if let Some(ctx_path) = &ctx.path {
                             let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
                             let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
@@ -1620,9 +1747,14 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             .find(|l| l.starts_with('@'))
                             .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
                                 if let Some(ctx_path) = &ctx.path {
-                                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                                     match bd.epic_show(&id) {
                                         Ok(epic) => {
                                             println!("{}: {}", epic.id, epic.title);
@@ -1652,7 +1784,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     .find(|l| l.starts_with('@'))
                     .map(|l| l.trim_start_matches('@'))
                 {
-                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx) = config_for_commands
+                        .contexts
+                        .iter()
+                        .find(|c| c.name == ctx_name)
+                    {
                         if let Some(ctx_path) = &ctx.path {
                             let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.edit(&id, field.as_deref()) {
@@ -1687,7 +1823,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
 
             for (ctx_name, bead_ids) in by_context {
-                if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                if let Some(ctx) = config_for_commands
+                    .contexts
+                    .iter()
+                    .find(|c| c.name == ctx_name)
+                {
                     if let Some(ctx_path) = &ctx.path {
                         println!(
                             "Deleting {} bead(s) in context @{}...",
@@ -1721,7 +1861,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     .find(|l| l.starts_with('@'))
                     .map(|l| l.trim_start_matches('@'))
                 {
-                    if let Some(ctx) = config_for_commands.contexts.iter().find(|c| c.name == ctx_name) {
+                    if let Some(ctx) = config_for_commands
+                        .contexts
+                        .iter()
+                        .find(|c| c.name == ctx_name)
+                    {
                         if let Some(ctx_path) = &ctx.path {
                             let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
                             match bd.duplicate(&id, &of) {
@@ -1753,9 +1897,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Sync { .. }
         | Commands::Check { .. }
         | Commands::Hooks(_)
-        | Commands::Aiki(_) => {
+        | Commands::Aiki(_)
+        | Commands::Agents(_)
+        | Commands::Governance(_) => {
             // Handled earlier in the function
-            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, and Aiki commands should be handled before aggregation")
+            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, and Governance commands should be handled before aggregation")
         }
     }
 
@@ -4822,7 +4968,10 @@ fn handle_context_command(
                     match std::fs::canonicalize(p) {
                         Ok(abs_path) if abs_path.join(".git").exists() => Some(abs_path),
                         Ok(abs_path) => {
-                            eprintln!("⚠️  Path '{}' exists but is not a git repository", abs_path.display());
+                            eprintln!(
+                                "⚠️  Path '{}' exists but is not a git repository",
+                                abs_path.display()
+                            );
                             None
                         }
                         Err(_) => {
@@ -4838,7 +4987,10 @@ fn handle_context_command(
             } else if let Some(p) = path.as_ref() {
                 // Path provided but no URL - use git remote
                 let repo_path = std::fs::canonicalize(p).map_err(|e| {
-                    allbeads::AllBeadsError::Config(format!("Failed to resolve path '{}': {}", p, e))
+                    allbeads::AllBeadsError::Config(format!(
+                        "Failed to resolve path '{}': {}",
+                        p, e
+                    ))
                 })?;
 
                 let git_dir = repo_path.join(".git");
@@ -7040,7 +7192,9 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                             .message
                             .clone()
                             .unwrap_or_else(|| format!("{:?}", r.status)),
-                        MessageType::AikiEvent(a) => format!("Review {:?} for bead {}", a.event, a.bead_id),
+                        MessageType::AikiEvent(a) => {
+                            format!("Review {:?} for bead {}", a.event, a.bead_id)
+                        }
                     };
                     let time = msg.message.timestamp.format("%H:%M");
                     println!(
@@ -7915,7 +8069,9 @@ fn handle_check_command(
 
     if policies.is_empty() {
         if !pre_commit {
-            eprintln!("No policies configured. Create .beads/policies.yaml to enable governance checks.");
+            eprintln!(
+                "No policies configured. Create .beads/policies.yaml to enable governance checks."
+            );
         }
         return Ok(());
     }
@@ -7941,9 +8097,9 @@ fn handle_check_command(
     }
 
     let bd = Beads::with_workdir(&beads_path);
-    let beads_list = bd.list(None, None).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e))
-    })?;
+    let beads_list = bd
+        .list(None, None)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e)))?;
 
     // Convert to graph for checking
     let mut graph = FederatedGraph::new();
@@ -8162,16 +8318,16 @@ fn handle_hooks_command(cmd: &HooksCommands) -> allbeads::Result<()> {
             let hook_path = git_hooks_dir.join(hook_name);
 
             if !hook_path.exists() {
-                return Err(allbeads::AllBeadsError::Config(
-                    format!("Hook '{}' not installed. Run 'bd hooks install' first.", hook_name),
-                ));
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Hook '{}' not installed. Run 'bd hooks install' first.",
+                    hook_name
+                )));
             }
 
             println!("Testing {} hook...\n", hook_name);
 
             // Run the hook script
-            let output = std::process::Command::new(&hook_path)
-                .output()?;
+            let output = std::process::Command::new(&hook_path).output()?;
 
             if output.status.success() {
                 println!("✓ Hook passed");
@@ -8220,7 +8376,10 @@ fn handle_aiki_command(cmd: &AikiCommands) -> allbeads::Result<()> {
             }
 
             // Write the environment variable to the file
-            fs::write(&env_file, format!("export AB_ACTIVE_BEAD=\"{}\"\n", bead_id))?;
+            fs::write(
+                &env_file,
+                format!("export AB_ACTIVE_BEAD=\"{}\"\n", bead_id),
+            )?;
 
             println!("✓ Activated bead: {}", bead_id);
             println!("\nTo use this in your current shell, run:");
@@ -8250,7 +8409,10 @@ fn handle_aiki_command(cmd: &AikiCommands) -> allbeads::Result<()> {
             if let Ok(content) = fs::read_to_string(&env_file) {
                 // Extract the bead ID from the file
                 if let Some(line) = content.lines().next() {
-                    if let Some(id) = line.strip_prefix("export AB_ACTIVE_BEAD=\"").and_then(|s| s.strip_suffix("\"")) {
+                    if let Some(id) = line
+                        .strip_prefix("export AB_ACTIVE_BEAD=\"")
+                        .and_then(|s| s.strip_suffix("\""))
+                    {
                         println!("Active bead: {}", id);
                         println!("Env file: {}", env_file.display());
                         return Ok(());
@@ -8391,8 +8553,7 @@ fn handle_aiki_command(cmd: &AikiCommands) -> allbeads::Result<()> {
 
 fn get_hook_template(hook_name: &str) -> String {
     match hook_name {
-        "pre-commit" => {
-            r#"#!/bin/sh
+        "pre-commit" => r#"#!/bin/sh
 # AllBeads pre-commit hook for policy enforcement
 # Auto-generated by ab hooks install
 
@@ -8412,33 +8573,30 @@ fi
 $ALLBEADS check --pre-commit --strict
 
 exit $?
-"#.to_string()
-        }
+"#
+        .to_string(),
 
-        "commit-msg" => {
-            r#"#!/bin/sh
+        "commit-msg" => r#"#!/bin/sh
 # AllBeads commit-msg hook for bead reference validation
 # Auto-generated by ab hooks install
 
 # TODO: Validate bead references in commit message
 # For now, just pass through
 exit 0
-"#.to_string()
-        }
+"#
+        .to_string(),
 
-        "post-commit" => {
-            r#"#!/bin/sh
+        "post-commit" => r#"#!/bin/sh
 # AllBeads post-commit hook for metadata updates
 # Auto-generated by ab hooks install
 
 # TODO: Update bead metadata with commit info
 # For now, just pass through
 exit 0
-"#.to_string()
-        }
+"#
+        .to_string(),
 
-        "pre-push" => {
-            r#"#!/bin/sh
+        "pre-push" => r#"#!/bin/sh
 # AllBeads pre-push hook for full validation
 # Auto-generated by ab hooks install
 
@@ -8458,11 +8616,363 @@ fi
 $ALLBEADS check --strict
 
 exit $?
-"#.to_string()
-        }
+"#
+        .to_string(),
 
         _ => {
             format!("#!/bin/sh\n# Unknown hook: {}\nexit 0\n", hook_name)
+        }
+    }
+}
+
+/// Handle the `agents` command - detect and manage AI agents
+fn handle_agents_command(
+    cmd: &AgentsCommands,
+    config_path: &Option<String>,
+) -> allbeads::Result<()> {
+    use allbeads::governance::{detect_agents, print_agent_scan, AgentType};
+
+    match cmd {
+        AgentsCommands::Detect { path, json } => {
+            let repo_path = std::path::Path::new(path);
+
+            if !repo_path.exists() {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Path does not exist: {}",
+                    path
+                )));
+            }
+
+            let result = detect_agents(repo_path);
+
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                println!("AI Agent Detection: {}", path);
+                println!("═══════════════════════════════════════════════════════════════");
+                print_agent_scan(&result);
+
+                if !result.has_agents() {
+                    println!();
+                    println!("Tip: Add CLAUDE.md to configure Claude Code for this repository");
+                }
+            }
+
+            Ok(())
+        }
+
+        AgentsCommands::List {
+            agent,
+            high_confidence,
+            json,
+        } => {
+            // Load config to get contexts
+            let config = if let Some(config_path) = config_path {
+                AllBeadsConfig::load(config_path)?
+            } else {
+                AllBeadsConfig::load_default()?
+            };
+
+            let mut all_detections: Vec<(String, allbeads::governance::AgentScanResult)> =
+                Vec::new();
+
+            for context in &config.contexts {
+                if let Some(ref path) = context.path {
+                    if path.exists() {
+                        let result = detect_agents(path);
+                        if result.has_agents() {
+                            all_detections.push((context.name.clone(), result));
+                        }
+                    }
+                }
+            }
+
+            // Filter by agent type if specified
+            let agent_filter: Option<AgentType> = agent.as_ref().and_then(|a| {
+                match a.to_lowercase().as_str() {
+                    "claude" => Some(AgentType::Claude),
+                    "copilot" => Some(AgentType::Copilot),
+                    "cursor" => Some(AgentType::Cursor),
+                    "aider" => Some(AgentType::Aider),
+                    "cody" => Some(AgentType::Cody),
+                    "continue" => Some(AgentType::Continue),
+                    "windsurf" => Some(AgentType::Windsurf),
+                    "amazonq" => Some(AgentType::AmazonQ),
+                    _ => None,
+                }
+            });
+
+            if *json {
+                let filtered: Vec<_> = all_detections
+                    .iter()
+                    .map(|(name, result)| {
+                        let detections: Vec<_> = result
+                            .detections
+                            .iter()
+                            .filter(|d| {
+                                let agent_match =
+                                    agent_filter.map_or(true, |af| d.agent == af);
+                                let conf_match = !*high_confidence
+                                    || d.confidence
+                                        == allbeads::governance::DetectionConfidence::High;
+                                agent_match && conf_match
+                            })
+                            .collect();
+                        serde_json::json!({
+                            "context": name,
+                            "detections": detections
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&filtered)?);
+            } else {
+                println!("AI Agents Across Contexts");
+                println!("═══════════════════════════════════════════════════════════════");
+
+                if all_detections.is_empty() {
+                    println!("  No AI agents detected in any context");
+                    return Ok(());
+                }
+
+                for (context_name, result) in &all_detections {
+                    let filtered: Vec<_> = result
+                        .detections
+                        .iter()
+                        .filter(|d| {
+                            let agent_match = agent_filter.map_or(true, |af| d.agent == af);
+                            let conf_match = !*high_confidence
+                                || d.confidence == allbeads::governance::DetectionConfidence::High;
+                            agent_match && conf_match
+                        })
+                        .collect();
+
+                    if !filtered.is_empty() {
+                        println!();
+                        println!("@{}", context_name);
+                        for detection in filtered {
+                            let conf = detection.confidence.symbol();
+                            let agent = detection.agent.name();
+                            println!("  [{conf}] {agent}");
+                        }
+                    }
+                }
+            }
+
+            Ok(())
+        }
+
+        AgentsCommands::Summary => {
+            // Load config to get contexts
+            let config = AllBeadsConfig::load_default()?;
+
+            let mut agent_counts: std::collections::HashMap<AgentType, usize> =
+                std::collections::HashMap::new();
+            let mut total_repos = 0;
+            let mut repos_with_agents = 0;
+
+            for context in &config.contexts {
+                if let Some(ref path) = context.path {
+                    if path.exists() {
+                        total_repos += 1;
+                        let result = detect_agents(path);
+                        if result.has_agents() {
+                            repos_with_agents += 1;
+                        }
+                        for detection in &result.detections {
+                            *agent_counts.entry(detection.agent).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+
+            println!("AI Agent Adoption Summary");
+            println!("═══════════════════════════════════════════════════════════════");
+            println!();
+            println!(
+                "Repositories: {}/{} with agents ({:.0}%)",
+                repos_with_agents,
+                total_repos,
+                if total_repos > 0 {
+                    (repos_with_agents as f64 / total_repos as f64) * 100.0
+                } else {
+                    0.0
+                }
+            );
+            println!();
+            println!("Agent Distribution:");
+
+            let mut counts: Vec<_> = agent_counts.iter().collect();
+            counts.sort_by(|a, b| b.1.cmp(a.1));
+
+            for (agent, count) in counts {
+                println!("  {}: {} repos", agent.name(), count);
+            }
+
+            if agent_counts.is_empty() {
+                println!("  No agents detected");
+            }
+
+            Ok(())
+        }
+    }
+}
+
+/// Handle the `governance` command - check and enforce policies
+fn handle_governance_command(
+    cmd: &GovernanceCommands,
+    _config_path: &Option<String>,
+) -> allbeads::Result<()> {
+    match cmd {
+        GovernanceCommands::Check {
+            repo,
+            policy,
+            advisory_only,
+            strict,
+            override_reason,
+            json,
+        } => {
+            println!("Governance Policy Check");
+            println!("═══════════════════════════════════════════════════════════════");
+
+            if *advisory_only {
+                println!("Mode: Advisory (never blocks)");
+            } else if *strict {
+                println!("Mode: Strict (soft mandatory treated as hard)");
+            } else {
+                println!("Mode: Normal");
+            }
+
+            if let Some(ref r) = repo {
+                println!("Repository: {}", r);
+            }
+            if let Some(ref p) = policy {
+                println!("Policy: {}", p);
+            }
+            if let Some(ref reason) = override_reason {
+                println!("Override: {}", reason);
+            }
+
+            println!();
+            println!("⚠️  Full policy checking not yet implemented");
+            println!();
+            println!("This will check:");
+            println!("  • require-beads: Repository has .beads/ initialized");
+            println!("  • require-agent-config: Repository has agent configuration");
+            println!("  • no-secrets-in-config: No secrets in configuration files");
+            println!();
+
+            // For JSON output
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "status": "not_implemented",
+                        "violations": []
+                    })
+                );
+            }
+
+            Ok(())
+        }
+
+        GovernanceCommands::Status => {
+            println!("Governance Policy Status");
+            println!("═══════════════════════════════════════════════════════════════");
+            println!();
+            println!("Policies:");
+            println!("  ○ require-beads (soft_mandatory) - enabled");
+            println!("  ○ require-agent-config (advisory) - enabled");
+            println!("  ● no-secrets-in-config (hard_mandatory) - enabled");
+            println!("  ○ require-readme (advisory) - enabled");
+            println!();
+            println!("Enforcement levels:");
+            println!("  ○ Advisory - warn only");
+            println!("  ◐ Soft Mandatory - blocks, can override");
+            println!("  ● Hard Mandatory - always blocks");
+
+            Ok(())
+        }
+
+        GovernanceCommands::Violations {
+            enforcement,
+            repo,
+            json,
+        } => {
+            println!("Policy Violations");
+            println!("═══════════════════════════════════════════════════════════════");
+
+            if let Some(ref e) = enforcement {
+                println!("Filter: {} enforcement", e);
+            }
+            if let Some(ref r) = repo {
+                println!("Repository: {}", r);
+            }
+
+            println!();
+            println!("No violations detected (policy checking not yet implemented)");
+
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "violations": []
+                    })
+                );
+            }
+
+            Ok(())
+        }
+
+        GovernanceCommands::Exempt {
+            repo,
+            policy,
+            reason,
+            expires,
+        } => {
+            println!("✓ Added exemption:");
+            println!("  Repository: {}", repo);
+            println!("  Policy: {}", policy);
+            println!("  Reason: {}", reason);
+            if let Some(ref exp) = expires {
+                println!("  Expires: {}", exp);
+            }
+            println!();
+            println!("⚠️  Exemption storage not yet implemented");
+
+            Ok(())
+        }
+
+        GovernanceCommands::Unexempt { repo, policy } => {
+            println!("✓ Removed exemption:");
+            println!("  Repository: {}", repo);
+            println!("  Policy: {}", policy);
+            println!();
+            println!("⚠️  Exemption storage not yet implemented");
+
+            Ok(())
+        }
+
+        GovernanceCommands::Audit { repo, days, json } => {
+            println!("Governance Audit Log");
+            println!("═══════════════════════════════════════════════════════════════");
+
+            if let Some(ref r) = repo {
+                println!("Repository: {}", r);
+            }
+            println!("Last {} days", days);
+            println!();
+            println!("No audit entries (audit logging not yet implemented)");
+
+            if *json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "entries": []
+                    })
+                );
+            }
+
+            Ok(())
         }
     }
 }

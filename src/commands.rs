@@ -278,7 +278,7 @@ pub enum Commands {
     // AGGREGATION COMMANDS - View beads across all contexts
     // =========================================================================
     /// List beads with optional filters
-        List {
+    List {
         /// Filter by status (open, in_progress, blocked, closed)
         #[arg(short, long)]
         status: Option<String>,
@@ -297,7 +297,7 @@ pub enum Commands {
     },
 
     /// Show detailed information about a bead
-        Show {
+    Show {
         /// Bead ID (e.g., ab-123)
         id: String,
 
@@ -311,13 +311,13 @@ pub enum Commands {
     },
 
     /// Show beads that are ready to work on (no blockers)
-        Ready,
+    Ready,
 
     /// Show all blocked beads
-        Blocked,
+    Blocked,
 
     /// Search beads by text (title, description, notes)
-        Search {
+    Search {
         /// Search query (optional with filters)
         query: Option<String>,
 
@@ -363,7 +363,7 @@ pub enum Commands {
     },
 
     /// Find potential duplicate beads
-        Duplicates {
+    Duplicates {
         /// Similarity threshold (0.0-1.0, default: 0.8)
         #[arg(short, long, default_value = "0.8")]
         threshold: f64,
@@ -374,13 +374,12 @@ pub enum Commands {
     },
 
     /// Show aggregated statistics
-        Stats,
+    Stats,
 
     // =========================================================================
     // WRAPPER COMMANDS - Delegate to bd in the correct context
     // =========================================================================
     /// Create a bead in a specific context (delegates to bd)
-    
     Create {
         /// Title of the new bead
         #[arg(short, long)]
@@ -400,7 +399,6 @@ pub enum Commands {
     },
 
     /// Update a bead (delegates to bd in the bead's context)
-    
     Update {
         /// Bead ID (e.g., ab-123, rk-456)
         id: String,
@@ -419,7 +417,6 @@ pub enum Commands {
     },
 
     /// Close a bead (delegates to bd in the bead's context)
-
     Close {
         /// Bead ID(s) to close
         ids: Vec<String>,
@@ -503,7 +500,6 @@ pub enum Commands {
     // CONTEXT COMMANDS - Manage Boss repositories
     // =========================================================================
     /// Initialize AllBeads configuration or clone a remote repo
-    
     Init {
         /// Remote repository URL to clone and initialize
         #[arg(short, long)]
@@ -519,11 +515,9 @@ pub enum Commands {
     },
 
     /// Setup wizard for configuration
-    
     Setup,
 
     /// Quickstart guide for AllBeads
-    
     Quickstart,
 
     /// Manage contexts (Boss repositories)
@@ -601,7 +595,6 @@ pub enum Commands {
     Folder(FolderCommands),
 
     /// Clear the local cache
-    
     ClearCache,
 
     // =========================================================================
@@ -623,7 +616,6 @@ pub enum Commands {
     // DAEMON COMMANDS - Background services
     // =========================================================================
     /// Sync AllBeads state (config and/or context beads)
-    
     Sync {
         /// Sync all contexts' beads (runs bd sync in each context)
         #[arg(long)]
@@ -642,7 +634,6 @@ pub enum Commands {
     },
 
     /// Run the Sheriff daemon (background sync)
-    
     Sheriff {
         /// Path to manifest file (manifests/default.xml)
         #[arg(short, long)]
@@ -665,16 +656,12 @@ pub enum Commands {
     // AGENT COMMANDS - AI agent integration
     // =========================================================================
     /// Show project info and status for AI agents
-    
     Info,
 
     /// Prime agent memory with project context
-    
     Prime,
 
-
     /// Send a message to human operator
-    
     Human {
         /// Message to send to human
         message: Option<String>,
@@ -692,7 +679,6 @@ pub enum Commands {
     // ANALYSIS COMMANDS - Code and repository analysis
     // =========================================================================
     /// Run janitor analysis on a repository
-    
     Janitor {
         /// Path to repository (default: current directory)
         #[arg(default_value = ".")]
@@ -711,14 +697,12 @@ pub enum Commands {
     // UI COMMANDS - User interface
     // =========================================================================
     /// Launch Terminal UI (Kanban + Mail + Graph + Swarm)
-
     Tui,
 
     // =========================================================================
     // GOVERNANCE COMMANDS - Policy enforcement and compliance
     // =========================================================================
     /// Check governance policies against current beads
-
     Check {
         /// Run in strict mode (exit non-zero on any violation)
         #[arg(long)]
@@ -752,6 +736,17 @@ pub enum Commands {
     /// Aiki integration utilities
     #[command(subcommand)]
     Aiki(AikiCommands),
+
+    // =========================================================================
+    // GOVERNANCE COMMANDS - Policy enforcement and agent management
+    // =========================================================================
+    /// Detect and manage AI agents in repositories
+    #[command(subcommand)]
+    Agents(AgentsCommands),
+
+    /// Check and enforce governance policies
+    #[command(subcommand)]
+    Governance(GovernanceCommands),
 
     // =========================================================================
     // CONFIG COMMANDS - Distributed configuration
@@ -1019,6 +1014,127 @@ pub enum AikiCommands {
     Tasks {
         /// Bead ID
         bead_id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentsCommands {
+    /// Detect AI agents in a repository
+    Detect {
+        /// Path to repository (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// List agents across all managed contexts
+    List {
+        /// Filter by agent type (claude, copilot, cursor, etc.)
+        #[arg(long)]
+        agent: Option<String>,
+
+        /// Only show high-confidence detections
+        #[arg(long)]
+        high_confidence: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show agent adoption summary
+    Summary,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum GovernanceCommands {
+    /// Check policies against all managed repositories
+    Check {
+        /// Check specific repository only
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Only check specific policy
+        #[arg(long)]
+        policy: Option<String>,
+
+        /// Treat all policies as advisory (never block)
+        #[arg(long)]
+        advisory_only: bool,
+
+        /// Treat soft mandatory as hard mandatory
+        #[arg(long)]
+        strict: bool,
+
+        /// Override soft mandatory violations (with justification)
+        #[arg(long, name = "REASON")]
+        override_reason: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show policy status summary
+    Status,
+
+    /// List policy violations
+    Violations {
+        /// Filter by enforcement level (advisory, soft_mandatory, hard_mandatory)
+        #[arg(long)]
+        enforcement: Option<String>,
+
+        /// Filter by repository
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Add exemption for a repository
+    Exempt {
+        /// Repository name
+        repo: String,
+
+        /// Policy to exempt
+        policy: String,
+
+        /// Reason for exemption
+        #[arg(long)]
+        reason: String,
+
+        /// Exemption expiration date (YYYY-MM-DD)
+        #[arg(long)]
+        expires: Option<String>,
+    },
+
+    /// Remove exemption
+    Unexempt {
+        /// Repository name
+        repo: String,
+
+        /// Policy to remove exemption for
+        policy: String,
+    },
+
+    /// Show audit log
+    Audit {
+        /// Filter by repository
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Number of days to show (default: 7)
+        #[arg(long, default_value = "7")]
+        days: u32,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 

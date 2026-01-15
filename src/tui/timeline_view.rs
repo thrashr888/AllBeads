@@ -152,9 +152,7 @@ impl TimelineView {
 
     /// Get selected bead
     pub fn selected_bead(&self) -> Option<&TimelineBead> {
-        self.list_state
-            .selected()
-            .and_then(|i| self.beads.get(i))
+        self.list_state.selected().and_then(|i| self.beads.get(i))
     }
 
     /// Increase timeline range
@@ -194,7 +192,8 @@ fn draw_timeline_view(f: &mut Frame, view: &mut TimelineView, area: Rect) {
         .split(area);
 
     // Title with date range
-    let title_text = if let (Some(earliest), Some(latest)) = (view.earliest_date, view.latest_date) {
+    let title_text = if let (Some(earliest), Some(latest)) = (view.earliest_date, view.latest_date)
+    {
         format!(
             "Timeline ({} beads) - {} to {}",
             view.beads.len(),
@@ -206,7 +205,11 @@ fn draw_timeline_view(f: &mut Frame, view: &mut TimelineView, area: Rect) {
     };
 
     let title = Paragraph::new(title_text)
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .block(Block::default().borders(Borders::BOTTOM));
     f.render_widget(title, chunks[0]);
 
@@ -233,9 +236,10 @@ fn draw_timeline_view(f: &mut Frame, view: &mut TimelineView, area: Rect) {
     f.render_stateful_widget(list, chunks[1], &mut view.list_state);
 
     // Help text
-    let help = Paragraph::new("j/k: navigate | Enter: details | +/-: zoom | Tab: switch view | q: quit")
-        .style(Style::default().fg(Color::DarkGray))
-        .block(Block::default().borders(Borders::TOP));
+    let help =
+        Paragraph::new("j/k: navigate | Enter: details | +/-: zoom | Tab: switch view | q: quit")
+            .style(Style::default().fg(Color::DarkGray))
+            .block(Block::default().borders(Borders::TOP));
     f.render_widget(help, chunks[2]);
 }
 
@@ -296,7 +300,11 @@ fn draw_detail_view(f: &mut Frame, view: &TimelineView, area: Rect) {
         .split(area);
 
     let title = Paragraph::new("Bead Timeline Detail")
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .block(Block::default().borders(Borders::BOTTOM));
     f.render_widget(title, chunks[0]);
 
@@ -323,7 +331,10 @@ fn draw_detail_view(f: &mut Frame, view: &TimelineView, area: Rect) {
         let content = vec![
             Line::from(vec![
                 Span::styled("ID: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(bead.id.as_str().to_string(), Style::default().fg(Color::Cyan)),
+                Span::styled(
+                    bead.id.as_str().to_string(),
+                    Style::default().fg(Color::Cyan),
+                ),
             ]),
             Line::from(vec![
                 Span::styled("Title: ", Style::default().fg(Color::DarkGray)),
@@ -335,7 +346,10 @@ fn draw_detail_view(f: &mut Frame, view: &TimelineView, area: Rect) {
             ]),
             Line::from(vec![
                 Span::styled("Priority: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("P{}", bead.priority as u8), Style::default().fg(Color::White)),
+                Span::styled(
+                    format!("P{}", bead.priority as u8),
+                    Style::default().fg(Color::White),
+                ),
             ]),
             Line::from(""),
             Line::from(vec![
@@ -354,7 +368,10 @@ fn draw_detail_view(f: &mut Frame, view: &TimelineView, area: Rect) {
             ]),
             Line::from(vec![
                 Span::styled("Days Open: ", Style::default().fg(Color::DarkGray)),
-                Span::styled(format!("{}", bead.days_open), Style::default().fg(Color::White)),
+                Span::styled(
+                    format!("{}", bead.days_open),
+                    Style::default().fg(Color::White),
+                ),
             ]),
             Line::from(""),
             Line::from(vec![

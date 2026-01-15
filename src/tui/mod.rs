@@ -2,8 +2,8 @@
 //!
 //! Provides a Kanban-style dashboard for viewing beads across multiple contexts.
 
-mod app;
 pub mod aiki_view;
+mod app;
 pub mod contexts_view;
 pub mod governance_view;
 pub mod graph_view;

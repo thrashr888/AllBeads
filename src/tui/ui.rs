@@ -140,8 +140,8 @@ fn draw_tab_bar(f: &mut Frame, app: &App, area: Rect) {
     let mut governance_index = 3;
     let mut aiki_index = 4;
     let mut swarm_index = 5;
-    let mut contexts_index = 5;  // Fixed: was 6, should be 5 when swarm is not available
-    let mut stats_index = 6;     // Fixed: was 7, should be 6 when swarm is not available
+    let mut contexts_index = 5; // Fixed: was 6, should be 5 when swarm is not available
+    let mut stats_index = 6; // Fixed: was 7, should be 6 when swarm is not available
 
     // Add mail tab if available
     if app.has_mail() {
@@ -566,15 +566,16 @@ fn draw_aiki_tab(f: &mut Frame, app: &mut App) {
     let mut items: Vec<ListItem> = Vec::new();
 
     if app.aiki_view.beads_with_tasks.is_empty() {
-        items.push(ListItem::new(Line::from(vec![
-            Span::raw("No beads with linked Aiki tasks"),
-        ])));
-        items.push(ListItem::new(Line::from(vec![
-            Span::raw(""),
-        ])));
+        items.push(ListItem::new(Line::from(vec![Span::raw(
+            "No beads with linked Aiki tasks",
+        )])));
+        items.push(ListItem::new(Line::from(vec![Span::raw("")])));
         items.push(ListItem::new(Line::from(vec![
             Span::raw("Link tasks with: "),
-            Span::styled("ab aiki link <bead-id> <task-id>", Style::default().fg(Color::Cyan)),
+            Span::styled(
+                "ab aiki link <bead-id> <task-id>",
+                Style::default().fg(Color::Cyan),
+            ),
         ])));
     } else {
         for bead_id in &app.aiki_view.beads_with_tasks {
@@ -588,11 +589,16 @@ fn draw_aiki_tab(f: &mut Frame, app: &mut App) {
                 };
 
                 let bead_line = vec![
-                    Span::styled(status_char, Style::default().fg(priority_color(bead.priority))),
+                    Span::styled(
+                        status_char,
+                        Style::default().fg(priority_color(bead.priority)),
+                    ),
                     Span::raw(" "),
                     Span::styled(
                         bead.id.as_str(),
-                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
                     ),
                     Span::raw(": "),
                     Span::raw(&bead.title),

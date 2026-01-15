@@ -59,7 +59,10 @@ impl AikiView {
             let bead_a = graph.beads.get(a);
             let bead_b = graph.beads.get(b);
             match (bead_a, bead_b) {
-                (Some(a), Some(b)) => a.priority.cmp(&b.priority).then(b.updated_at.cmp(&a.updated_at)),
+                (Some(a), Some(b)) => a
+                    .priority
+                    .cmp(&b.priority)
+                    .then(b.updated_at.cmp(&a.updated_at)),
                 _ => std::cmp::Ordering::Equal,
             }
         });

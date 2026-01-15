@@ -5,6 +5,7 @@
 //! - A policy checker that validates beads against defined rules
 //! - Built-in policy rules for common governance requirements
 //! - Storage for check results
+//! - Agent detection across repositories
 //!
 //! # Architecture
 //!
@@ -23,14 +24,19 @@
 //! let results = checker.check_graph(&graph);
 //! ```
 
+pub mod agents;
 pub mod checker;
 pub mod config;
 pub mod policy;
 pub mod rules;
 pub mod storage;
 
+pub use agents::{
+    detect_agents, print_agent_scan, AgentDetection, AgentScanResult, AgentType,
+    DetectionConfidence,
+};
 pub use checker::PolicyChecker;
 pub use config::{load_policies_for_context, PoliciesConfig};
-pub use policy::{Policy, PolicyConfig, PolicySeverity, PolicyType};
+pub use policy::{Enforcement, Policy, PolicyConfig, PolicySeverity, PolicyType};
 pub use rules::PolicyRule;
 pub use storage::PolicyStorage;

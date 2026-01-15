@@ -375,21 +375,13 @@ mod tests {
 
     #[test]
     fn test_organization_invalid_url() {
-        let context = BossContext::new(
-            "test",
-            "/local/path",
-            AuthStrategy::SshAgent,
-        );
+        let context = BossContext::new("test", "/local/path", AuthStrategy::SshAgent);
         assert_eq!(context.organization(), None);
     }
 
     #[test]
     fn test_organization_no_path() {
-        let context = BossContext::new(
-            "test",
-            "https://github.com",
-            AuthStrategy::SshAgent,
-        );
+        let context = BossContext::new("test", "https://github.com", AuthStrategy::SshAgent);
         assert_eq!(context.organization(), None);
     }
 }

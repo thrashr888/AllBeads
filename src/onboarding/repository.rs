@@ -138,7 +138,9 @@ pub fn clone_repository(url: &str, path: &Path, non_interactive: bool) -> Result
         let input = input.trim().to_lowercase();
 
         if input == "n" || input == "no" {
-            return Err(crate::AllBeadsError::Config("Clone cancelled by user".to_string()));
+            return Err(crate::AllBeadsError::Config(
+                "Clone cancelled by user".to_string(),
+            ));
         }
     }
 
@@ -176,7 +178,7 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
     let bd_check = Command::new("bd").arg("--version").output();
     if bd_check.is_err() {
         return Err(crate::AllBeadsError::Config(
-            "'bd' command not found. Please install beads CLI first.".to_string()
+            "'bd' command not found. Please install beads CLI first.".to_string(),
         ));
     }
 
@@ -232,7 +234,9 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
                     .current_dir(path)
                     .status()?;
                 if !status.success() {
-                    return Err(crate::AllBeadsError::Config("bd init --no-db failed".to_string()));
+                    return Err(crate::AllBeadsError::Config(
+                        "bd init --no-db failed".to_string(),
+                    ));
                 }
                 println!("  ✓ Beads initialized (no-db mode)");
             }
@@ -244,7 +248,7 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
                     .status()?;
                 if !status.success() {
                     return Err(crate::AllBeadsError::Config(
-                        "bd init --stealth failed".to_string()
+                        "bd init --stealth failed".to_string(),
                     ));
                 }
                 println!("  ✓ Beads initialized (stealth mode)");
@@ -256,7 +260,9 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
                     .current_dir(path)
                     .status()?;
                 if !status.success() {
-                    return Err(crate::AllBeadsError::Config("bd init --team failed".to_string()));
+                    return Err(crate::AllBeadsError::Config(
+                        "bd init --team failed".to_string(),
+                    ));
                 }
                 println!("  ✓ Beads initialized (team mode)");
             }
@@ -379,7 +385,10 @@ pub fn detect_ci_cd(path: &Path) -> Result<()> {
                 .collect();
 
             if !workflows.is_empty() {
-                println!("  ✓ Detected CI/CD: GitHub Actions ({} workflows)", workflows.len());
+                println!(
+                    "  ✓ Detected CI/CD: GitHub Actions ({} workflows)",
+                    workflows.len()
+                );
                 return Ok(());
             }
         }
@@ -415,9 +424,10 @@ pub fn add_to_allbeads_config(
     };
 
     // Create new context
-    let url = repo_info.url.as_ref().ok_or_else(|| {
-        crate::AllBeadsError::Config("No URL available for context".to_string())
-    })?;
+    let url = repo_info
+        .url
+        .as_ref()
+        .ok_or_else(|| crate::AllBeadsError::Config("No URL available for context".to_string()))?;
 
     let new_context = BossContext::new(context_name, url, auth_strategy.clone())
         .with_path(repo_info.path.clone());

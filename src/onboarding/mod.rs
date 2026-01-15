@@ -366,7 +366,10 @@ impl OnboardingReport {
         eprintln!("Summary:");
         eprintln!("  Total contexts: {}", self.stats.total_contexts);
         eprintln!("  ✅ Fully onboarded: {}", self.stats.fully_onboarded);
-        eprintln!("  🔗 Integration configured: {}", self.stats.integration_configured);
+        eprintln!(
+            "  🔗 Integration configured: {}",
+            self.stats.integration_configured
+        );
         eprintln!("  🎯 Has skills: {}", self.stats.has_skills);
         eprintln!("  📝 Has issues: {}", self.stats.has_issues);
         eprintln!("  🔧 Beads initialized: {}", self.stats.beads_initialized);

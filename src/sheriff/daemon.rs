@@ -460,10 +460,9 @@ impl Sheriff {
         }
 
         // Emit policy check event
-        let _ = self.event_tx.send(SheriffEvent::PolicyChecked {
-            summary,
-            results,
-        });
+        let _ = self
+            .event_tx
+            .send(SheriffEvent::PolicyChecked { summary, results });
     }
 
     /// Create a FederatedGraph from shadow beads for policy checking

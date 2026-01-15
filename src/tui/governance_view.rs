@@ -310,11 +310,11 @@ fn draw_policies_panel(f: &mut Frame, view: &mut GovernanceView, area: Rect) {
             };
 
             let line = Line::from(vec![
-                Span::styled(format!("{} ", status_icon), Style::default().fg(status_color)),
                 Span::styled(
-                    policy.name.clone(),
-                    Style::default().fg(Color::White),
+                    format!("{} ", status_icon),
+                    Style::default().fg(status_color),
                 ),
+                Span::styled(policy.name.clone(), Style::default().fg(Color::White)),
             ]);
             ListItem::new(line)
         })
@@ -361,7 +361,10 @@ fn draw_results_panel(f: &mut Frame, view: &mut GovernanceView, area: Rect) {
             };
 
             let line = Line::from(vec![
-                Span::styled(format!("{} ", status_icon), Style::default().fg(status_color)),
+                Span::styled(
+                    format!("{} ", status_icon),
+                    Style::default().fg(status_color),
+                ),
                 Span::styled(result.name.clone(), Style::default().fg(Color::White)),
             ]);
             ListItem::new(line)
@@ -419,7 +422,12 @@ fn draw_detail_view(f: &mut Frame, view: &GovernanceView, area: Rect) {
                 Line::from(vec![
                     Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
-                        if policy.enabled { "Enabled" } else { "Disabled" }.to_string(),
+                        if policy.enabled {
+                            "Enabled"
+                        } else {
+                            "Disabled"
+                        }
+                        .to_string(),
                         Style::default().fg(if policy.enabled {
                             Color::Green
                         } else {
@@ -430,13 +438,19 @@ fn draw_detail_view(f: &mut Frame, view: &GovernanceView, area: Rect) {
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("Description: ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(policy.description.clone(), Style::default().fg(Color::White)),
+                    Span::styled(
+                        policy.description.clone(),
+                        Style::default().fg(Color::White),
+                    ),
                 ]),
                 Line::from(""),
                 Line::from(vec![
                     Span::styled("Last Run: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
-                        policy.last_run.clone().unwrap_or_else(|| "Never".to_string()),
+                        policy
+                            .last_run
+                            .clone()
+                            .unwrap_or_else(|| "Never".to_string()),
                         Style::default().fg(Color::White),
                     ),
                 ]),

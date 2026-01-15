@@ -64,12 +64,8 @@ impl PolicyChecker {
     fn get_rule(policy_type: &PolicyType) -> Box<dyn PolicyRule> {
         match policy_type {
             PolicyType::RequireDescription => Box::new(RequireDescriptionRule),
-            PolicyType::MaxInProgress { max_count } => {
-                Box::new(MaxInProgressRule::new(*max_count))
-            }
-            PolicyType::RequireLabels { min_count } => {
-                Box::new(RequireLabelsRule::new(*min_count))
-            }
+            PolicyType::MaxInProgress { max_count } => Box::new(MaxInProgressRule::new(*max_count)),
+            PolicyType::RequireLabels { min_count } => Box::new(RequireLabelsRule::new(*min_count)),
             PolicyType::DependencyCycleCheck => Box::new(CycleDetectionRule),
             PolicyType::RequirePriority => Box::new(RequirePriorityRule),
             PolicyType::RequireAssignee => Box::new(RequireAssigneeRule),

@@ -101,8 +101,8 @@ impl PolicyStorage {
                 let severity_str: String = row.get(4)?;
                 let config_str: String = row.get(5)?;
 
-                let policy_type: PolicyType =
-                    serde_json::from_str(&policy_type_str).unwrap_or(PolicyType::RequireDescription);
+                let policy_type: PolicyType = serde_json::from_str(&policy_type_str)
+                    .unwrap_or(PolicyType::RequireDescription);
                 let config = serde_json::from_str(&config_str).unwrap_or_default();
                 let severity = match severity_str.as_str() {
                     "error" => PolicySeverity::Error,
@@ -182,7 +182,11 @@ impl PolicyStorage {
     }
 
     /// Get results for a specific policy
-    pub fn results_for_policy(&self, policy_name: &str, limit: usize) -> SqlResult<Vec<CheckResult>> {
+    pub fn results_for_policy(
+        &self,
+        policy_name: &str,
+        limit: usize,
+    ) -> SqlResult<Vec<CheckResult>> {
         let mut stmt = self.conn.prepare(
             r#"
             SELECT policy_name, passed, message, affected_beads, timestamp
