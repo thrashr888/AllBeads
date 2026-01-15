@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-01-14
+
 ### Added
 
 - **Aiki Integration (Phases 1-3)**: Foundation for linking AllBeads issues to Aiki provenance
@@ -25,7 +27,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Support for review event types: `review_passed`, `review_failed`, `escalated`, `review_completed`
     - `ReviewIssue` structure with severity levels (info, warning, error, critical)
     - Aiki events displayed in TUI mail view with full detail
-  - Phase 4 (Future): Unified daemon deferred per SPEC-aiki-integration.md
+
+- **Governance Epic**: Complete governance framework for AI agent adoption
+  - **Agent Detection**: Detect 14 AI agent types in repositories
+    - Claude Code, GitHub Copilot, Cursor, Aider, Kiro, OpenAI Codex
+    - Google Gemini, Amazon CodeWhisperer, Tabnine, Codeium
+    - Sourcegraph Cody, Replit AI, JetBrains AI, Windsurf
+    - Detection via config files, directories, and marker files
+    - Confidence levels (High, Medium, Low) based on evidence
+  - **Repository Policy Framework**: HCP Terraform-inspired enforcement
+    - Enforcement levels: Advisory, SoftMandatory, HardMandatory
+    - Policy checks: FileExists, FileExistsAny, OnboardingScore, AgentAllowlist, PatternAbsent
+    - Exemption system with reason tracking
+    - `ab governance check/status/violations/exempt/unexempt` commands
+  - **GitHub Scanner**: Scan user/org repos for onboarding opportunities
+    - GitHub Search API for efficient cross-repo detection (~100x faster)
+    - Parallel batch processing with configurable concurrency
+    - Real-time progress output during scanning
+    - Onboarding priority scoring (High/Medium/Low/Skip)
+    - Compare scanned repos against managed contexts
+    - `ab scan user/org` commands
+  - **Usage Tracking**: SQLite-based adoption metrics
+    - Record agent detection history over time
+    - Usage stats with adoption rate calculations
+    - Daily trend aggregation
+    - `ab agents track/stats` commands
+
+- **TUI Contexts View**: Repository onboarding status dashboard
+  - Multi-organization support
+  - Real-time onboarding status per repository
+  - GitHub Actions workflow tracking
+
+- **Onboarding Workflow**: `ab onboard` command for guided setup
+  - Multi-stage workflow (detect → configure → verify)
+  - Agent-specific configuration generation
+  - Beads integration setup
 
 ### Changed
 
@@ -164,6 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ab init --remote` for existing repositories
 - FederatedGraph for cross-repo dependency tracking
 
+[0.5.0]: https://github.com/thrashr888/AllBeads/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thrashr888/AllBeads/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/thrashr888/AllBeads/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/thrashr888/AllBeads/compare/v0.2.0...v0.3.0

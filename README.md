@@ -13,6 +13,7 @@ AllBeads implements the "Boss Repository" pattern - a control plane that:
 - **Visualizes cross-repo work** through a terminal-based dashboard
 - **Enables strategic coordination** between AI agents working across distributed codebases
 - **Provides agent-to-agent messaging** for distributed coordination
+- **Governs AI adoption** with policy enforcement, scanning, and onboarding workflows
 
 Think of it as a "meta-issue-tracker" that sits above your microservices, giving agents and architects a coherent view of work spanning 10, 20, or 50+ repositories.
 
@@ -54,6 +55,14 @@ External system adapters:
 - **JIRA**: REST API adapter with JQL search and status sync
 - **GitHub**: GraphQL + REST API for issue management
 - **Plugin Architecture**: Extensible for Linear, Asana, etc.
+
+### 6. Governance Framework
+AI adoption management:
+- **Agent Detection**: Identifies 14 AI agent types (Claude, Copilot, Cursor, Aider, Kiro, etc.)
+- **Policy Engine**: HCP Terraform-inspired enforcement (Advisory, SoftMandatory, HardMandatory)
+- **GitHub Scanner**: Efficiently scan user/org repos for onboarding opportunities
+- **Usage Tracking**: SQLite-based metrics for adoption trends
+- **Onboarding Workflow**: Guided setup for new repositories
 
 See [DEMO.md](DEMO.md) for usage examples.
 
@@ -313,6 +322,59 @@ allbeads agent sync
 
 # Preview agent configuration
 allbeads agent preview <agent>
+
+# Track agent usage (records scan to metrics DB)
+allbeads agents track --context mycontext --path /path/to/repo
+
+# View agent adoption statistics
+allbeads agents stats                    # Last 30 days
+allbeads agents stats --days 7           # Last 7 days
+allbeads agents stats --json             # JSON output
+```
+
+#### Governance
+
+```bash
+# Check policies against current repository
+allbeads governance check
+
+# View loaded policies and exemptions
+allbeads governance status
+
+# List policy violations
+allbeads governance violations
+
+# Exempt a repository from a policy
+allbeads governance exempt my-repo policy-name --reason "Legacy codebase"
+
+# Remove exemption
+allbeads governance unexempt my-repo policy-name
+```
+
+#### GitHub Scanning
+
+```bash
+# Scan your GitHub repositories for onboarding opportunities
+allbeads scan user <username>
+
+# Scan organization repositories
+allbeads scan org <org-name>
+
+# Filter by language, stars, or archived status
+allbeads scan user <username> --language rust --min-stars 10 --include-archived
+
+# Compare scanned repos with managed contexts
+allbeads scan compare
+```
+
+#### Onboarding
+
+```bash
+# Run guided onboarding workflow
+allbeads onboard
+
+# Onboard specific repository
+allbeads onboard /path/to/repo
 ```
 
 #### Sync
