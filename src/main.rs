@@ -1025,14 +1025,25 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
 
             // Handle onboarding request from GitHub picker
             if !tui_result.repos_to_onboard.is_empty() {
-                println!("\nOnboarding {} repositories:", tui_result.repos_to_onboard.len());
+                println!("\nOnboarding {} repositories...\n", tui_result.repos_to_onboard.len());
                 for repo_url in &tui_result.repos_to_onboard {
-                    println!("  - {}", repo_url);
+                    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                    handle_onboard_repository(
+                        repo_url,
+                        true,  // non_interactive
+                        false, // skip_clone
+                        false, // skip_beads
+                        false, // skip_skills
+                        false, // skip_hooks
+                        false, // skip_issues
+                        None,  // context_name (auto-generate)
+                        None,  // custom_path (use default)
+                        &config_for_commands,
+                    )?;
+                    println!();
                 }
-                println!("\nTo onboard these repositories, run:");
-                for repo_url in &tui_result.repos_to_onboard {
-                    println!("  ab onboard {}", repo_url);
-                }
+                println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                println!("✓ Onboarding complete for {} repositories", tui_result.repos_to_onboard.len());
             }
         }
 
