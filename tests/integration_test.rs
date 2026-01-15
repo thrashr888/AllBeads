@@ -366,12 +366,25 @@ mod cli_tests {
             .expect("Failed to execute command")
     }
 
+    /// Helper to assert command success with stderr in error message
+    fn assert_success(output: &std::process::Output, cmd: &str) {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success(),
+            "{} should succeed\nstderr: {}\nstdout: {}",
+            cmd,
+            stderr,
+            stdout
+        );
+    }
+
     /// Test that all commands can at least show help without panicking
     /// This catches short flag conflicts and argument parsing issues
     #[test]
     fn test_list_help() {
         let output = run_ab(&["list", "-h"]);
-        assert!(output.status.success(), "list -h should succeed");
+        assert_success(&output, "list -h");
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             stdout.contains("List beads"),
@@ -382,145 +395,145 @@ mod cli_tests {
     #[test]
     fn test_show_help() {
         let output = run_ab(&["show", "-h"]);
-        assert!(output.status.success(), "show -h should succeed");
+        assert_success(&output, "show -h");
     }
 
     #[test]
     fn test_ready_help() {
         let output = run_ab(&["ready", "-h"]);
-        assert!(output.status.success(), "ready -h should succeed");
+        assert_success(&output, "ready -h");
     }
 
     #[test]
     fn test_blocked_help() {
         let output = run_ab(&["blocked", "-h"]);
-        assert!(output.status.success(), "blocked -h should succeed");
+        assert_success(&output, "blocked -h");
     }
 
     #[test]
     fn test_search_help() {
         let output = run_ab(&["search", "-h"]);
-        assert!(output.status.success(), "search -h should succeed");
+        assert_success(&output, "search -h");
     }
 
     #[test]
     fn test_stats_help() {
         let output = run_ab(&["stats", "-h"]);
-        assert!(output.status.success(), "stats -h should succeed");
+        assert_success(&output, "stats -h");
     }
 
     #[test]
     fn test_duplicates_help() {
         let output = run_ab(&["duplicates", "-h"]);
-        assert!(output.status.success(), "duplicates -h should succeed");
+        assert_success(&output, "duplicates -h");
     }
 
     #[test]
     fn test_create_help() {
         let output = run_ab(&["create", "-h"]);
-        assert!(output.status.success(), "create -h should succeed");
+        assert_success(&output, "create -h");
     }
 
     #[test]
     fn test_update_help() {
         let output = run_ab(&["update", "-h"]);
-        assert!(output.status.success(), "update -h should succeed");
+        assert_success(&output, "update -h");
     }
 
     #[test]
     fn test_close_help() {
         let output = run_ab(&["close", "-h"]);
-        assert!(output.status.success(), "close -h should succeed");
+        assert_success(&output, "close -h");
     }
 
     #[test]
     fn test_dep_help() {
         let output = run_ab(&["dep", "-h"]);
-        assert!(output.status.success(), "dep -h should succeed");
+        assert_success(&output, "dep -h");
     }
 
     #[test]
     fn test_reopen_help() {
         let output = run_ab(&["reopen", "-h"]);
-        assert!(output.status.success(), "reopen -h should succeed");
+        assert_success(&output, "reopen -h");
     }
 
     #[test]
     fn test_label_help() {
         let output = run_ab(&["label", "-h"]);
-        assert!(output.status.success(), "label -h should succeed");
+        assert_success(&output, "label -h");
     }
 
     #[test]
     fn test_comments_help() {
         let output = run_ab(&["comments", "-h"]);
-        assert!(output.status.success(), "comments -h should succeed");
+        assert_success(&output, "comments -h");
     }
 
     #[test]
     fn test_q_help() {
         let output = run_ab(&["q", "-h"]);
-        assert!(output.status.success(), "q -h should succeed");
+        assert_success(&output, "q -h");
     }
 
     #[test]
     fn test_epic_help() {
         let output = run_ab(&["epic", "-h"]);
-        assert!(output.status.success(), "epic -h should succeed");
+        assert_success(&output, "epic -h");
     }
 
     #[test]
     fn test_edit_help() {
         let output = run_ab(&["edit", "-h"]);
-        assert!(output.status.success(), "edit -h should succeed");
+        assert_success(&output, "edit -h");
     }
 
     #[test]
     fn test_delete_help() {
         let output = run_ab(&["delete", "-h"]);
-        assert!(output.status.success(), "delete -h should succeed");
+        assert_success(&output, "delete -h");
     }
 
     #[test]
     fn test_duplicate_help() {
         let output = run_ab(&["duplicate", "-h"]);
-        assert!(output.status.success(), "duplicate -h should succeed");
+        assert_success(&output, "duplicate -h");
     }
 
     #[test]
     fn test_context_help() {
         let output = run_ab(&["context", "-h"]);
-        assert!(output.status.success(), "context -h should succeed");
+        assert_success(&output, "context -h");
     }
 
     #[test]
     fn test_mail_help() {
         let output = run_ab(&["mail", "-h"]);
-        assert!(output.status.success(), "mail -h should succeed");
+        assert_success(&output, "mail -h");
     }
 
     #[test]
     fn test_sheriff_help() {
         let output = run_ab(&["sheriff", "-h"]);
-        assert!(output.status.success(), "sheriff -h should succeed");
+        assert_success(&output, "sheriff -h");
     }
 
     #[test]
     fn test_tui_help() {
         let output = run_ab(&["tui", "-h"]);
-        assert!(output.status.success(), "tui -h should succeed");
+        assert_success(&output, "tui -h");
     }
 
     #[test]
     fn test_swarm_help() {
         let output = run_ab(&["swarm", "-h"]);
-        assert!(output.status.success(), "swarm -h should succeed");
+        assert_success(&output, "swarm -h");
     }
 
     #[test]
     fn test_main_help() {
         let output = run_ab(&["-h"]);
-        assert!(output.status.success(), "-h should succeed");
+        assert_success(&output, "-h");
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(stdout.contains("AllBeads"), "Should contain app name");
     }
@@ -529,13 +542,13 @@ mod cli_tests {
     fn test_global_flags_no_conflict() {
         // Test that global flags work with subcommands
         let output = run_ab(&["--json", "list", "-h"]);
-        assert!(output.status.success(), "--json list -h should succeed");
+        assert_success(&output, "--json list -h");
 
         let output = run_ab(&["--quiet", "ready", "-h"]);
-        assert!(output.status.success(), "--quiet ready -h should succeed");
+        assert_success(&output, "--quiet ready -h");
 
         let output = run_ab(&["--verbose", "stats", "-h"]);
-        assert!(output.status.success(), "--verbose stats -h should succeed");
+        assert_success(&output, "--verbose stats -h");
     }
 }
 
