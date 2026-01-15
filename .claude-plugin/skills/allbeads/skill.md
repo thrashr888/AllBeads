@@ -146,3 +146,80 @@ cd /path/to/new-repo
 allbeads context add . --name new-project
 allbeads sync new-project
 ```
+
+**Creating a brand new project:**
+```bash
+ab context new myproject --private --gitignore Go --license MIT
+```
+This creates GitHub repo, clones locally, initializes beads, and adds to AllBeads.
+
+**Planning a project (no code yet):**
+```bash
+ab context new myproject --private
+bd create --title="[Phase 1] ..." --type=epic
+bd comments add <id> "<spec details>"
+# STOP - let handoff workflow implement
+```
+
+## Agents
+
+AllBeads provides specialized agents:
+
+| Agent | Purpose |
+|-------|---------|
+| **task-agent** | Autonomous task completion across contexts |
+| **governance-agent** | Policy enforcement and compliance |
+| **planning-agent** | Project planning without implementation |
+| **onboarding-agent** | Repository onboarding assistance |
+
+## Commands Reference
+
+| Command | Purpose |
+|---------|---------|
+| `/ready` | Show unblocked work |
+| `/list` | List all beads |
+| `/show` | Show bead details |
+| `/stats` | Aggregated statistics |
+| `/sync` | Sync with remotes |
+| `/context` | Manage contexts |
+| `/context-new` | Create new GitHub repo |
+| `/project-new` | Plan new project (no code) |
+| `/handoff` | Hand off to implementation |
+| `/workflow` | Workflow guide |
+| `/prime` | Prime agent context |
+| `/scan` | Scan GitHub for repos |
+| `/governance` | Check policies |
+| `/agents` | Manage AI agents |
+| `/onboard-repo` | Onboard repository |
+| `/blocked` | Show blocked work |
+| `/tui` | Launch dashboard |
+
+## Quick Reference
+
+```bash
+# Discovery
+ab scan github <user>         # Find repos
+
+# Onboarding
+ab onboard <url>              # Onboard existing
+ab context new <name>         # Create new
+
+# Work
+ab ready                      # Find work
+ab update <id> --status=...   # Update status
+ab close <id>                 # Complete
+
+# Sync
+ab sync --all                 # Sync everything
+bd sync                       # Sync current repo
+
+# Governance
+ab governance check           # Check policies
+ab agents list               # List agents
+```
+
+## See Also
+
+- `AGENTS.md` - Quick reference for agents
+- `CLAUDE.md` - Full project guide
+- `specs/PRD-00.md` - Architecture specification
