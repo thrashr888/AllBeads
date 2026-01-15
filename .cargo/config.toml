@@ -1,0 +1,9 @@
+# Cargo configuration for AllBeads
+
+# Increase stack size on Windows (default 1MB is too small for complex CLI)
+# AllBeads CLI has many subcommands which causes stack overflow on Windows
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:8388608"]
+
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-C", "link-args=-Wl,--stack,8388608"]
