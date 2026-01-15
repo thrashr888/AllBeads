@@ -475,3 +475,105 @@ pub fn print_onboarding_summary(
     println!("  • Add GitHub integration:   ab github status");
     println!("  • Add JIRA integration:     ab jira status");
 }
+
+/// Stage 9: Commit and push onboarding changes
+pub fn commit_and_push_onboarding(path: &Path, non_interactive: bool) -> Result<()> {
+    // Check if there are changes to commit
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(path)
+        .output()?;
+
+    let status = String::from_utf8_lossy(&status_output.stdout);
+    if status.trim().is_empty() {
+        println!("  No changes to commit");
+        return Ok(());
+    }
+
+    // Show what will be committed
+    let files_to_add = [".beads/", ".claude/", "AGENTS.md", ".gitattributes"];
+    let mut has_changes = false;
+
+    for file in &files_to_add {
+        let file_path = path.join(file);
+        if file_path.exists() {
+            has_changes = true;
+        }
+    }
+
+    if !has_changes {
+        println!("  No onboarding files to commit");
+        return Ok(());
+    }
+
+    if !non_interactive {
+        println!("  The following files will be committed:");
+        for file in &files_to_add {
+            if path.join(file).exists() {
+                println!("    + {}", file);
+            }
+        }
+        print!("  Commit and push? [Y/n]: ");
+        use std::io::{self, Write};
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let input = input.trim().to_lowercase();
+        if input == "n" || input == "no" {
+            println!("  Skipping commit");
+            return Ok(());
+        }
+    }
+
+    // Add files
+    println!("  Adding files...");
+    for file in &files_to_add {
+        if path.join(file).exists() {
+            let _ = Command::new("git")
+                .args(["add", file])
+                .current_dir(path)
+                .output();
+        }
+    }
+
+    // Commit
+    println!("  Committing...");
+    let commit_output = Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            "Initialize AllBeads onboarding\n\n- Add beads tracking (.beads/)\n- Configure Claude skills (.claude/)\n- Add AGENTS.md",
+        ])
+        .current_dir(path)
+        .output()?;
+
+    if !commit_output.status.success() {
+        let stderr = String::from_utf8_lossy(&commit_output.stderr);
+        if stderr.contains("nothing to commit") {
+            println!("  No changes to commit");
+            return Ok(());
+        }
+        println!("  Warning: Commit may have failed: {}", stderr.trim());
+    } else {
+        println!("  ✓ Committed onboarding files");
+    }
+
+    // Push
+    println!("  Pushing to remote...");
+    let push_output = Command::new("git")
+        .args(["push"])
+        .current_dir(path)
+        .stderr(std::process::Stdio::piped())
+        .output()?;
+
+    if push_output.status.success() {
+        println!("  ✓ Pushed to remote");
+    } else {
+        let stderr = String::from_utf8_lossy(&push_output.stderr);
+        println!("  Warning: Push may have failed: {}", stderr.trim());
+        println!("  You can push manually later with: git push");
+    }
+
+    Ok(())
+}

@@ -1170,6 +1170,52 @@ pub enum GovernanceCommands {
 
 #[derive(Subcommand, Debug)]
 pub enum ScanCommands {
+    /// Scan GitHub repos (auto-detects user/org/repo from URL or name)
+    #[command(name = "github")]
+    GitHub {
+        /// Target to scan: username, org name, or repo URL
+        /// Examples: thrashr888, hashicorp, github.com/user/repo
+        target: String,
+
+        /// Minimum number of stars (for user/org scan)
+        #[arg(long)]
+        min_stars: Option<u32>,
+
+        /// Filter by language
+        #[arg(long)]
+        language: Option<String>,
+
+        /// Only show repos with activity within N days
+        #[arg(long)]
+        activity: Option<u32>,
+
+        /// Exclude forks
+        #[arg(long)]
+        exclude_forks: bool,
+
+        /// Exclude archived repos
+        #[arg(long)]
+        exclude_archived: bool,
+
+        /// Show all results (including low priority)
+        #[arg(long)]
+        all: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Scan a single repository by URL
+    Repo {
+        /// Repository URL (e.g., github.com/user/repo or full URL)
+        url: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Scan a GitHub user's repositories
     User {
         /// GitHub username to scan

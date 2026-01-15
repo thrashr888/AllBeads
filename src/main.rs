@@ -8022,8 +8022,13 @@ fn handle_onboard_repository(
     }
     println!();
 
-    // Stage 9: Summary
-    println!("Stage 9: Summary");
+    // Stage 9: Commit & Push Changes
+    println!("Stage 9: Commit & Push Changes");
+    repository::commit_and_push_onboarding(&repo_info.path, non_interactive)?;
+    println!();
+
+    // Stage 10: Summary
+    println!("Stage 10: Summary");
     println!("═══════════════════════════════════════════════════════════════");
     repository::print_onboarding_summary(&repo_info, ctx_name, skip_beads, skip_skills);
 
@@ -9477,6 +9482,108 @@ async fn handle_scan_command(
                     })
                     .collect();
                 println!("{}", serde_json::json!({ "contexts": contexts }));
+            }
+
+            Ok(())
+        }
+
+        commands::ScanCommands::GitHub {
+            target,
+            min_stars,
+            language,
+            activity,
+            exclude_forks,
+            exclude_archived,
+            all,
+            json,
+        } => {
+            // Auto-detect target type: repo URL, user, or org
+            let filter = ScanFilter {
+                min_stars: *min_stars,
+                language: language.clone(),
+                activity_days: *activity,
+                exclude_forks: *exclude_forks,
+                exclude_archived: *exclude_archived,
+                exclude_private: false,
+                topics: Vec::new(),
+            };
+
+            // Check if it's a repo URL (contains /)
+            if target.contains('/') {
+                // Could be github.com/user/repo, user/repo, or full URL
+                let parts: Vec<&str> = target
+                    .trim_start_matches("https://")
+                    .trim_start_matches("http://")
+                    .trim_start_matches("github.com/")
+                    .split('/')
+                    .collect();
+
+                if parts.len() >= 2 {
+                    // It's a repo reference
+                    let owner = parts[0];
+                    let repo = parts[1].trim_end_matches(".git");
+                    let result = scanner.scan_single_repo(owner, repo).await?;
+
+                    if *json {
+                        println!("{}", serde_json::to_string_pretty(&result)?);
+                    } else {
+                        print_scan_result(&result, true);
+                    }
+                    return Ok(());
+                }
+            }
+
+            // Try as user first, then org if that fails
+            eprintln!("Scanning {}...", target);
+            let result = scanner.scan_user(target, &filter).await;
+
+            match result {
+                Ok(scan_result) if !scan_result.repositories.is_empty() => {
+                    if *json {
+                        println!("{}", serde_json::to_string_pretty(&scan_result)?);
+                    } else {
+                        print_scan_result(&scan_result, *all);
+                    }
+                }
+                _ => {
+                    // Try as org
+                    eprintln!("Not a user, trying as organization...");
+                    let result = scanner.scan_org(target, &filter).await?;
+
+                    if *json {
+                        println!("{}", serde_json::to_string_pretty(&result)?);
+                    } else {
+                        print_scan_result(&result, *all);
+                    }
+                }
+            }
+
+            Ok(())
+        }
+
+        commands::ScanCommands::Repo { url, json } => {
+            // Parse repo URL
+            let parts: Vec<&str> = url
+                .trim_start_matches("https://")
+                .trim_start_matches("http://")
+                .trim_start_matches("github.com/")
+                .split('/')
+                .collect();
+
+            if parts.len() < 2 {
+                return Err(allbeads::AllBeadsError::Config(
+                    "Invalid repo URL. Expected format: user/repo or github.com/user/repo".to_string(),
+                ));
+            }
+
+            let owner = parts[0];
+            let repo = parts[1].trim_end_matches(".git");
+            let result = scanner.scan_single_repo(owner, repo).await?;
+
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&result)?);
+            } else {
+                print_scan_result(&result, true);
             }
 
             Ok(())

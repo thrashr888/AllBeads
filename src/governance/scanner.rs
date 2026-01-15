@@ -300,6 +300,40 @@ impl GitHubScanner {
         .await
     }
 
+    /// Scan a single repository by owner and name
+    pub async fn scan_single_repo(&self, owner: &str, repo: &str) -> Result<ScanResult> {
+        let url = format!("{}/repos/{}/{}", self.base_url, owner, repo);
+
+        let mut request = self.client.get(&url);
+        if let Some(ref token) = self.token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(crate::AllBeadsError::Network(format!(
+                "GitHub API error ({}): {}",
+                status, body
+            )));
+        }
+
+        let github_repo: GitHubRepo = response.json().await?;
+
+        // Process just this one repo with default filter
+        let filter = ScanFilter::default();
+        let options = ScanOptions::default();
+        self.process_repos_with_options(
+            vec![github_repo],
+            ScanSource::User(owner.to_string()),
+            &filter,
+            &options,
+        )
+        .await
+    }
+
     /// List all repos for a user
     async fn list_user_repos(&self, username: &str) -> Result<Vec<GitHubRepo>> {
         let mut all_repos = Vec::new();
@@ -611,13 +645,17 @@ impl GitHubScanner {
                 Ok(response) => {
                     if response.status().is_success() {
                         if let Ok(result) = response.json::<SearchCodeResult>().await {
-                            let count = result.items.len();
-                            for item in result.items {
-                                let repo_name = item.repository.full_name.to_lowercase();
-                                agent_map
-                                    .entry(repo_name)
-                                    .or_default()
-                                    .push(*agent_type);
+                            // Deduplicate repos - GitHub returns one result per file
+                            let mut unique_repos: std::collections::HashSet<String> = std::collections::HashSet::new();
+                            for item in &result.items {
+                                unique_repos.insert(item.repository.full_name.to_lowercase());
+                            }
+                            let count = unique_repos.len();
+                            for repo_name in unique_repos {
+                                let agents = agent_map.entry(repo_name).or_default();
+                                if !agents.contains(agent_type) {
+                                    agents.push(*agent_type);
+                                }
                             }
                             if options.show_progress {
                                 eprintln!(" {} repos", count);

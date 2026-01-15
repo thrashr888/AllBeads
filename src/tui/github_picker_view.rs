@@ -511,6 +511,20 @@ impl GitHubPickerView {
             ]),
         ];
 
+        if is_managed {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![
+                Span::styled("AllBeads Status:", Style::default().add_modifier(Modifier::BOLD).fg(Color::Green)),
+            ]));
+            lines.push(Line::from(vec![
+                Span::raw("  This repository is tracked in AllBeads."),
+            ]));
+            lines.push(Line::from(vec![
+                Span::raw("  View details: "),
+                Span::styled("Tab to Contexts view", Style::default().fg(Color::Cyan)),
+            ]));
+        }
+
         if !repo.detected_agents.is_empty() {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
