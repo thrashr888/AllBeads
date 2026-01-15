@@ -28,6 +28,16 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Metadata tuple for a scanned repository
+/// (repo, last_push, created_at, days_since_push, managed)
+type RepoMetadata = (
+    GitHubRepo,
+    Option<DateTime<Utc>>,
+    DateTime<Utc>,
+    Option<i64>,
+    bool,
+);
+
 /// GitHub repository from REST API
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitHubRepo {
@@ -339,7 +349,7 @@ impl GitHubScanner {
             .filter_map(|c| {
                 c.url
                     .split('/')
-                    .last()
+                    .next_back()
                     .map(|s| s.trim_end_matches(".git").to_lowercase())
             })
             .collect();
@@ -358,9 +368,7 @@ impl GitHubScanner {
 
         let days_since_push = last_push.map(|dt| (chrono::Utc::now() - dt).num_days());
 
-        let onboarding_priority = if managed {
-            OnboardingPriority::Skip
-        } else if github_repo.archived || github_repo.disabled {
+        let onboarding_priority = if managed || github_repo.archived || github_repo.disabled {
             OnboardingPriority::Skip
         } else if !detected_agents.is_empty() && days_since_push.map(|d| d <= 90).unwrap_or(false) {
             OnboardingPriority::High
@@ -569,13 +577,7 @@ impl GitHubScanner {
             eprintln!("Filtering repositories...");
         }
 
-        let mut filtered_repos: Vec<(
-            GitHubRepo,
-            Option<DateTime<Utc>>,
-            DateTime<Utc>,
-            Option<i64>,
-            bool,
-        )> = Vec::new();
+        let mut filtered_repos: Vec<RepoMetadata> = Vec::new();
 
         for repo in repos {
             let last_push = repo
@@ -722,7 +724,7 @@ impl GitHubScanner {
         let mut agent_map: HashMap<String, Vec<AgentType>> = HashMap::new();
 
         // Agent file patterns to search
-        let searches = vec![
+        let searches = [
             ("filename:CLAUDE.md", AgentType::Claude),
             ("filename:.cursorrules", AgentType::Cursor),
             (
@@ -815,13 +817,7 @@ impl GitHubScanner {
     /// Detect agents in parallel batches (fallback when search API unavailable)
     async fn detect_agents_parallel(
         &self,
-        repos: &[(
-            GitHubRepo,
-            Option<DateTime<Utc>>,
-            DateTime<Utc>,
-            Option<i64>,
-            bool,
-        )],
+        repos: &[RepoMetadata],
         options: &ScanOptions,
     ) -> Result<HashMap<String, Vec<AgentType>>> {
         let total = repos.len();
@@ -848,7 +844,6 @@ impl GitHubScanner {
                 let agent_map = agent_map.clone();
                 let counter = counter.clone();
                 let show_progress = options.show_progress;
-                let total = total;
 
                 async move {
                     let agents = detect_agents_for_repo(
@@ -951,10 +946,8 @@ impl GitHubScanner {
             }
 
             if let Ok(response) = request.send().await {
-                if response.status().is_success() {
-                    if !agents.contains(&agent_type) {
-                        agents.push(agent_type);
-                    }
+                if response.status().is_success() && !agents.contains(&agent_type) {
+                    agents.push(agent_type);
                 }
             }
         }

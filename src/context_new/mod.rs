@@ -5,7 +5,7 @@
 use crate::{AllBeadsError, Result};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Configuration for creating a new repository
@@ -147,7 +147,10 @@ impl NewRepoPrompt {
         if let Some(ref lic) = config.license {
             println!("  License:     {}", lic);
         }
-        println!("  Beads:       {}", if config.init_beads { "Yes" } else { "No" });
+        println!(
+            "  Beads:       {}",
+            if config.init_beads { "Yes" } else { "No" }
+        );
         println!("  Agents:      {}", config.init_agents.join(", "));
         println!();
 
@@ -213,7 +216,10 @@ pub fn create_new_repository(config: &NewRepoConfig) -> Result<NewRepoResult> {
     // Step 1: Verify GitHub CLI is available and authenticated
     verify_gh_cli()?;
 
-    println!("\n{}", crate::style::subheader("Creating repository on GitHub..."));
+    println!(
+        "\n{}",
+        crate::style::subheader("Creating repository on GitHub...")
+    );
 
     // Step 2: Create repository using gh CLI
     let (full_name, html_url, clone_url) = create_github_repo(config)?;
@@ -244,7 +250,11 @@ pub fn create_new_repository(config: &NewRepoConfig) -> Result<NewRepoResult> {
 
         clone_repository(&clone_url, &clone_dir)?;
         local_path = Some(clone_dir.clone());
-        println!("{} Cloned to {}", crate::style::success("✓"), clone_dir.display());
+        println!(
+            "{} Cloned to {}",
+            crate::style::success("✓"),
+            clone_dir.display()
+        );
 
         // Step 4: Initialize beads if requested
         if config.init_beads {
@@ -352,9 +362,10 @@ fn create_github_repo(config: &NewRepoConfig) -> Result<(String, String, String)
     // Confirm creation (no prompts)
     args.push("--confirm");
 
-    let output = Command::new("gh").args(&args).output().map_err(|e| {
-        AllBeadsError::Config(format!("Failed to run gh repo create: {}", e))
-    })?;
+    let output = Command::new("gh")
+        .args(&args)
+        .output()
+        .map_err(|e| AllBeadsError::Config(format!("Failed to run gh repo create: {}", e)))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -390,12 +401,11 @@ fn create_github_repo(config: &NewRepoConfig) -> Result<(String, String, String)
 }
 
 /// Clone the repository to the specified path
-fn clone_repository(url: &str, path: &PathBuf) -> Result<()> {
+fn clone_repository(url: &str, path: &Path) -> Result<()> {
     // Ensure parent directory exists
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            AllBeadsError::Config(format!("Failed to create directory: {}", e))
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AllBeadsError::Config(format!("Failed to create directory: {}", e)))?;
     }
 
     let output = Command::new("git")
@@ -412,7 +422,7 @@ fn clone_repository(url: &str, path: &PathBuf) -> Result<()> {
 }
 
 /// Initialize beads in the repository
-fn init_beads(path: &PathBuf) -> Result<()> {
+fn init_beads(path: &Path) -> Result<()> {
     let output = Command::new("bd")
         .args(["init"])
         .current_dir(path)
@@ -423,10 +433,7 @@ fn init_beads(path: &PathBuf) -> Result<()> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Don't fail if already initialized
         if !stderr.contains("already") {
-            return Err(AllBeadsError::Config(format!(
-                "bd init failed: {}",
-                stderr
-            )));
+            return Err(AllBeadsError::Config(format!("bd init failed: {}", stderr)));
         }
     }
 
@@ -434,7 +441,7 @@ fn init_beads(path: &PathBuf) -> Result<()> {
 }
 
 /// Configure AI agents in the repository
-fn configure_agents(path: &PathBuf, agents: &[String]) -> Result<Vec<String>> {
+fn configure_agents(path: &Path, agents: &[String]) -> Result<Vec<String>> {
     let mut configured = Vec::new();
 
     for agent in agents {
@@ -487,11 +494,7 @@ fn configure_agents(path: &PathBuf, agents: &[String]) -> Result<Vec<String>> {
                 }
             }
             _ => {
-                eprintln!(
-                    "{} Unknown agent: {}",
-                    crate::style::warning("⚠"),
-                    agent
-                );
+                eprintln!("{} Unknown agent: {}", crate::style::warning("⚠"), agent);
             }
         }
     }
@@ -500,7 +503,7 @@ fn configure_agents(path: &PathBuf, agents: &[String]) -> Result<Vec<String>> {
 }
 
 /// Generate CLAUDE.md content
-fn generate_claude_md(path: &PathBuf) -> Result<String> {
+fn generate_claude_md(path: &Path) -> Result<String> {
     let repo_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -565,7 +568,7 @@ Use beads for tracking multi-session work and complex features with dependencies
 }
 
 /// Generate .cursorrules content
-fn generate_cursorrules(path: &PathBuf) -> Result<String> {
+fn generate_cursorrules(path: &Path) -> Result<String> {
     let repo_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -592,7 +595,7 @@ This project uses beads (bd) for issue tracking.
 }
 
 /// Generate copilot-instructions.md content
-fn generate_copilot_instructions(path: &PathBuf) -> Result<String> {
+fn generate_copilot_instructions(path: &Path) -> Result<String> {
     let repo_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -632,10 +635,7 @@ fn commit_and_push(path: &PathBuf) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AllBeadsError::Config(format!(
-            "git add failed: {}",
-            stderr
-        )));
+        return Err(AllBeadsError::Config(format!("git add failed: {}", stderr)));
     }
 
     // Check if there are changes to commit
@@ -682,7 +682,10 @@ fn commit_and_push(path: &PathBuf) -> Result<()> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(AllBeadsError::Config(format!("git push failed: {}", stderr)));
+        return Err(AllBeadsError::Config(format!(
+            "git push failed: {}",
+            stderr
+        )));
     }
 
     Ok(())

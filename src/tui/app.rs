@@ -210,7 +210,7 @@ impl App {
     /// Refresh GitHub picker view
     pub fn refresh_github_picker_view(&mut self) {
         use crate::config::AllBeadsConfig;
-        if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
+        if let Ok(config) = AllBeadsConfig::load(AllBeadsConfig::default_path()) {
             self.github_picker_view.load_managed_repos(&config);
         }
     }
@@ -233,7 +233,7 @@ impl App {
     pub fn do_contexts_refresh(&mut self) {
         if self.contexts_view.needs_refresh {
             use crate::config::AllBeadsConfig;
-            if let Ok(config) = AllBeadsConfig::load(&AllBeadsConfig::default_path()) {
+            if let Ok(config) = AllBeadsConfig::load(AllBeadsConfig::default_path()) {
                 self.contexts_view.refresh(&config);
             }
         }

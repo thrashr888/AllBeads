@@ -68,7 +68,7 @@ impl AikiView {
         });
 
         // Query Aiki for task details (cache for 30 seconds)
-        let should_query = self.last_query.map_or(true, |t| t.elapsed().as_secs() > 30);
+        let should_query = self.last_query.is_none_or(|t| t.elapsed().as_secs() > 30);
         if should_query {
             self.query_aiki_tasks();
             self.last_query = Some(std::time::Instant::now());
@@ -78,7 +78,7 @@ impl AikiView {
     /// Query Aiki for task details
     fn query_aiki_tasks(&mut self) {
         let output = Command::new("aiki")
-            .args(&["task", "list", "--format=xml"])
+            .args(["task", "list", "--format=xml"])
             .output();
 
         match output {
@@ -107,11 +107,7 @@ impl AikiView {
             // Extract id from id="..."
             let id = if let Some(start) = chunk.find("id=\"") {
                 let rest = &chunk[start + 4..];
-                if let Some(end) = rest.find('"') {
-                    Some(&rest[..end])
-                } else {
-                    None
-                }
+                rest.find('"').map(|end| &rest[..end])
             } else {
                 None
             };
@@ -119,11 +115,7 @@ impl AikiView {
             // Extract title from <title>...</title>
             let title = if let Some(start) = chunk.find("<title>") {
                 let rest = &chunk[start + 7..];
-                if let Some(end) = rest.find("</title>") {
-                    Some(&rest[..end])
-                } else {
-                    None
-                }
+                rest.find("</title>").map(|end| &rest[..end])
             } else {
                 None
             };
@@ -131,11 +123,7 @@ impl AikiView {
             // Extract status from <status>...</status>
             let status = if let Some(start) = chunk.find("<status>") {
                 let rest = &chunk[start + 8..];
-                if let Some(end) = rest.find("</status>") {
-                    Some(&rest[..end])
-                } else {
-                    None
-                }
+                rest.find("</status>").map(|end| &rest[..end])
             } else {
                 None
             };

@@ -72,7 +72,7 @@ fn query_aiki_provenance(
 
     // Try to run `aiki summary --bead=<id> --format=json`
     let output = Command::new("aiki")
-        .args(&["summary", &format!("--bead={}", bead_id), "--format=json"])
+        .args(["summary", &format!("--bead={}", bead_id), "--format=json"])
         .current_dir(working_dir)
         .output()
         .map_err(|e| {
@@ -117,7 +117,7 @@ fn show_aiki_tasks_for_bead(bead: &allbeads::graph::Bead) -> allbeads::Result<()
 
     // Try to query Aiki for task details if available
     let output = Command::new("aiki")
-        .args(&["task", "list", "--format=xml"])
+        .args(["task", "list", "--format=xml"])
         .output();
 
     match output {
@@ -162,11 +162,7 @@ fn parse_and_display_aiki_tasks(xml: &str, linked_tasks: &[String]) {
         // Extract id from id="..."
         let id = if let Some(start) = chunk.find("id=\"") {
             let rest = &chunk[start + 4..];
-            if let Some(end) = rest.find('"') {
-                Some(&rest[..end])
-            } else {
-                None
-            }
+            rest.find('"').map(|end| &rest[..end])
         } else {
             None
         };
@@ -174,11 +170,7 @@ fn parse_and_display_aiki_tasks(xml: &str, linked_tasks: &[String]) {
         // Extract title from <title>...</title>
         let title = if let Some(start) = chunk.find("<title>") {
             let rest = &chunk[start + 7..];
-            if let Some(end) = rest.find("</title>") {
-                Some(&rest[..end])
-            } else {
-                None
-            }
+            rest.find("</title>").map(|end| &rest[..end])
         } else {
             None
         };
@@ -186,11 +178,7 @@ fn parse_and_display_aiki_tasks(xml: &str, linked_tasks: &[String]) {
         // Extract status from <status>...</status>
         let status = if let Some(start) = chunk.find("<status>") {
             let rest = &chunk[start + 8..];
-            if let Some(end) = rest.find("</status>") {
-                Some(&rest[..end])
-            } else {
-                None
-            }
+            rest.find("</status>").map(|end| &rest[..end])
         } else {
             None
         };
@@ -5082,12 +5070,13 @@ fn handle_context_command(
                     })?;
 
                 if !output.status.success() {
-                    return Err(allbeads::AllBeadsError::Config(format!(
+                    return Err(allbeads::AllBeadsError::Config(
                         "No 'origin' remote found. Add one with:\n  \
                          git remote add origin <url>\n\n\
                          Or specify the URL explicitly:\n  \
-                         ab context add --url <url>",
-                    )));
+                         ab context add --url <url>"
+                            .to_string(),
+                    ));
                 }
 
                 let url_from_git = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -5223,9 +5212,7 @@ fn handle_context_command(
             wizard,
             non_interactive,
         } => {
-            use allbeads::context_new::{
-                create_new_repository, NewRepoConfig, NewRepoPrompt,
-            };
+            use allbeads::context_new::{create_new_repository, NewRepoConfig, NewRepoPrompt};
 
             // Determine mode: wizard, non-interactive, or standard
             let repo_config = if *wizard {
@@ -8881,7 +8868,7 @@ fn handle_agents_command(
                             .detections
                             .iter()
                             .filter(|d| {
-                                let agent_match = agent_filter.map_or(true, |af| d.agent == af);
+                                let agent_match = agent_filter.is_none_or(|af| d.agent == af);
                                 let conf_match = !*high_confidence
                                     || d.confidence
                                         == allbeads::governance::DetectionConfidence::High;
@@ -8909,7 +8896,7 @@ fn handle_agents_command(
                         .detections
                         .iter()
                         .filter(|d| {
-                            let agent_match = agent_filter.map_or(true, |af| d.agent == af);
+                            let agent_match = agent_filter.is_none_or(|af| d.agent == af);
                             let conf_match = !*high_confidence
                                 || d.confidence == allbeads::governance::DetectionConfidence::High;
                             agent_match && conf_match
@@ -9035,14 +9022,12 @@ fn handle_agents_command(
                         "trends": trends
                     })
                 );
+            } else if stats.total_scans == 0 {
+                println!("No usage data recorded yet.");
+                println!();
+                println!("Run 'ab agents track' to record agent scans.");
             } else {
-                if stats.total_scans == 0 {
-                    println!("No usage data recorded yet.");
-                    println!();
-                    println!("Run 'ab agents track' to record agent scans.");
-                } else {
-                    print_usage_stats(&stats, &trends, *days);
-                }
+                print_usage_stats(&stats, &trends, *days);
             }
 
             Ok(())
@@ -9138,16 +9123,9 @@ fn handle_governance_command(
                             "⚠"
                         }
                         Enforcement::SoftMandatory => {
-                            if *advisory_only {
+                            if *advisory_only || override_reason.is_some() {
                                 warnings += 1;
                                 "⚠"
-                            } else if override_reason.is_some() {
-                                warnings += 1;
-                                "⚠"
-                            } else if *strict {
-                                failures += 1;
-                                blocked = true;
-                                "✗"
                             } else {
                                 failures += 1;
                                 blocked = true;

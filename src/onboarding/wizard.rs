@@ -145,7 +145,7 @@ impl OnboardingWizard {
 
         // Try to get remote URL and extract organization
         let remote_url = Self::get_remote_url(&repo_path).ok();
-        let organization = remote_url.as_ref().and_then(Self::extract_org);
+        let organization = remote_url.as_deref().and_then(Self::extract_org);
 
         // Detect current status
         let status = Self::detect_status(&repo_path);
@@ -214,7 +214,7 @@ impl OnboardingWizard {
             return Ok(());
         }
 
-        let modes = vec![
+        let modes = [
             BeadsInitMode::Standard,
             BeadsInitMode::NoDb,
             BeadsInitMode::Stealth,
@@ -224,7 +224,7 @@ impl OnboardingWizard {
 
         let selection = Select::with_theme(&self.theme)
             .with_prompt("Choose beads initialization mode")
-            .items(&modes.iter().map(|m| m.label()).collect::<Vec<_>>())
+            .items(modes.iter().map(|m| m.label()).collect::<Vec<_>>())
             .default(0)
             .interact()
             .unwrap_or(4);
@@ -284,7 +284,7 @@ impl OnboardingWizard {
             return Ok(());
         }
 
-        let sources = vec![
+        let sources = [
             IssueImportSource::GitHub,
             IssueImportSource::Jira,
             IssueImportSource::Janitor,
@@ -294,7 +294,7 @@ impl OnboardingWizard {
 
         let selection = Select::with_theme(&self.theme)
             .with_prompt("How would you like to populate initial issues?")
-            .items(&sources.iter().map(|s| s.label()).collect::<Vec<_>>())
+            .items(sources.iter().map(|s| s.label()).collect::<Vec<_>>())
             .default(3)
             .interact()
             .unwrap_or(4);
@@ -541,15 +541,16 @@ impl OnboardingWizard {
         }
     }
 
-    fn extract_org(url: &String) -> Option<String> {
+    fn extract_org(url: &str) -> Option<String> {
         // Parse GitHub URL to extract organization
         // git@github.com:org/repo.git
         // https://github.com/org/repo.git
         if url.contains("github.com") {
             let parts: Vec<&str> = if url.starts_with("git@") {
-                url.split(':').last()?.split('/').collect()
+                url.split(':').next_back()?.split('/').collect()
             } else {
-                url.split("github.com/").last()?.split('/').collect()
+                // Use rsplit().next() since split on &str doesn't impl DoubleEndedIterator
+                url.rsplit("github.com/").next()?.split('/').collect()
             };
             if parts.len() >= 2 {
                 return Some(parts[0].to_string());
