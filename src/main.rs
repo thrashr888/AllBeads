@@ -9138,6 +9138,11 @@ fn handle_onboard_repository(
     println!("  Exists locally: {}", repo_info.exists_locally);
     println!();
 
+    // Safety check: verify repo is clean and on main branch (only for existing repos)
+    if repo_info.exists_locally {
+        repository::check_repo_safe_to_onboard(&repo_info.path)?;
+    }
+
     // Stage 2: Clone (if needed)
     if !skip_clone && !repo_info.exists_locally {
         if let Some(ref url) = repo_info.url {

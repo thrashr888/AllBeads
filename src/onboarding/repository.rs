@@ -111,13 +111,48 @@ pub fn discover_repository(
             })?
             .to_string();
 
+        // Try to detect git remote URL
+        let (url, organization) = detect_git_remote(&path);
+
         Ok(RepoInfo {
             name,
             path,
-            url: None,
-            organization: None,
+            url,
+            organization,
             exists_locally: true,
         })
+    }
+}
+
+/// Detect git remote URL from a local repository
+///
+/// Runs `git remote get-url origin` to get the remote URL, then parses
+/// out the organization/owner from the URL.
+fn detect_git_remote(path: &Path) -> (Option<String>, Option<String>) {
+    use std::process::Command;
+
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(path)
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => {
+            let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if url.is_empty() {
+                return (None, None);
+            }
+
+            // Try to parse organization from URL
+            let organization = if let Ok((_, org)) = parse_repo_url(&url) {
+                Some(org)
+            } else {
+                None
+            };
+
+            (Some(url), organization)
+        }
+        _ => (None, None),
     }
 }
 
@@ -157,6 +192,60 @@ fn parse_repo_url(url: &str) -> Result<(String, String)> {
 }
 
 /// Stage 2: Clone repository
+/// Check if repository is safe to onboard
+///
+/// Returns an error if:
+/// - Working directory has uncommitted changes (dirty)
+/// - Not on main or master branch
+///
+/// This prevents accidental commits to feature branches or conflicts with local work.
+pub fn check_repo_safe_to_onboard(path: &Path) -> Result<()> {
+    // Check if working directory is clean
+    let status_output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(path)
+        .output()?;
+
+    if status_output.status.success() {
+        let status = String::from_utf8_lossy(&status_output.stdout);
+        // Filter out untracked files in .beads/ and .claude/ since we're about to create those
+        let dirty_files: Vec<&str> = status
+            .lines()
+            .filter(|line| {
+                !line.contains(".beads/") && !line.contains(".claude/") && !line.trim().is_empty()
+            })
+            .collect();
+
+        if !dirty_files.is_empty() {
+            return Err(crate::AllBeadsError::Config(format!(
+                "Repository has uncommitted changes:\n  {}\n\nPlease commit or stash changes before onboarding.",
+                dirty_files.join("\n  ")
+            )));
+        }
+    }
+
+    // Check current branch
+    let branch_output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(path)
+        .output()?;
+
+    if branch_output.status.success() {
+        let branch = String::from_utf8_lossy(&branch_output.stdout)
+            .trim()
+            .to_string();
+
+        if branch != "main" && branch != "master" {
+            return Err(crate::AllBeadsError::Config(format!(
+                "Repository is on branch '{}', not main/master.\n\nPlease switch to the main branch before onboarding:\n  git checkout main",
+                branch
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 pub fn clone_repository(url: &str, path: &Path, non_interactive: bool) -> Result<()> {
     if !non_interactive {
         println!("  Clone to: {}", path.display());
