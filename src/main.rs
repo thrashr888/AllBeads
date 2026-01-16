@@ -9165,11 +9165,21 @@ fn handle_onboard_repository(
         println!("Stage 4: Populate Issues");
         let agent_type = &config.onboarding.default_agent;
         println!("  Using default agent config: {}", agent_type);
-        let issues = repository::populate_onboarding_issues(&repo_info.path, agent_type)?;
+        let mut issues = repository::populate_onboarding_issues(&repo_info.path, agent_type)?;
+
+        // Add marketplace suggestion issue if marketplaces are configured
+        if !skip_skills {
+            if let Some(marketplace_issue) =
+                repository::marketplace_suggestion_issue(&config.onboarding.marketplaces)
+            {
+                issues.push(marketplace_issue);
+            }
+        }
+
         if issues.is_empty() {
-            println!("  ✓ Agent configuration already exists");
+            println!("  ✓ All configurations already exist");
         } else {
-            println!("  Creating issue for missing configuration:");
+            println!("  Creating onboarding issues:");
             for issue in &issues {
                 println!("    • {}", issue.title);
             }

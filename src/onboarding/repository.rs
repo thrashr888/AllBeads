@@ -691,6 +691,53 @@ pub fn configure_skills(path: &Path, configured_marketplaces: &[String]) -> Resu
     Ok(())
 }
 
+/// Generate an onboarding issue suggesting the user review available marketplace plugins
+///
+/// Creates a single bead listing configured marketplaces and suggesting users
+/// consider which plugins to enable for their workflow.
+pub fn marketplace_suggestion_issue(configured_marketplaces: &[String]) -> Option<OnboardingIssue> {
+    if configured_marketplaces.is_empty() {
+        return None;
+    }
+
+    // Build list of marketplace names
+    let marketplace_names: Vec<String> = configured_marketplaces
+        .iter()
+        .map(|url| {
+            let (name, _) = parse_marketplace_url(url);
+            name
+        })
+        .collect();
+
+    let marketplace_list = marketplace_names
+        .iter()
+        .map(|name| format!("- {}", name))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Some(OnboardingIssue {
+        title: "Review and enable marketplace plugins".to_string(),
+        description: format!(
+            "The following plugin marketplaces have been configured for this project:\n\n\
+            {}\n\n\
+            Consider which plugins would be useful for your workflow and enable them:\n\n\
+            ```bash\n\
+            # List available plugins\n\
+            claude plugin marketplace list\n\n\
+            # Enable a plugin\n\
+            claude plugin enable <plugin>@<marketplace>\n\
+            ```\n\n\
+            Note: beads and allbeads plugins are enabled by default.",
+            marketplace_list
+        ),
+        priority: 4, // Low priority - informational
+        labels: vec![
+            "onboarding".to_string(),
+            "plugins".to_string(),
+        ],
+    })
+}
+
 /// Parse a marketplace URL into a name and source configuration
 ///
 /// Supports formats:
