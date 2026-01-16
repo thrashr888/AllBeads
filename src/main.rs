@@ -357,7 +357,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
     // Handle Scan commands (need async, no full graph)
     if let Commands::Scan(ref scan_cmd) = command {
         let rt = tokio::runtime::Runtime::new()?;
-        return rt.block_on(handle_scan_command(scan_cmd, &cli.config));
+        return rt.block_on(handle_scan_command(scan_cmd, &cli.config, cli.json));
     }
 
     // Handle sync command
@@ -10355,8 +10355,18 @@ fn is_text_format(format: &commands::OutputFormat) -> bool {
 async fn handle_scan_command(
     cmd: &commands::ScanCommands,
     _config_path: &Option<String>,
+    global_json: bool,
 ) -> allbeads::Result<()> {
     use allbeads::governance::{GitHubScanner, ScanFilter, ScanOptions};
+
+    // Determine effective format: global --json flag overrides per-command format
+    let effective_format = |format: &commands::OutputFormat| -> commands::OutputFormat {
+        if global_json {
+            commands::OutputFormat::Json
+        } else {
+            *format
+        }
+    };
 
     // Determine if we should show progress (only for text format)
     let show_progress = match cmd {
@@ -10364,7 +10374,9 @@ async fn handle_scan_command(
         | commands::ScanCommands::Org { format, .. }
         | commands::ScanCommands::GitHub { format, .. }
         | commands::ScanCommands::Repo { format, .. }
-        | commands::ScanCommands::Compare { format, .. } => is_text_format(format),
+        | commands::ScanCommands::Compare { format, .. } => {
+            !global_json && is_text_format(format)
+        }
     };
 
     let scan_options = ScanOptions {
@@ -10407,7 +10419,7 @@ async fn handle_scan_command(
             let result = scanner
                 .scan_user_with_options(username, &filter, &scan_options)
                 .await?;
-            output_scan_result(&result, format, *all);
+            output_scan_result(&result, &effective_format(format), *all);
 
             Ok(())
         }
@@ -10436,12 +10448,13 @@ async fn handle_scan_command(
             let result = scanner
                 .scan_org_with_options(org, &filter, &scan_options)
                 .await?;
-            output_scan_result(&result, format, *all);
+            output_scan_result(&result, &effective_format(format), *all);
 
             Ok(())
         }
 
         commands::ScanCommands::Compare { format } => {
+            let format = effective_format(format);
             // For now, just show a summary comparing managed vs GitHub
             use allbeads::config::AllBeadsConfig;
 
@@ -10556,7 +10569,7 @@ async fn handle_scan_command(
                     let result = scanner
                         .scan_single_repo_with_options(owner, repo, &scan_options)
                         .await?;
-                    output_scan_result(&result, format, true);
+                    output_scan_result(&result, &effective_format(format), true);
                     return Ok(());
                 }
             }
@@ -10571,7 +10584,7 @@ async fn handle_scan_command(
 
             match result {
                 Ok(scan_result) if !scan_result.repositories.is_empty() => {
-                    output_scan_result(&scan_result, format, *all);
+                    output_scan_result(&scan_result, &effective_format(format), *all);
                 }
                 _ => {
                     // Try as org
@@ -10581,7 +10594,7 @@ async fn handle_scan_command(
                     let result = scanner
                         .scan_org_with_options(target, &filter, &scan_options)
                         .await?;
-                    output_scan_result(&result, format, *all);
+                    output_scan_result(&result, &effective_format(format), *all);
                 }
             }
 
@@ -10589,6 +10602,7 @@ async fn handle_scan_command(
         }
 
         commands::ScanCommands::Repo { url, format } => {
+            let format = effective_format(format);
             // Parse repo URL
             let parts: Vec<&str> = url
                 .trim_start_matches("https://")
@@ -10609,7 +10623,7 @@ async fn handle_scan_command(
             let result = scanner
                 .scan_single_repo_with_options(owner, repo, &scan_options)
                 .await?;
-            output_scan_result(&result, format, true);
+            output_scan_result(&result, &format, true);
 
             Ok(())
         }
