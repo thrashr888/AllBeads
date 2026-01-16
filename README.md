@@ -63,6 +63,8 @@ AI adoption management:
 - **GitHub Scanner**: Efficiently scan user/org repos for onboarding opportunities
 - **Usage Tracking**: SQLite-based metrics for adoption trends
 - **Onboarding Workflow**: Guided setup for new repositories
+- **Health Checks**: Monitors repo setup status (Beads, Skills, Integration, CI/CD, Hooks)
+- **Agent Tooling Detection**: Collects MCP servers, Cursor rules, and Copilot instructions across repos
 
 See [DEMO.md](DEMO.md) for usage examples.
 
@@ -202,8 +204,25 @@ allbeads context remove <name>
 #### Viewing Beads
 
 ```bash
-# Show aggregated statistics
+# Show aggregated statistics (summary, cache, health checks, agent tooling)
 allbeads stats
+
+# Example output:
+# Aggregated Beads Status
+#   Total Beads: 689   Open: 156   In Progress: 6   Blocked: 0
+#
+# Health Checks
+#   Beads initialized:    36/36
+#   Skills configured:    32/36
+#   CI/CD detected:       8/36
+#   Hooks installed:      36/36
+#   Overall Health:       62%
+#
+# Agent Tooling
+#   MCP Servers:          4 unique (filesystem, github, memory, puppeteer)
+#   Cursor Rules:         2/36
+#   Copilot Rules:        1/36
+#   AGENTS.md:            34/36
 
 # List all beads (aggregated from all contexts)
 allbeads list
