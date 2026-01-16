@@ -447,4 +447,99 @@ impl OnboardingReport {
             self.stats.fully_onboarded, self.stats.total_contexts, progress
         );
     }
+
+    /// Filter to only repos with beads initialized
+    pub fn filter_beads_only(&mut self) {
+        self.statuses.retain(|status| {
+            matches!(
+                status.stage,
+                OnboardingStage::BeadsInitialized
+                    | OnboardingStage::HasIssues
+                    | OnboardingStage::HasSkills
+                    | OnboardingStage::IntegrationConfigured
+                    | OnboardingStage::FullyOnboarded
+            )
+        });
+        // Recalculate stats
+        self.stats.total_contexts = self.statuses.len();
+    }
+
+    /// Print as CSV for reporting
+    pub fn print_csv(&self) {
+        println!("name,url,path,stage,beads,skills,issues,integration,cicd");
+        for status in &self.statuses {
+            let path_str = status
+                .path
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            let has_beads = matches!(
+                status.stage,
+                OnboardingStage::BeadsInitialized
+                    | OnboardingStage::HasIssues
+                    | OnboardingStage::HasSkills
+                    | OnboardingStage::IntegrationConfigured
+                    | OnboardingStage::FullyOnboarded
+            );
+            let issue_count = status.issue_count.unwrap_or(0);
+            println!(
+                "{},{},{},{},{},{},{},{},{}",
+                status.context_name,
+                status.url,
+                path_str,
+                status.stage.name(),
+                has_beads,
+                status.has_skills,
+                issue_count,
+                status.has_integration,
+                status.has_ci
+            );
+        }
+    }
+
+    /// Convert to JSON
+    pub fn to_json(&self) -> Result<String> {
+        use serde_json::json;
+
+        let contexts: Vec<_> = self
+            .statuses
+            .iter()
+            .map(|status| {
+                let has_beads = matches!(
+                    status.stage,
+                    OnboardingStage::BeadsInitialized
+                        | OnboardingStage::HasIssues
+                        | OnboardingStage::HasSkills
+                        | OnboardingStage::IntegrationConfigured
+                        | OnboardingStage::FullyOnboarded
+                );
+                json!({
+                    "name": status.context_name,
+                    "url": status.url,
+                    "path": status.path.as_ref().map(|p| p.display().to_string()),
+                    "stage": status.stage.name(),
+                    "beads": has_beads,
+                    "skills": status.has_skills,
+                    "issues": status.issue_count.unwrap_or(0),
+                    "integration": status.has_integration,
+                    "cicd": status.has_ci
+                })
+            })
+            .collect();
+
+        let output = json!({
+            "summary": {
+                "total": self.stats.total_contexts,
+                "fully_onboarded": self.stats.fully_onboarded,
+                "beads_initialized": self.stats.beads_initialized,
+                "has_issues": self.stats.has_issues,
+                "has_skills": self.stats.has_skills
+            },
+            "contexts": contexts
+        });
+
+        serde_json::to_string_pretty(&output).map_err(|e| {
+            crate::AllBeadsError::Config(format!("Failed to serialize to JSON: {}", e))
+        })
+    }
 }

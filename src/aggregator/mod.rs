@@ -5,4 +5,4 @@
 
 mod boss_aggregator;
 
-pub use boss_aggregator::{Aggregator, AggregatorConfig, SyncMode};
+pub use boss_aggregator::{Aggregator, AggregatorConfig, RefreshProgress, RefreshResult, SyncMode};

@@ -4,17 +4,116 @@
 
 mod commands;
 
-use allbeads::aggregator::{Aggregator, AggregatorConfig, SyncMode};
+use allbeads::aggregator::{Aggregator, AggregatorConfig, RefreshProgress, SyncMode};
 use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
-use allbeads::graph::{BeadId, IssueType, Priority, Status};
+use allbeads::graph::{BeadId, FederatedGraph, IssueType, Priority, Status};
 use allbeads::style;
 use beads::Beads;
 use clap::Parser;
 use commands::*;
 use serde::{Deserialize, Serialize};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+/// Load graph using parallel refresh with progress indicator
+///
+/// Shows real-time progress as repos are fetched in parallel.
+fn load_graph_parallel(
+    config: AllBeadsConfig,
+    agg_config: AggregatorConfig,
+    message: &str,
+) -> allbeads::Result<FederatedGraph> {
+    eprintln!("⏳ {}...", message);
+
+    let total_repos = config.contexts.len();
+    let completed = Arc::new(AtomicUsize::new(0));
+    let errors = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+
+    // Create a simple progress callback
+    let completed_clone = Arc::clone(&completed);
+    let errors_clone = Arc::clone(&errors);
+
+    let progress_callback = move |event: RefreshProgress| {
+        match event {
+            RefreshProgress::FetchingRepo { name, .. } => {
+                let done = completed_clone.load(Ordering::SeqCst);
+                // Use carriage return to update line in place
+                eprint!("\r  [{}/{}] Fetching {}...", done + 1, total_repos, name);
+                let _ = io::stderr().flush();
+            }
+            RefreshProgress::FetchedRepo { .. } => {
+                completed_clone.fetch_add(1, Ordering::SeqCst);
+            }
+            RefreshProgress::CloningRepo { name, .. } => {
+                eprintln!("\r  📦 Cloning {}...", name);
+            }
+            RefreshProgress::RepoError { name, error } => {
+                // Clear line and show error in a clean format
+                eprintln!(
+                    "\r  ⚠ {}: {}",
+                    style::warning(&name),
+                    truncate_error(&error)
+                );
+                errors_clone.lock().unwrap().push((name, error));
+            }
+            RefreshProgress::Complete {
+                succeeded, failed, ..
+            } => {
+                // Clear the progress line
+                eprint!("\r{}\r", " ".repeat(60));
+                if failed > 0 {
+                    eprintln!(
+                        "  {} {} repos synced, {} skipped",
+                        style::dim("ℹ"),
+                        succeeded,
+                        failed
+                    );
+                }
+            }
+            _ => {}
+        }
+    };
+
+    // Run the parallel aggregation using tokio runtime
+    let runtime = tokio::runtime::Runtime::new().map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to create async runtime: {}", e))
+    })?;
+
+    let graph = runtime.block_on(async {
+        let mut aggregator = Aggregator::new(config, agg_config)?;
+        aggregator.aggregate_parallel(Some(progress_callback)).await
+    })?;
+
+    Ok(graph)
+}
+
+/// Truncate error message for cleaner display
+fn truncate_error(error: &str) -> String {
+    // Remove verbose parts like "class=Ssh (23); code=Auth (-16)"
+    let error = error.split(';').next().unwrap_or(error);
+
+    // Simplify common git errors
+    if error.contains("remote rejected authentication") {
+        return "authentication failed".to_string();
+    }
+    if error.contains("repository not found") || error.contains("not found") {
+        return "repository not found".to_string();
+    }
+    if error.contains("network") || error.contains("connection") {
+        return "network error".to_string();
+    }
+
+    // Truncate if still too long
+    if error.len() > 50 {
+        format!("{}...", &error[..47])
+    } else {
+        error.to_string()
+    }
+}
 
 fn main() {
     // Initialize logging
@@ -483,12 +582,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             cached_graph
         } else {
             tracing::info!("Cache miss, aggregating from Boss repositories");
-            eprintln!("⏳ Loading beads from repositories...");
-            let mut aggregator = Aggregator::new(config, agg_config)?;
-            let graph = aggregator.aggregate()?;
+            let graph = load_graph_parallel(config, agg_config, "Loading beads from repositories")?;
             cache.store_graph(&graph)?;
             eprintln!(
-                "✓ Loaded {} beads from {} contexts",
+                "✓ Loaded {} beads from {} contexts\n",
                 graph.beads.len(),
                 graph.rigs.len()
             );
@@ -496,12 +593,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         }
     } else {
         tracing::info!("Cache expired, aggregating from Boss repositories");
-        eprintln!("⏳ Refreshing beads from repositories...");
-        let mut aggregator = Aggregator::new(config, agg_config)?;
-        let graph = aggregator.aggregate()?;
+        let graph = load_graph_parallel(config, agg_config, "Refreshing beads from repositories")?;
         cache.store_graph(&graph)?;
         eprintln!(
-            "✓ Loaded {} beads from {} contexts",
+            "✓ Loaded {} beads from {} contexts\n",
             graph.beads.len(),
             graph.rigs.len()
         );
@@ -2163,7 +2258,9 @@ fn handle_rename_prefix_command(
                     if jsonl_file.exists() {
                         if let Ok(content) = std::fs::read_to_string(&jsonl_file) {
                             if let Some(first_line) = content.lines().next() {
-                                if let Ok(issue) = serde_json::from_str::<serde_json::Value>(first_line) {
+                                if let Ok(issue) =
+                                    serde_json::from_str::<serde_json::Value>(first_line)
+                                {
                                     if let Some(id) = issue.get("id").and_then(|v| v.as_str()) {
                                         if let Some(dash_pos) = id.rfind('-') {
                                             let prefix = &id[..dash_pos];
@@ -2186,7 +2283,11 @@ fn handle_rename_prefix_command(
 
         match found_path {
             Some(p) => {
-                println!("Found context with prefix '{}' at {}", old_prefix, p.display());
+                println!(
+                    "Found context with prefix '{}' at {}",
+                    old_prefix,
+                    p.display()
+                );
                 p
             }
             None => {
@@ -5115,7 +5216,10 @@ fn handle_handoff_command(
     let config = AllBeadsConfig::load_default().ok();
 
     // Helper to find context by prefix
-    fn find_context_path(prefix: &str, config: Option<&AllBeadsConfig>) -> Option<std::path::PathBuf> {
+    fn find_context_path(
+        prefix: &str,
+        config: Option<&AllBeadsConfig>,
+    ) -> Option<std::path::PathBuf> {
         let config = config?;
         for ctx in &config.contexts {
             if let Some(ref ctx_path) = ctx.path {
@@ -5307,8 +5411,7 @@ fn handle_handoff_command(
 
         // Create and checkout the branch
         let mut checkout_cmd = Command::new("git");
-        checkout_cmd
-            .args(["checkout", "-b", &branch_name]);
+        checkout_cmd.args(["checkout", "-b", &branch_name]);
         if let Some(dir) = work_dir {
             checkout_cmd.current_dir(dir);
         }
@@ -5330,7 +5433,11 @@ fn handle_handoff_command(
                     if let Some(dir) = work_dir {
                         switch_cmd.current_dir(dir);
                     }
-                    if switch_cmd.output().map(|o| o.status.success()).unwrap_or(false) {
+                    if switch_cmd
+                        .output()
+                        .map(|o| o.status.success())
+                        .unwrap_or(false)
+                    {
                         println!(
                             "  {} Switched to existing branch '{}'",
                             style::success("✓"),
@@ -6338,15 +6445,57 @@ fn handle_context_command(
             config.save(&config_file)?;
         }
 
-        ContextCommands::List => {
+        ContextCommands::List {
+            local,
+            beads,
+            names,
+        } => {
             if config.contexts.is_empty() {
                 println!("No contexts configured");
                 return Ok(());
             }
 
-            println!("Configured contexts ({}):", config.contexts.len());
+            // Filter contexts based on flags
+            let filtered: Vec<_> = config
+                .contexts
+                .iter()
+                .filter(|ctx| {
+                    // --local: only contexts with local paths
+                    if *local && ctx.path.is_none() {
+                        return false;
+                    }
+                    // --beads: only contexts with beads initialized
+                    if *beads {
+                        if let Some(ref path) = ctx.path {
+                            let beads_dir = path.join(".beads");
+                            if !beads_dir.exists() {
+                                return false;
+                            }
+                        } else {
+                            return false; // no path means no beads
+                        }
+                    }
+                    true
+                })
+                .collect();
+
+            if filtered.is_empty() {
+                println!("No contexts match the specified filters");
+                return Ok(());
+            }
+
+            // --names: output just names for scripting
+            if *names {
+                for context in &filtered {
+                    println!("{}", context.name);
+                }
+                return Ok(());
+            }
+
+            // Default output
+            println!("Configured contexts ({}):", filtered.len());
             println!();
-            for context in &config.contexts {
+            for context in &filtered {
                 println!("  {}", context.name);
                 println!("    URL:  {}", context.url);
                 if let Some(ref path) = context.path {
@@ -6369,33 +6518,59 @@ fn handle_context_command(
             }
         }
 
-        ContextCommands::Onboarding { full, summary } => {
+        ContextCommands::Onboarding {
+            full,
+            summary,
+            beads,
+            format,
+        } => {
             use allbeads::onboarding::OnboardingReport;
 
             // Generate onboarding report
-            let report = OnboardingReport::from_contexts(&config.contexts)?;
+            let mut report = OnboardingReport::from_contexts(&config.contexts)?;
 
-            if *summary {
-                report.print_summary();
-            } else {
-                report.print();
+            // --beads: filter to only repos with beads initialized
+            if *beads {
+                report.filter_beads_only();
             }
 
-            // In full mode, show additional guidance
-            if *full {
-                eprintln!("\n📚 Getting Started with AllBeads Onboarding:\n");
-                eprintln!("1. URL-only contexts will be cloned automatically when you run:");
-                eprintln!("   cargo run -- list -C <context-name>");
-                eprintln!("\n2. Once cloned, initialize beads in each repository:");
-                eprintln!("   cd <repo-path> && bd init");
-                eprintln!("\n3. Start tracking issues:");
-                eprintln!("   bd create --title=\"Your first issue\" --type=task --priority=2");
-                eprintln!("\n4. Enable integrations (optional):");
-                eprintln!("   cargo run -- jira status");
-                eprintln!("   cargo run -- github status");
-                eprintln!("\n5. Launch the TUI to see everything:");
-                eprintln!("   cargo run -- tui");
-                eprintln!();
+            // Handle different output formats
+            match format.as_str() {
+                "csv" => {
+                    report.print_csv();
+                }
+                "json" => {
+                    println!("{}", report.to_json()?);
+                }
+                _ => {
+                    // Default table format
+                    if *summary {
+                        report.print_summary();
+                    } else {
+                        report.print();
+                    }
+
+                    // In full mode, show additional guidance
+                    if *full {
+                        eprintln!("\n📚 Getting Started with AllBeads Onboarding:\n");
+                        eprintln!(
+                            "1. URL-only contexts will be cloned automatically when you run:"
+                        );
+                        eprintln!("   cargo run -- list -C <context-name>");
+                        eprintln!("\n2. Once cloned, initialize beads in each repository:");
+                        eprintln!("   cd <repo-path> && bd init");
+                        eprintln!("\n3. Start tracking issues:");
+                        eprintln!(
+                            "   bd create --title=\"Your first issue\" --type=task --priority=2"
+                        );
+                        eprintln!("\n4. Enable integrations (optional):");
+                        eprintln!("   cargo run -- jira status");
+                        eprintln!("   cargo run -- github status");
+                        eprintln!("\n5. Launch the TUI to see everything:");
+                        eprintln!("   cargo run -- tui");
+                        eprintln!();
+                    }
+                }
             }
         }
 

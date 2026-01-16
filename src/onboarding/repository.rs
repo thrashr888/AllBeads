@@ -446,7 +446,8 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
                     title: "Initialize Claude Code configuration".to_string(),
                     description: "Create CLAUDE.md with project-specific instructions. \
                                  This file helps Claude understand your codebase architecture, \
-                                 coding conventions, and key patterns.".to_string(),
+                                 coding conventions, and key patterns."
+                        .to_string(),
                     priority: 2,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -459,7 +460,8 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
                     title: "Initialize Open Agent Skills".to_string(),
                     description: "Create .agent/skills/ directory with SKILL.md files following \
                                  the Open Agent Skills specification (agentskills.io). \
-                                 This format is supported by multiple AI agents.".to_string(),
+                                 This format is supported by multiple AI agents."
+                        .to_string(),
                     priority: 2,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -471,8 +473,10 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
             if !cursorrules.exists() && !cursor_dir.exists() {
                 issues.push(OnboardingIssue {
                     title: "Add Cursor configuration".to_string(),
-                    description: "Create .cursorrules file with project-specific rules for Cursor AI. \
-                                 Include coding standards, preferred patterns, and project context.".to_string(),
+                    description:
+                        "Create .cursorrules file with project-specific rules for Cursor AI. \
+                                 Include coding standards, preferred patterns, and project context."
+                            .to_string(),
                     priority: 2,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -483,8 +487,10 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
             if !copilot_instructions.exists() {
                 issues.push(OnboardingIssue {
                     title: "Add GitHub Copilot instructions".to_string(),
-                    description: "Create .github/copilot-instructions.md with project-specific guidance. \
-                                 Document coding standards and patterns Copilot should follow.".to_string(),
+                    description:
+                        "Create .github/copilot-instructions.md with project-specific guidance. \
+                                 Document coding standards and patterns Copilot should follow."
+                            .to_string(),
                     priority: 2,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -497,7 +503,8 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
                 issues.push(OnboardingIssue {
                     title: "Add Aider configuration".to_string(),
                     description: "Create .aider.conf.yml with model preferences and .aiderignore. \
-                                 Configure aider for optimal performance with this codebase.".to_string(),
+                                 Configure aider for optimal performance with this codebase."
+                        .to_string(),
                     priority: 2,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -508,8 +515,10 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
             if !kiro_dir.exists() {
                 issues.push(OnboardingIssue {
                     title: "Add AWS Kiro configuration".to_string(),
-                    description: "Create .kiro/ directory with specs and steering files for AWS Kiro. \
-                                 Define project requirements and agent behavior guidelines.".to_string(),
+                    description:
+                        "Create .kiro/ directory with specs and steering files for AWS Kiro. \
+                                 Define project requirements and agent behavior guidelines."
+                            .to_string(),
                     priority: 2,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -532,7 +541,8 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
             if !cursorrules.exists() && !cursor_dir.exists() {
                 issues.push(OnboardingIssue {
                     title: "Add Cursor configuration".to_string(),
-                    description: "Create .cursorrules file with project-specific rules.".to_string(),
+                    description: "Create .cursorrules file with project-specific rules."
+                        .to_string(),
                     priority: 3,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -542,7 +552,8 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
             if !kiro_dir.exists() {
                 issues.push(OnboardingIssue {
                     title: "Add AWS Kiro configuration".to_string(),
-                    description: "Create .kiro/ directory with specs and steering files.".to_string(),
+                    description: "Create .kiro/ directory with specs and steering files."
+                        .to_string(),
                     priority: 3,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -563,7 +574,8 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
             if !copilot_instructions.exists() {
                 issues.push(OnboardingIssue {
                     title: "Add GitHub Copilot instructions".to_string(),
-                    description: "Create .github/copilot-instructions.md with project guidance.".to_string(),
+                    description: "Create .github/copilot-instructions.md with project guidance."
+                        .to_string(),
                     priority: 3,
                     labels: vec!["onboarding".to_string(), "agent-config".to_string()],
                 });
@@ -587,7 +599,10 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
 
 /// Create beads from onboarding issues using bd CLI
 /// Returns (epic_id, task_count)
-pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Result<(Option<String>, usize)> {
+pub fn create_onboarding_beads(
+    path: &Path,
+    issues: &[OnboardingIssue],
+) -> Result<(Option<String>, usize)> {
     if issues.is_empty() {
         return Ok((None, 0));
     }
@@ -822,10 +837,7 @@ pub fn marketplace_suggestion_issue(configured_marketplaces: &[String]) -> Optio
             marketplace_list
         ),
         priority: 4, // Low priority - informational
-        labels: vec![
-            "onboarding".to_string(),
-            "plugins".to_string(),
-        ],
+        labels: vec!["onboarding".to_string(), "plugins".to_string()],
     })
 }
 
@@ -863,7 +875,10 @@ fn parse_marketplace_url(url: &str) -> (String, serde_json::Value) {
     // e.g., "thrashr888/AllBeads" → "allbeads-marketplace"
     // e.g., "steveyegge/beads" → "beads-marketplace"
     let name_part = repo.split('/').last().unwrap_or(&repo);
-    let marketplace_name = format!("{}-marketplace", name_part.to_lowercase().replace(".git", ""));
+    let marketplace_name = format!(
+        "{}-marketplace",
+        name_part.to_lowercase().replace(".git", "")
+    );
 
     let source_config = serde_json::json!({
         "source": {

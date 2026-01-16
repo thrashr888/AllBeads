@@ -1620,7 +1620,19 @@ pub enum ContextCommands {
     },
 
     /// List all contexts
-    List,
+    List {
+        /// Only show contexts with local paths configured
+        #[arg(long)]
+        local: bool,
+
+        /// Only show contexts with beads initialized (.beads/ exists)
+        #[arg(long)]
+        beads: bool,
+
+        /// Output just context names, one per line (for scripting)
+        #[arg(long)]
+        names: bool,
+    },
 
     /// Remove a context
     Remove {
@@ -1637,6 +1649,14 @@ pub enum ContextCommands {
         /// Show only summary statistics
         #[arg(long)]
         summary: bool,
+
+        /// Only show repos with beads initialized
+        #[arg(long)]
+        beads: bool,
+
+        /// Output format: table (default), csv, json
+        #[arg(long, default_value = "table")]
+        format: String,
     },
 
     /// Create a new GitHub repository with AllBeads configured
