@@ -28,6 +28,239 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Duration;
 
+/// Available fields for scan output
+/// Basic fields are always available (no extra API calls)
+/// Detailed fields require the Git Trees API (one call per repo)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScanField {
+    // Basic fields (no extra API calls)
+    Name,
+    FullName,
+    Url,
+    Language,
+    Stars,
+    Forks,
+    IsFork,
+    IsArchived,
+    IsPrivate,
+    DaysSincePush,
+    Managed,
+    Priority,
+    Agents,
+
+    // Detailed fields (require Git Trees API)
+    Settings,  // has_settings + hooks_count + subagent_types
+    Workflows, // has_workflows + workflow_count
+    Commands,  // has_commands + command_count
+    Beads,     // has_beads
+}
+
+impl ScanField {
+    /// Parse a field name string into a ScanField
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "name" => Some(Self::Name),
+            "full_name" | "fullname" => Some(Self::FullName),
+            "url" => Some(Self::Url),
+            "language" | "lang" => Some(Self::Language),
+            "stars" => Some(Self::Stars),
+            "forks" => Some(Self::Forks),
+            "is_fork" | "fork" => Some(Self::IsFork),
+            "is_archived" | "archived" => Some(Self::IsArchived),
+            "is_private" | "private" => Some(Self::IsPrivate),
+            "days_since_push" | "days" | "activity" => Some(Self::DaysSincePush),
+            "managed" => Some(Self::Managed),
+            "priority" => Some(Self::Priority),
+            "agents" => Some(Self::Agents),
+            "settings" => Some(Self::Settings),
+            "workflows" | "cicd" | "ci" => Some(Self::Workflows),
+            "commands" | "cmds" => Some(Self::Commands),
+            "beads" => Some(Self::Beads),
+            _ => None,
+        }
+    }
+
+    /// Get the CSV column name for this field
+    pub fn csv_name(&self) -> &'static str {
+        match self {
+            Self::Name => "name",
+            Self::FullName => "full_name",
+            Self::Url => "url",
+            Self::Language => "language",
+            Self::Stars => "stars",
+            Self::Forks => "forks",
+            Self::IsFork => "is_fork",
+            Self::IsArchived => "is_archived",
+            Self::IsPrivate => "is_private",
+            Self::DaysSincePush => "days_since_push",
+            Self::Managed => "managed",
+            Self::Priority => "priority",
+            Self::Agents => "agents",
+            Self::Settings => "settings",
+            Self::Workflows => "workflows",
+            Self::Commands => "commands",
+            Self::Beads => "beads",
+        }
+    }
+
+    /// Check if this field requires the Git Trees API
+    pub fn requires_detailed(&self) -> bool {
+        matches!(
+            self,
+            Self::Settings | Self::Workflows | Self::Commands | Self::Beads
+        )
+    }
+
+    /// All basic fields (no extra API calls)
+    pub fn basic_fields() -> Vec<Self> {
+        vec![
+            Self::Name,
+            Self::FullName,
+            Self::Url,
+            Self::Language,
+            Self::Stars,
+            Self::Forks,
+            Self::IsFork,
+            Self::IsArchived,
+            Self::IsPrivate,
+            Self::DaysSincePush,
+            Self::Managed,
+            Self::Priority,
+            Self::Agents,
+        ]
+    }
+
+    /// All detailed fields (require Git Trees API)
+    pub fn detailed_fields() -> Vec<Self> {
+        vec![Self::Settings, Self::Workflows, Self::Commands, Self::Beads]
+    }
+
+    /// All available fields
+    pub fn all_fields() -> Vec<Self> {
+        let mut fields = Self::basic_fields();
+        fields.extend(Self::detailed_fields());
+        fields
+    }
+}
+
+/// A set of fields to include in scan output
+#[derive(Debug, Clone)]
+pub struct FieldSet {
+    fields: HashSet<ScanField>,
+    /// Preserve order for CSV headers
+    ordered: Vec<ScanField>,
+}
+
+impl Default for FieldSet {
+    fn default() -> Self {
+        Self::basic()
+    }
+}
+
+impl FieldSet {
+    /// Create a new empty field set
+    pub fn new() -> Self {
+        Self {
+            fields: HashSet::new(),
+            ordered: Vec::new(),
+        }
+    }
+
+    /// Create a field set with all basic fields
+    pub fn basic() -> Self {
+        let fields: HashSet<_> = ScanField::basic_fields().into_iter().collect();
+        let ordered = ScanField::basic_fields();
+        Self { fields, ordered }
+    }
+
+    /// Create a field set with all fields
+    pub fn all() -> Self {
+        let fields: HashSet<_> = ScanField::all_fields().into_iter().collect();
+        let ordered = ScanField::all_fields();
+        Self { fields, ordered }
+    }
+
+    /// Parse a comma-separated field list
+    /// Supports shortcuts: "all", "basic", "detailed"
+    pub fn parse(s: &str) -> std::result::Result<Self, String> {
+        let mut set = Self::new();
+
+        for part in s.split(',') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+
+            match part.to_lowercase().as_str() {
+                "all" => {
+                    for field in ScanField::all_fields() {
+                        set.add(field);
+                    }
+                }
+                "basic" => {
+                    for field in ScanField::basic_fields() {
+                        set.add(field);
+                    }
+                }
+                "detailed" => {
+                    for field in ScanField::detailed_fields() {
+                        set.add(field);
+                    }
+                }
+                _ => {
+                    if let Some(field) = ScanField::from_str(part) {
+                        set.add(field);
+                    } else {
+                        return Err(format!("Unknown field: '{}'. Available fields: name, full_name, url, language, stars, forks, fork, archived, private, days, managed, priority, agents, settings, workflows, commands, beads. Shortcuts: all, basic, detailed", part));
+                    }
+                }
+            }
+        }
+
+        if set.is_empty() {
+            return Err("No fields specified".to_string());
+        }
+
+        Ok(set)
+    }
+
+    /// Add a field to the set
+    pub fn add(&mut self, field: ScanField) {
+        if self.fields.insert(field) {
+            self.ordered.push(field);
+        }
+    }
+
+    /// Check if the set contains a field
+    pub fn contains(&self, field: ScanField) -> bool {
+        self.fields.contains(&field)
+    }
+
+    /// Check if any field requires detailed info
+    pub fn requires_detailed(&self) -> bool {
+        self.fields.iter().any(|f| f.requires_detailed())
+    }
+
+    /// Check if the set is empty
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+
+    /// Get the ordered list of fields
+    pub fn ordered(&self) -> &[ScanField] {
+        &self.ordered
+    }
+
+    /// Get the CSV header row
+    pub fn csv_header(&self) -> String {
+        self.ordered
+            .iter()
+            .map(|f| f.csv_name())
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
 /// Metadata tuple for a scanned repository
 /// (repo, last_push, created_at, days_since_push, managed)
 type RepoMetadata = (
@@ -90,6 +323,31 @@ impl std::fmt::Display for OnboardingPriority {
     }
 }
 
+/// Detailed info from Git Trees API (BSICH+ features)
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct DetailedInfo {
+    /// Whether .claude/settings.json exists
+    pub has_settings: bool,
+    /// Whether .github/workflows directory exists
+    pub has_workflows: bool,
+    /// Whether .claude/commands directory exists
+    pub has_commands: bool,
+    /// Whether .beads directory exists
+    pub has_beads: bool,
+    /// Number of workflow files in .github/workflows
+    pub workflow_count: usize,
+    /// Number of command files in .claude/commands
+    pub command_count: usize,
+    /// Subagent types detected from settings.json
+    pub subagent_types: Vec<String>,
+    /// Number of hooks configured (from settings.json)
+    pub hooks_count: usize,
+    /// Number of beads issues (requires content fetch, expensive)
+    pub beads_count: Option<usize>,
+    /// Beads status breakdown (requires content fetch, expensive)
+    pub beads_statuses: Option<HashMap<String, usize>>,
+}
+
 /// Scanned repository with AllBeads-specific metadata
 #[derive(Debug, Clone, Serialize)]
 pub struct ScannedRepo {
@@ -114,6 +372,10 @@ pub struct ScannedRepo {
     pub detected_agents: Vec<AgentType>,
     pub onboarding_priority: OnboardingPriority,
     pub days_since_push: Option<i64>,
+
+    // Detailed info (only populated with --detailed flag)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detailed: Option<DetailedInfo>,
 }
 
 /// Scan summary statistics
@@ -178,6 +440,8 @@ pub struct ScanOptions {
     pub use_search_api: bool,
     /// Show progress output
     pub show_progress: bool,
+    /// Fields to include in output (determines if detailed API calls are needed)
+    pub fields: FieldSet,
 }
 
 impl Default for ScanOptions {
@@ -186,6 +450,7 @@ impl Default for ScanOptions {
             concurrency: 10,
             use_search_api: true,
             show_progress: true,
+            fields: FieldSet::basic(),
         }
     }
 }
@@ -206,6 +471,53 @@ struct SearchCodeItem {
 #[derive(Debug, Clone, Deserialize)]
 struct SearchRepoRef {
     full_name: String,
+}
+
+/// GitHub Git Tree API response
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+struct GitTreeResponse {
+    sha: String,
+    url: String,
+    tree: Vec<GitTreeEntry>,
+    truncated: bool,
+}
+
+/// Single entry in a Git tree
+#[derive(Debug, Clone, Deserialize)]
+struct GitTreeEntry {
+    path: String,
+    #[serde(rename = "type")]
+    entry_type: String,
+    #[allow(dead_code)]
+    mode: String,
+    #[allow(dead_code)]
+    sha: String,
+    #[allow(dead_code)]
+    size: Option<u64>,
+    #[allow(dead_code)]
+    url: Option<String>,
+}
+
+/// Claude settings.json structure (partial)
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct ClaudeSettings {
+    hooks: Option<ClaudeHooks>,
+    #[serde(rename = "subagentTypes")]
+    subagent_types: Option<HashMap<String, serde_json::Value>>,
+}
+
+/// Claude hooks configuration
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+struct ClaudeHooks {
+    #[serde(rename = "preToolCall")]
+    pre_tool_call: Option<Vec<serde_json::Value>>,
+    #[serde(rename = "postToolCall")]
+    post_tool_call: Option<Vec<serde_json::Value>>,
+    #[serde(rename = "onError")]
+    on_error: Option<Vec<serde_json::Value>>,
 }
 
 /// GitHub scanner client
@@ -353,7 +665,9 @@ impl GitHubScanner {
         if options.show_progress {
             eprintln!("Checking for agent configurations...");
         }
-        let detected_agents = self.detect_agents_in_repo(owner, repo).await;
+        let detected_agents = self
+            .detect_agents_in_repo(owner, repo, options.show_progress)
+            .await;
 
         // Check if managed
         let config_path = crate::config::AllBeadsConfig::default_path();
@@ -393,6 +707,18 @@ impl GitHubScanner {
             OnboardingPriority::Low
         };
 
+        // Fetch detailed info if any detailed fields are requested
+        let detailed = if options.fields.requires_detailed() {
+            if options.show_progress {
+                eprintln!("Fetching detailed info via Git Trees API...");
+            }
+            self.fetch_detailed_info(&github_repo.full_name, &github_repo.default_branch)
+                .await
+                .ok()
+        } else {
+            None
+        };
+
         let scanned_repo = ScannedRepo {
             name: github_repo.name.clone(),
             full_name: github_repo.full_name.clone(),
@@ -413,6 +739,7 @@ impl GitHubScanner {
             detected_agents,
             onboarding_priority,
             days_since_push,
+            detailed,
         };
 
         if options.show_progress {
@@ -433,7 +760,12 @@ impl GitHubScanner {
     }
 
     /// Detect agents by directly checking repo contents (for single repo scans)
-    async fn detect_agents_in_repo(&self, owner: &str, repo: &str) -> Vec<AgentType> {
+    async fn detect_agents_in_repo(
+        &self,
+        owner: &str,
+        repo: &str,
+        show_progress: bool,
+    ) -> Vec<AgentType> {
         let mut agents = Vec::new();
 
         // Check each agent file/directory
@@ -462,12 +794,14 @@ impl GitHubScanner {
             if let Ok(response) = request.send().await {
                 if response.status().is_success() {
                     agents.push(agent_type);
-                    eprintln!("  Found: {}", agent_type.name());
+                    if show_progress {
+                        eprintln!("  Found: {}", agent_type.name());
+                    }
                 }
             }
         }
 
-        if agents.is_empty() {
+        if agents.is_empty() && show_progress {
             eprintln!("  No agent configurations found");
         }
 
@@ -664,6 +998,20 @@ impl GitHubScanner {
                     .await?
             };
 
+        // Third pass: fetch detailed info if any detailed fields are requested (in parallel)
+        let detailed_map: HashMap<String, DetailedInfo> = if options.fields.requires_detailed() {
+            if options.show_progress {
+                eprintln!(
+                    "Fetching detailed info for {} repos via Git Trees API...",
+                    filtered_repos.len()
+                );
+            }
+            self.fetch_detailed_info_parallel(&filtered_repos, options)
+                .await?
+        } else {
+            HashMap::new()
+        };
+
         // Build final results
         let mut scanned_repos = Vec::new();
 
@@ -675,6 +1023,8 @@ impl GitHubScanner {
 
             let onboarding_priority =
                 self.calculate_priority(&repo, days_since_push, &detected_agents, managed);
+
+            let detailed = detailed_map.get(&repo.full_name.to_lowercase()).cloned();
 
             scanned_repos.push(ScannedRepo {
                 name: repo.name,
@@ -696,6 +1046,7 @@ impl GitHubScanner {
                 detected_agents,
                 onboarding_priority,
                 days_since_push,
+                detailed,
             });
         }
 
@@ -972,6 +1323,168 @@ impl GitHubScanner {
         Ok(agents)
     }
 
+    /// Fetch detailed info for a single repo using Git Trees API
+    /// This is the most efficient way to check file existence in bulk
+    async fn fetch_detailed_info(
+        &self,
+        full_name: &str,
+        default_branch: &str,
+    ) -> Result<DetailedInfo> {
+        // Fetch the tree recursively in a single API call
+        let url = format!(
+            "{}/repos/{}/git/trees/{}?recursive=1",
+            self.base_url, full_name, default_branch
+        );
+
+        let mut request = self.client.get(&url);
+        if let Some(ref token) = self.token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            return Err(crate::AllBeadsError::Network(format!(
+                "Failed to fetch tree for {}: {}",
+                full_name,
+                response.status()
+            )));
+        }
+
+        let tree: GitTreeResponse = response.json().await?;
+        self.parse_detailed_info_from_tree(&tree, full_name).await
+    }
+
+    /// Fetch detailed info for multiple repos in parallel
+    async fn fetch_detailed_info_parallel(
+        &self,
+        repos: &[RepoMetadata],
+        options: &ScanOptions,
+    ) -> Result<HashMap<String, DetailedInfo>> {
+        let total = repos.len();
+        let detailed_map: Arc<tokio::sync::Mutex<HashMap<String, DetailedInfo>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let _results: Vec<_> = stream::iter(repos.iter())
+            .map(|(repo, _, _, _, _)| {
+                let client = self.client.clone();
+                let token = self.token.clone();
+                let base_url = self.base_url.clone();
+                let full_name = repo.full_name.clone();
+                let default_branch = repo.default_branch.clone();
+                let detailed_map = detailed_map.clone();
+                let counter = counter.clone();
+                let show_progress = options.show_progress;
+
+                async move {
+                    let url = format!(
+                        "{}/repos/{}/git/trees/{}?recursive=1",
+                        base_url, full_name, default_branch
+                    );
+
+                    let mut request = client.get(&url);
+                    if let Some(ref t) = token {
+                        request = request.bearer_auth(t);
+                    }
+
+                    let count = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+
+                    if show_progress {
+                        let pct = (count as f64 / total as f64) * 100.0;
+                        eprint!(
+                            "\r  [{}/{}] {:.0}% - {}                    ",
+                            count, total, pct, full_name
+                        );
+                        io::stderr().flush().ok();
+                    }
+
+                    if let Ok(response) = request.send().await {
+                        if response.status().is_success() {
+                            if let Ok(tree) = response.json::<GitTreeResponse>().await {
+                                let info = parse_tree_entries(&tree.tree);
+                                let mut map = detailed_map.lock().await;
+                                map.insert(full_name.to_lowercase(), info);
+                            }
+                        }
+                    }
+                }
+            })
+            .buffer_unordered(options.concurrency)
+            .collect()
+            .await;
+
+        if options.show_progress {
+            eprintln!();
+        }
+
+        let map = detailed_map.lock().await;
+        Ok(map.clone())
+    }
+
+    /// Parse detailed info from a Git tree response
+    async fn parse_detailed_info_from_tree(
+        &self,
+        tree: &GitTreeResponse,
+        full_name: &str,
+    ) -> Result<DetailedInfo> {
+        let mut info = parse_tree_entries(&tree.tree);
+
+        // If settings.json exists, fetch and parse it for more details
+        if info.has_settings {
+            if let Ok(settings) = self.fetch_settings_json(full_name).await {
+                // Count hooks
+                if let Some(ref hooks) = settings.hooks {
+                    let mut hook_count = 0;
+                    if let Some(ref h) = hooks.pre_tool_call {
+                        hook_count += h.len();
+                    }
+                    if let Some(ref h) = hooks.post_tool_call {
+                        hook_count += h.len();
+                    }
+                    if let Some(ref h) = hooks.on_error {
+                        hook_count += h.len();
+                    }
+                    info.hooks_count = hook_count;
+                }
+
+                // Extract subagent types
+                if let Some(ref types) = settings.subagent_types {
+                    info.subagent_types = types.keys().cloned().collect();
+                }
+            }
+        }
+
+        Ok(info)
+    }
+
+    /// Fetch and parse .claude/settings.json
+    async fn fetch_settings_json(&self, full_name: &str) -> Result<ClaudeSettings> {
+        let url = format!(
+            "{}/repos/{}/contents/.claude/settings.json",
+            self.base_url, full_name
+        );
+
+        let mut request = self.client.get(&url);
+        if let Some(ref token) = self.token {
+            request = request.bearer_auth(token);
+        }
+        request = request.header("Accept", "application/vnd.github.raw");
+
+        let response = request.send().await?;
+
+        if !response.status().is_success() {
+            return Err(crate::AllBeadsError::Network(format!(
+                "Failed to fetch settings.json for {}",
+                full_name
+            )));
+        }
+
+        let settings: ClaudeSettings = response.json().await?;
+        Ok(settings)
+    }
+
     /// Calculate onboarding priority for a repository
     fn calculate_priority(
         &self,
@@ -1098,6 +1611,61 @@ async fn detect_agents_for_repo(
     }
 
     agents
+}
+
+/// Parse tree entries to extract detailed info (BSICH+ features)
+fn parse_tree_entries(entries: &[GitTreeEntry]) -> DetailedInfo {
+    let mut info = DetailedInfo::default();
+
+    let mut workflow_files = 0;
+    let mut command_files = 0;
+
+    for entry in entries {
+        let path = &entry.path;
+
+        // Check for .claude/settings.json (or settings.local.json)
+        if path == ".claude/settings.json" || path == ".claude/settings.local.json" {
+            info.has_settings = true;
+        }
+
+        // Check for .github/workflows directory
+        if path.starts_with(".github/workflows/") && entry.entry_type == "blob" {
+            if path.ends_with(".yml") || path.ends_with(".yaml") {
+                workflow_files += 1;
+            }
+        }
+        if path == ".github/workflows" && entry.entry_type == "tree" {
+            info.has_workflows = true;
+        }
+
+        // Check for .claude/commands directory
+        if path.starts_with(".claude/commands/") && entry.entry_type == "blob" {
+            if path.ends_with(".md") {
+                command_files += 1;
+            }
+        }
+        if path == ".claude/commands" && entry.entry_type == "tree" {
+            info.has_commands = true;
+        }
+
+        // Check for .beads directory
+        if path == ".beads" && entry.entry_type == "tree" {
+            info.has_beads = true;
+        }
+    }
+
+    // Set counts if directories exist
+    if workflow_files > 0 {
+        info.has_workflows = true;
+    }
+    info.workflow_count = workflow_files;
+
+    if command_files > 0 {
+        info.has_commands = true;
+    }
+    info.command_count = command_files;
+
+    info
 }
 
 /// Print scan results in a formatted way
@@ -1251,41 +1819,184 @@ pub fn print_scan_result(result: &ScanResult, show_all: bool) {
         println!();
     }
 
+    // Detailed info summary (BSICH+ features)
+    let detailed_repos: Vec<_> = result
+        .repositories
+        .iter()
+        .filter_map(|r| r.detailed.as_ref().map(|d| (r, d)))
+        .collect();
+
+    if !detailed_repos.is_empty() {
+        println!("Detailed Analysis (BSICH+):");
+        let with_settings = detailed_repos
+            .iter()
+            .filter(|(_, d)| d.has_settings)
+            .count();
+        let with_workflows = detailed_repos
+            .iter()
+            .filter(|(_, d)| d.has_workflows)
+            .count();
+        let with_commands = detailed_repos
+            .iter()
+            .filter(|(_, d)| d.has_commands)
+            .count();
+        let with_beads = detailed_repos.iter().filter(|(_, d)| d.has_beads).count();
+        let total_workflows: usize = detailed_repos.iter().map(|(_, d)| d.workflow_count).sum();
+        let total_commands: usize = detailed_repos.iter().map(|(_, d)| d.command_count).sum();
+
+        println!(
+            "  Settings (.claude/settings.json): {} repos",
+            with_settings
+        );
+        println!(
+            "  CI/CD (.github/workflows):        {} repos ({} workflows)",
+            with_workflows, total_workflows
+        );
+        println!(
+            "  Commands (.claude/commands):      {} repos ({} commands)",
+            with_commands, total_commands
+        );
+        println!("  Beads (.beads):                   {} repos", with_beads);
+
+        // Show subagent breakdown if any
+        let mut subagent_counts: HashMap<String, usize> = HashMap::new();
+        for (_, d) in &detailed_repos {
+            for agent_type in &d.subagent_types {
+                *subagent_counts.entry(agent_type.clone()).or_insert(0) += 1;
+            }
+        }
+        if !subagent_counts.is_empty() {
+            println!("\n  Subagent Types:");
+            let mut counts: Vec<_> = subagent_counts.into_iter().collect();
+            counts.sort_by(|a, b| b.1.cmp(&a.1));
+            for (agent_type, count) in counts.iter().take(5) {
+                println!("    {}: {} repos", agent_type, count);
+            }
+            if counts.len() > 5 {
+                println!("    ... and {} more", counts.len() - 5);
+            }
+        }
+        println!();
+    }
+
     println!("Run: ab onboard <repo> to start onboarding");
 }
 
-/// Format scan results as CSV
+/// Format scan results as CSV (uses default fields)
 pub fn format_scan_result_csv(result: &ScanResult) -> String {
+    // Use basic fields or all fields based on whether detailed info is present
+    let fields = if result.repositories.iter().any(|r| r.detailed.is_some()) {
+        FieldSet::all()
+    } else {
+        FieldSet::basic()
+    };
+    format_scan_result_csv_with_fields(result, &fields)
+}
+
+/// Format scan results as CSV with specific fields
+pub fn format_scan_result_csv_with_fields(result: &ScanResult, fields: &FieldSet) -> String {
     let mut csv = String::new();
 
-    // Header
-    csv.push_str("name,full_name,url,language,stars,forks,is_fork,is_archived,is_private,days_since_push,managed,priority,agents\n");
+    // Header from field set
+    csv.push_str(&fields.csv_header());
+    csv.push('\n');
 
     // Data rows
     for repo in &result.repositories {
-        let agents: Vec<_> = repo.detected_agents.iter().map(|a| a.name()).collect();
-        let agents_str = agents.join(";");
-        let days = repo
-            .days_since_push
-            .map(|d| d.to_string())
-            .unwrap_or_default();
+        let mut values: Vec<String> = Vec::new();
 
-        csv.push_str(&format!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
-            escape_csv(&repo.name),
-            escape_csv(&repo.full_name),
-            escape_csv(&repo.url),
-            escape_csv(repo.language.as_deref().unwrap_or("")),
-            repo.stars,
-            repo.forks,
-            repo.is_fork,
-            repo.is_archived,
-            repo.is_private,
-            days,
-            repo.managed,
-            format!("{:?}", repo.onboarding_priority),
-            escape_csv(&agents_str),
-        ));
+        for field in fields.ordered() {
+            let value = match field {
+                ScanField::Name => escape_csv(&repo.name),
+                ScanField::FullName => escape_csv(&repo.full_name),
+                ScanField::Url => escape_csv(&repo.url),
+                ScanField::Language => escape_csv(repo.language.as_deref().unwrap_or("")),
+                ScanField::Stars => repo.stars.to_string(),
+                ScanField::Forks => repo.forks.to_string(),
+                ScanField::IsFork => repo.is_fork.to_string(),
+                ScanField::IsArchived => repo.is_archived.to_string(),
+                ScanField::IsPrivate => repo.is_private.to_string(),
+                ScanField::DaysSincePush => repo
+                    .days_since_push
+                    .map(|d| d.to_string())
+                    .unwrap_or_default(),
+                ScanField::Managed => repo.managed.to_string(),
+                ScanField::Priority => format!("{:?}", repo.onboarding_priority),
+                ScanField::Agents => {
+                    let agents: Vec<_> = repo.detected_agents.iter().map(|a| a.name()).collect();
+                    escape_csv(&agents.join(";"))
+                }
+                ScanField::Settings => {
+                    // Format: "yes (3 hooks, 2 subagents)" or "no"
+                    repo.detailed
+                        .as_ref()
+                        .map(|d| {
+                            if d.has_settings {
+                                let parts: Vec<String> = [
+                                    if d.hooks_count > 0 {
+                                        Some(format!("{} hooks", d.hooks_count))
+                                    } else {
+                                        None
+                                    },
+                                    if !d.subagent_types.is_empty() {
+                                        Some(format!("{} subagents", d.subagent_types.len()))
+                                    } else {
+                                        None
+                                    },
+                                ]
+                                .into_iter()
+                                .flatten()
+                                .collect();
+                                if parts.is_empty() {
+                                    "yes".to_string()
+                                } else {
+                                    format!("yes ({})", parts.join(", "))
+                                }
+                            } else {
+                                "no".to_string()
+                            }
+                        })
+                        .unwrap_or_default()
+                }
+                ScanField::Workflows => {
+                    // Format: "yes (5)" or "no"
+                    repo.detailed
+                        .as_ref()
+                        .map(|d| {
+                            if d.has_workflows {
+                                format!("yes ({})", d.workflow_count)
+                            } else {
+                                "no".to_string()
+                            }
+                        })
+                        .unwrap_or_default()
+                }
+                ScanField::Commands => {
+                    // Format: "yes (3)" or "no"
+                    repo.detailed
+                        .as_ref()
+                        .map(|d| {
+                            if d.has_commands {
+                                format!("yes ({})", d.command_count)
+                            } else {
+                                "no".to_string()
+                            }
+                        })
+                        .unwrap_or_default()
+                }
+                ScanField::Beads => {
+                    // Format: "yes" or "no"
+                    repo.detailed
+                        .as_ref()
+                        .map(|d| if d.has_beads { "yes" } else { "no" }.to_string())
+                        .unwrap_or_default()
+                }
+            };
+            values.push(value);
+        }
+
+        csv.push_str(&values.join(","));
+        csv.push('\n');
     }
 
     csv
@@ -1477,6 +2188,7 @@ mod tests {
             detected_agents: vec![],
             onboarding_priority: OnboardingPriority::Skip,
             days_since_push: Some(0),
+            detailed: None,
         };
 
         assert!(repo.managed);

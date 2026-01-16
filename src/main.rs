@@ -10329,16 +10329,22 @@ fn output_scan_result(
     result: &allbeads::governance::ScanResult,
     format: &commands::OutputFormat,
     show_all: bool,
+    fields: &allbeads::governance::FieldSet,
 ) {
-    use allbeads::governance::{format_scan_result_csv, format_scan_result_junit, print_scan_result};
+    use allbeads::governance::{
+        format_scan_result_csv_with_fields, format_scan_result_junit, print_scan_result,
+    };
 
     match format {
         commands::OutputFormat::Text => print_scan_result(result, show_all),
         commands::OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(result).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(result).unwrap_or_default()
+            );
         }
         commands::OutputFormat::Csv => {
-            print!("{}", format_scan_result_csv(result));
+            print!("{}", format_scan_result_csv_with_fields(result, fields));
         }
         commands::OutputFormat::Junit => {
             print!("{}", format_scan_result_junit(result));
@@ -10374,13 +10380,32 @@ async fn handle_scan_command(
         | commands::ScanCommands::Org { format, .. }
         | commands::ScanCommands::GitHub { format, .. }
         | commands::ScanCommands::Repo { format, .. }
-        | commands::ScanCommands::Compare { format, .. } => {
-            !global_json && is_text_format(format)
-        }
+        | commands::ScanCommands::Compare { format, .. } => !global_json && is_text_format(format),
+    };
+
+    // Extract and parse fields from command
+    let fields_str = match cmd {
+        commands::ScanCommands::User { fields, .. }
+        | commands::ScanCommands::Org { fields, .. }
+        | commands::ScanCommands::GitHub { fields, .. }
+        | commands::ScanCommands::Repo { fields, .. } => fields.clone(),
+        commands::ScanCommands::Compare { .. } => None,
+    };
+
+    let fields = match fields_str {
+        Some(ref s) => match allbeads::governance::FieldSet::parse(s) {
+            Ok(fs) => fs,
+            Err(e) => {
+                eprintln!("Error parsing --fields: {}", e);
+                return Err(allbeads::AllBeadsError::Config(e));
+            }
+        },
+        None => allbeads::governance::FieldSet::basic(),
     };
 
     let scan_options = ScanOptions {
         show_progress,
+        fields,
         ..Default::default()
     };
 
@@ -10404,6 +10429,7 @@ async fn handle_scan_command(
             exclude_forks,
             exclude_archived,
             all,
+            fields: _,
             format,
         } => {
             let filter = ScanFilter {
@@ -10419,7 +10445,12 @@ async fn handle_scan_command(
             let result = scanner
                 .scan_user_with_options(username, &filter, &scan_options)
                 .await?;
-            output_scan_result(&result, &effective_format(format), *all);
+            output_scan_result(
+                &result,
+                &effective_format(format),
+                *all,
+                &scan_options.fields,
+            );
 
             Ok(())
         }
@@ -10433,6 +10464,7 @@ async fn handle_scan_command(
             exclude_archived,
             exclude_private,
             all,
+            fields: _,
             format,
         } => {
             let filter = ScanFilter {
@@ -10448,7 +10480,12 @@ async fn handle_scan_command(
             let result = scanner
                 .scan_org_with_options(org, &filter, &scan_options)
                 .await?;
-            output_scan_result(&result, &effective_format(format), *all);
+            output_scan_result(
+                &result,
+                &effective_format(format),
+                *all,
+                &scan_options.fields,
+            );
 
             Ok(())
         }
@@ -10521,7 +10558,10 @@ async fn handle_scan_command(
                         config.contexts.len()
                     );
                     for ctx in &config.contexts {
-                        println!("    <testcase name=\"{}\" classname=\"context\" />", ctx.name);
+                        println!(
+                            "    <testcase name=\"{}\" classname=\"context\" />",
+                            ctx.name
+                        );
                     }
                     println!("  </testsuite>");
                     println!("</testsuites>");
@@ -10539,6 +10579,7 @@ async fn handle_scan_command(
             exclude_forks,
             exclude_archived,
             all,
+            fields: _,
             format,
         } => {
             // Auto-detect target type: repo URL, user, or org
@@ -10569,7 +10610,12 @@ async fn handle_scan_command(
                     let result = scanner
                         .scan_single_repo_with_options(owner, repo, &scan_options)
                         .await?;
-                    output_scan_result(&result, &effective_format(format), true);
+                    output_scan_result(
+                        &result,
+                        &effective_format(format),
+                        true,
+                        &scan_options.fields,
+                    );
                     return Ok(());
                 }
             }
@@ -10584,7 +10630,12 @@ async fn handle_scan_command(
 
             match result {
                 Ok(scan_result) if !scan_result.repositories.is_empty() => {
-                    output_scan_result(&scan_result, &effective_format(format), *all);
+                    output_scan_result(
+                        &scan_result,
+                        &effective_format(format),
+                        *all,
+                        &scan_options.fields,
+                    );
                 }
                 _ => {
                     // Try as org
@@ -10594,14 +10645,23 @@ async fn handle_scan_command(
                     let result = scanner
                         .scan_org_with_options(target, &filter, &scan_options)
                         .await?;
-                    output_scan_result(&result, &effective_format(format), *all);
+                    output_scan_result(
+                        &result,
+                        &effective_format(format),
+                        *all,
+                        &scan_options.fields,
+                    );
                 }
             }
 
             Ok(())
         }
 
-        commands::ScanCommands::Repo { url, format } => {
+        commands::ScanCommands::Repo {
+            url,
+            fields: _,
+            format,
+        } => {
             let format = effective_format(format);
             // Parse repo URL
             let parts: Vec<&str> = url
@@ -10623,7 +10683,7 @@ async fn handle_scan_command(
             let result = scanner
                 .scan_single_repo_with_options(owner, repo, &scan_options)
                 .await?;
-            output_scan_result(&result, &format, true);
+            output_scan_result(&result, &format, true, &scan_options.fields);
 
             Ok(())
         }

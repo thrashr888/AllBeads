@@ -160,6 +160,7 @@ impl GitHubPickerView {
                     concurrency: 10,
                     use_search_api: true,
                     show_progress: false,
+                    ..Default::default()
                 };
 
                 let scan_result = match mode {

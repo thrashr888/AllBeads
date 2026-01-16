@@ -1253,6 +1253,14 @@ pub enum ScanCommands {
         #[arg(long)]
         all: bool,
 
+        /// Fields to include in output (comma-separated)
+        /// Basic: name,url,language,stars,managed,priority,agents
+        /// Detailed (extra API call): settings,workflows,commands,beads
+        /// Shortcuts: all, basic, detailed
+        /// Example: --fields=url,stars,agents,workflows
+        #[arg(long)]
+        fields: Option<String>,
+
         /// Output format (text, json, csv, junit)
         #[arg(long, short = 'f', value_enum, default_value = "text")]
         format: OutputFormat,
@@ -1262,6 +1270,11 @@ pub enum ScanCommands {
     Repo {
         /// Repository URL (e.g., github.com/user/repo or full URL)
         url: String,
+
+        /// Fields to include in output (comma-separated)
+        /// Example: --fields=url,stars,agents,workflows
+        #[arg(long)]
+        fields: Option<String>,
 
         /// Output format (text, json, csv, junit)
         #[arg(long, short = 'f', value_enum, default_value = "text")]
@@ -1296,6 +1309,11 @@ pub enum ScanCommands {
         /// Show all results (including low priority)
         #[arg(long)]
         all: bool,
+
+        /// Fields to include in output (comma-separated)
+        /// Example: --fields=url,stars,agents,workflows
+        #[arg(long)]
+        fields: Option<String>,
 
         /// Output format (text, json, csv, junit)
         #[arg(long, short = 'f', value_enum, default_value = "text")]
@@ -1334,6 +1352,11 @@ pub enum ScanCommands {
         /// Show all results (including low priority)
         #[arg(long)]
         all: bool,
+
+        /// Fields to include in output (comma-separated)
+        /// Example: --fields=url,stars,agents,workflows
+        #[arg(long)]
+        fields: Option<String>,
 
         /// Output format (text, json, csv, junit)
         #[arg(long, short = 'f', value_enum, default_value = "text")]

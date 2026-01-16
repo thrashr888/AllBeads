@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-01-15
+
+### Added
+
+- **`--fields` Option for Scan Commands**: Fine-grained control over scan output
+  - Specify exactly which fields to include: `--fields=url,stars,agents,workflows`
+  - Basic fields (no extra API calls): name, full_name, url, language, stars, forks, fork, archived, private, days, managed, priority, agents
+  - Detailed fields (Git Trees API): settings, workflows, commands, beads
+  - Shortcuts: `--fields=all`, `--fields=basic`, `--fields=detailed`
+  - Detailed fields show summary info: `workflows: yes (5)`, `settings: yes (3 hooks, 2 subagents)`
+
+- **`ab handoff` Command**: Fire-and-forget agent delegation
+  - Hand off beads to AI agents with context
+  - Support for Claude, Codex, Gemini agents
+  - Sub-agent spawning for complex tasks
+  - Automatic bead status updates on handoff
+
+- **Scan Output Formats**: Multiple output format support
+  - `--format=text` (default): Human-readable output
+  - `--format=json`: Machine-readable JSON
+  - `--format=csv`: Spreadsheet-compatible CSV
+  - `--format=junit`: CI/CD integration (JUnit XML)
+  - Silent mode for non-text formats (no progress output)
+  - Global `--json` flag works with scan commands
+
+- **Agent Mail Filesystem Transport**: File-based message storage
+  - Alternative to SQLite for simpler deployments
+  - Pluggable transport architecture
+
+### Changed
+
+- Refactored swarm module for better agent coordination
+
+## [0.6.1] - 2026-01-15
+
+### Fixed
+
+- **Windows Stack Overflow**: Increased stack size from 1MB to 8MB on Windows
+  - Complex CLI with many subcommands exceeded default Windows stack
+  - MSVC targets: `/STACK:8388608`
+  - GNU targets: `-Wl,--stack,8388608`
+
+## [0.6.0] - 2026-01-15
+
+### Added
+
+- **`ab context new`**: Create new GitHub repositories with AllBeads pre-configured
+- **Claude Plugin System**: `.claude-plugin` support
+  - Custom agents, commands, and skills
+  - `/project-new` planning workflow command
+  - `/handoff` for transferring planned work to implementation
+- **`/release` Skill**: Automated version releases with quality checks
+
+### Changed
+
+- Resolved all clippy warnings for improved code quality
+- Enhanced code patterns using `is_none_or`, `Option::map`, and type aliases
+- Strengthened type safety using `&Path` instead of `&PathBuf`
+
 ## [0.5.0] - 2026-01-14
 
 ### Added
@@ -200,6 +259,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ab init --remote` for existing repositories
 - FederatedGraph for cross-repo dependency tracking
 
+[0.7.0]: https://github.com/thrashr888/AllBeads/compare/v0.6.1...v0.7.0
+[0.6.1]: https://github.com/thrashr888/AllBeads/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/thrashr888/AllBeads/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/thrashr888/AllBeads/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thrashr888/AllBeads/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/thrashr888/AllBeads/compare/v0.3.0...v0.3.1
