@@ -5054,6 +5054,7 @@ fn handle_handoff_command(
     dry_run: bool,
     worktree: bool,
 ) -> allbeads::Result<()> {
+    use allbeads::config::AllBeadsConfig;
     use allbeads::handoff::AgentType;
     use std::process::Command;
 
@@ -5110,12 +5111,71 @@ fn handle_handoff_command(
         )));
     }
 
-    // Load bead to get context
-    let beads = Beads::new().map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to initialize beads: {}", e))
-    })?;
+    // Load config to find bead's context
+    let config = AllBeadsConfig::load_default().ok();
+
+    // Helper to find context by prefix
+    fn find_context_path(prefix: &str, config: Option<&AllBeadsConfig>) -> Option<std::path::PathBuf> {
+        let config = config?;
+        for ctx in &config.contexts {
+            if let Some(ref ctx_path) = ctx.path {
+                // Check config.yaml for issue-prefix
+                let config_path = ctx_path.join(".beads/config.yaml");
+                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                    for line in content.lines() {
+                        if let Some(value) = line.strip_prefix("issue-prefix:") {
+                            let ctx_prefix = value.trim().trim_matches('"').trim_matches('\'');
+                            if ctx_prefix.eq_ignore_ascii_case(prefix) {
+                                return Some(ctx_path.clone());
+                            }
+                        }
+                    }
+                }
+                // Also check if issues.jsonl has IDs with this prefix
+                let jsonl_path = ctx_path.join(".beads/issues.jsonl");
+                if let Ok(content) = std::fs::read_to_string(&jsonl_path) {
+                    if let Some(first_line) = content.lines().next() {
+                        if let Ok(issue) = serde_json::from_str::<serde_json::Value>(first_line) {
+                            if let Some(id) = issue.get("id").and_then(|v| v.as_str()) {
+                                if let Some(found_prefix) = id.split('-').next() {
+                                    if found_prefix.eq_ignore_ascii_case(prefix) {
+                                        return Some(ctx_path.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    // Extract prefix from bead ID and find context
+    let bead_prefix = bead_id.split('-').next().unwrap_or("");
+    let context_path = find_context_path(bead_prefix, config.as_ref());
+
+    // Load bead from the correct context
+    let beads = if let Some(ref path) = context_path {
+        Beads::with_workdir(path)
+    } else {
+        // Fall back to current directory
+        Beads::new().map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to initialize beads: {}", e))
+        })?
+    };
+
     let issue = beads.show(bead_id).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to load bead '{}': {}", bead_id, e))
+        let hint = if context_path.is_none() {
+            format!(
+                "\n\nHint: Bead '{}' may be in a different context. \
+                 Make sure the repository is added with 'ab context add'.",
+                bead_id
+            )
+        } else {
+            String::new()
+        };
+        allbeads::AllBeadsError::Config(format!("Failed to load bead '{}': {}{}", bead_id, e, hint))
     })?;
 
     // Build prompt from bead
