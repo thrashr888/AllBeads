@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-01-16
+
+### Added
+
+- **Context Filtering Options**: New flags for `ab context list`
+  - `--local`: Only show contexts with local paths configured
+  - `--beads`: Only show contexts with beads initialized (.beads/ exists)
+  - `--names`: Output just context names, one per line (for scripting)
+
+- **Onboarding Report Formats**: Export context onboarding status
+  - `ab context onboarding --format=csv`: CSV output for reporting
+  - `ab context onboarding --format=json`: JSON output for automation
+  - `--beads` filter to show only repos with beads initialized
+
+- **`ab open` Command**: Open external issues in browser
+  - GitHub issues: `ab open owner/repo#123`
+  - JIRA issues: `ab open PROJ-123` (uses configured JIRA URL)
+
+- **`ab context uninstall` Command**: Clean removal of beads from repositories
+  - Removes .beads/ directory
+  - Removes beads-related git hooks
+  - Optional `--remove-context` to also remove from AllBeads config
+  - Interactive confirmation (skip with `--force`)
+
+- **SPEC-external-integration.md**: Documentation clarifying GH/Jira sync vs link strategy
+  - Link Mode (default): Reference external issues without syncing
+  - Sync Mode: Bi-directional synchronization for enterprise
+
+- **Recommended Claude Agents**: Documentation of useful agent types
+  - Task Agent, Documentation Agent, Release Agent
+  - Review Agent, Onboarding Agent, Planning Agent, Governance Agent
+
+### Changed
+
+- **Parallel Repo Refresh**: Context onboarding now refreshes repos in parallel with progress indicator
+- **Documentation Consolidation**: AGENTS.md merged into CLAUDE.md
+- **Architecture Documentation**: ARCHITECTURE.md moved to specs/ARCHITECTURE.md
+
+### Fixed
+
+- Rustdoc warning for bare URL in repository.rs
+
 ## [0.7.0] - 2026-01-15
 
 ### Added
@@ -259,6 +301,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ab init --remote` for existing repositories
 - FederatedGraph for cross-repo dependency tracking
 
+[0.8.0]: https://github.com/thrashr888/AllBeads/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/thrashr888/AllBeads/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/thrashr888/AllBeads/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/thrashr888/AllBeads/compare/v0.5.0...v0.6.0
