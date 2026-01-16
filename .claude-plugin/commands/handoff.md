@@ -82,6 +82,30 @@ The handoff prompt instructs the agent to:
 
 This ensures clean git history and proper bead tracking.
 
+### Sandboxed Agents (Codex)
+
+Some agents run in sandboxes that prevent git operations (e.g., OpenAI Codex with `workspace-write` sandbox). AllBeads handles this automatically:
+
+1. **Pre-creates the branch** before launching (`git checkout -b bead/<id>`)
+2. **Provides simplified workflow prompt** (skip git operations)
+3. **User handles commit/push** after agent completes
+
+The sandboxed prompt tells the agent:
+- Focus on the work, not git operations
+- The branch already exists
+- Just close the bead when done
+
+After a sandboxed agent completes:
+```bash
+# Commit the agent's work
+git add -A
+git commit -m "feat(<bead-id>): <description>"
+
+# Sync and push
+bd sync
+git push -u origin bead/<bead-id>
+```
+
 ## Worktrees
 
 Use `--worktree` for isolated development:

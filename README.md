@@ -397,6 +397,19 @@ When a bead is handed off:
 3. Agent is launched with the bead context
 4. `ab show <bead-id>` displays handoff details
 
+**Sandboxed Agents (Codex):**
+
+Some agents run in sandboxes that prevent git operations. AllBeads handles this automatically:
+- Pre-creates the branch before launching the agent
+- Provides simplified workflow (agent focuses on work, not git)
+- User commits and pushes after agent completes
+
+```bash
+# After Codex completes:
+git add -A && git commit -m "feat(<bead-id>): ..."
+bd sync && git push -u origin bead/<bead-id>
+```
+
 #### Governance
 
 ```bash

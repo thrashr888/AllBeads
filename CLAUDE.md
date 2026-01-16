@@ -277,6 +277,48 @@ bd graph                    # Visualize dependencies
 
 Use beads for tracking multi-session work and complex features with dependencies. For simple tasks within a single session, TodoWrite is sufficient.
 
+## Golden Workflow: Onboard → Handoff → Complete
+
+The recommended workflow for managing work across AllBeads repositories:
+
+### 1. Onboard Repositories
+```bash
+# Onboard existing repo (requires: clean git, main branch)
+ab onboard /path/to/repo
+
+# Creates: .beads/, .claude/settings.json, AllBeads context
+# Creates: Epic + task beads (epic depends on tasks)
+```
+
+### 2. Find Ready Work
+```bash
+ab ready                 # Show unblocked tasks across all repos
+ab show <bead-id>        # Review task details
+```
+
+### 3. Hand Off to Agent
+```bash
+ab handoff <bead-id>                  # Use preferred agent
+ab handoff <bead-id> --agent codex    # Specific agent
+ab handoff <bead-id> --dry-run        # Preview
+```
+
+### 4. Agent Completes Work
+Most agents handle: branch creation → work → commit → push → close bead
+
+### 5. For Sandboxed Agents (Codex)
+AllBeads pre-creates the branch. After agent completes:
+```bash
+git add -A
+git commit -m "feat(<bead-id>): <description>"
+bd sync && git push -u origin bead/<bead-id>
+```
+
+### Key Learnings
+- **Onboarding safety**: Clean git workspace, main/master branch required
+- **Dependency direction**: Epic depends on tasks (`bd dep add <epic> <task>`)
+- **Sandboxed agents**: Codex uses `exec --full-auto`, can't write to `.git/`
+
 ## Development Workflow
 
 ### Starting Development

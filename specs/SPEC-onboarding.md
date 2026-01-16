@@ -730,6 +730,29 @@ fn test_full_onboarding_flow() {
 
 1. **Workspace Directory**: Use configured default workspace directory in AllBeads config. Default to `~/Workspace` if not set. Allow override with `--path` option.
 
+2. **Safety Checks (Implemented)**: Before onboarding an existing repository:
+   - Check for uncommitted changes (excluding `.beads/` and `.claude/` directories)
+   - Verify current branch is `main` or `master`
+   - Refuse to onboard if either check fails with clear error message
+   - This prevents accidental commits of unrelated work during onboarding
+
+3. **Git Remote Detection (Implemented)**: When onboarding local paths:
+   - Automatically detect `git remote get-url origin` for the repository URL
+   - Parse organization/owner from the URL for context configuration
+   - Works with both SSH and HTTPS remotes
+
+4. **Dependency Direction for Onboarding Beads**:
+   - When creating epic + task beads during onboarding, the **epic depends on tasks**
+   - Use `bd dep add <epic> <task>` - epic can't close until tasks are done
+   - This makes tasks appear as "ready" while epic appears as "blocked"
+   - **Anti-pattern**: Don't make tasks depend on epic (this blocks the tasks)
+
+5. **Plugin Configuration (Simplified)**:
+   - Only auto-enable `beads` and `allbeads` plugins (core functionality)
+   - Don't auto-enable other marketplace plugins
+   - Create an informational bead suggesting available marketplace plugins
+   - Let users decide which additional plugins to enable
+
 2. **Beads Initialization**: Delegate to `bd init` for all beads setup:
    - Respects user choice of mode (standard, no-db, stealth, team)
    - Beads handles hook installation, merge drivers, git config

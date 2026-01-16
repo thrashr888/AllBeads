@@ -77,7 +77,7 @@ We can leverage these to automate agent lifecycle management.
 |-------|---------------|--------|-------|
 | Claude Code | `claude "prompt"` | `.claude/`, `CLAUDE.md` | Primary target, rich integration |
 | OpenCode | `opencode --prompt "prompt"` | `opencode.json` | [Open source](https://opencode.ai/docs/cli/), multi-provider |
-| Codex (OpenAI) | `codex "prompt"` | `.codex/` | OpenAI's terminal agent |
+| Codex (OpenAI) | `codex exec --full-auto "prompt"` | `.codex/` | OpenAI's terminal agent (sandboxed) |
 | Gemini CLI | `gemini -p "prompt"` | `.gemini/` | Google's terminal agent |
 | Aider | `aider --message "prompt"` | `.aider.conf.yml` | Terminal-native |
 | Cody | `cody chat "prompt"` | `.cody/` | Sourcegraph's agent |
@@ -170,6 +170,42 @@ This ensures:
 - Proper bead status tracking
 - Automatic sync of beads data
 - Work is pushed to remote for review/merge
+
+### Sandboxed Agent Handling (Implemented)
+
+Some agents run in sandboxes that prevent writing to `.git/` directories (e.g., OpenAI Codex with `workspace-write` sandbox). AllBeads handles this automatically:
+
+**Detection:**
+```rust
+impl AgentType {
+    /// Check if agent runs in a sandbox that prevents git operations
+    pub fn is_sandboxed(&self) -> bool {
+        matches!(self, Self::Codex)
+    }
+}
+```
+
+**For sandboxed agents, AllBeads:**
+1. **Pre-creates the branch** before launching the agent (`git checkout -b bead/<id>`)
+2. **Modifies the workflow prompt** to tell the agent to skip git operations
+3. **User handles commit/push** after agent completes
+
+**Sandboxed Workflow Prompt:**
+```
+**Note:** You are running in a sandboxed environment. Git operations (branch, commit, push)
+will be handled externally. Focus on the work itself.
+
+1. **Do the work** described above - make the necessary code changes
+2. **Close the bead** when finished: `bd close <bead-id>`
+
+The branch `bead/<id>` has already been created. After you complete the work,
+the changes will be committed and pushed externally.
+```
+
+**Why this matters:**
+- Codex's `workspace-write` sandbox prevents all `.git/` modifications
+- Attempting git operations causes agent to waste time debugging permissions
+- Pre-creating branch and simplified prompt lets agent focus on actual work
 
 ### Core Workflow
 

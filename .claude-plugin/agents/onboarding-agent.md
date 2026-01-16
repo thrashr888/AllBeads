@@ -120,3 +120,37 @@ ab context add /path/to/repo --name <name>
 - Create beads for any issues discovered
 - Don't force onboarding on archived repos
 - Respect private repo visibility
+
+## Safety Checks
+
+AllBeads enforces safety checks before onboarding existing repositories:
+
+1. **Clean Working Directory**: Refuses to onboard if there are uncommitted changes (excluding `.beads/` and `.claude/` directories)
+2. **Main Branch**: Refuses to onboard if not on `main` or `master` branch
+
+These prevent accidental commits of unrelated work during onboarding.
+
+```bash
+# If you see safety check errors:
+git stash                    # Stash uncommitted changes
+git checkout main            # Switch to main branch
+ab onboard .                 # Now onboard
+git stash pop                # Restore changes after
+```
+
+## Batch Onboarding Best Practices
+
+When onboarding multiple repos:
+
+1. **Filter for git repos with GitHub remotes** - Skip non-git folders and repos without remotes
+2. **Run onboarding in parallel** where possible
+3. **Create issues for repos that fail safety checks** - Don't skip silently
+4. **The epic depends on tasks** - Use `bd dep add <epic> <task>` so tasks are ready, epic is blocked
+
+## Dependency Direction
+
+When onboarding creates an epic with tasks:
+- **Correct**: Epic depends on tasks (`bd dep add epic-id task-id`)
+- **Incorrect**: Tasks depend on epic (this blocks the tasks!)
+
+The tasks should appear as "ready" for agents to pick up.

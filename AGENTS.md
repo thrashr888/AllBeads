@@ -77,6 +77,41 @@ ab context new myproject --private  # Create new GitHub repo
 ab onboard /path/to/repo            # Onboard existing repo
 ```
 
+## Golden Workflow: Onboard → Handoff → Complete
+
+The recommended workflow for managing work across repositories:
+
+```bash
+# 1. Onboard a repository
+ab onboard /path/to/repo
+
+# 2. Find ready work
+ab ready
+
+# 3. Hand off to an agent
+ab handoff <bead-id>
+ab handoff <bead-id> --agent codex  # Specific agent
+
+# 4. Agent completes work and closes bead
+# (For sandboxed agents like Codex, you commit/push after)
+
+# 5. Repeat
+ab ready && ab handoff <next-bead>
+```
+
+## Handoff Workflow
+
+### For Most Agents (Claude, Gemini, Aider)
+Agent handles everything: branch creation, work, commit, push, close.
+
+### For Sandboxed Agents (Codex)
+AllBeads pre-creates the branch. After agent completes:
+```bash
+git add -A
+git commit -m "feat(<bead-id>): <description>"
+bd sync && git push -u origin bead/<bead-id>
+```
+
 ## Agent Types
 
 ### Task Agent

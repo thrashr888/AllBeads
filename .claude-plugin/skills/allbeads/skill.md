@@ -161,6 +161,68 @@ bd comments add <id> "<spec details>"
 # STOP - let handoff workflow implement
 ```
 
+## Golden Workflow: Onboard → Handoff → Complete
+
+The recommended workflow for managing work across repositories:
+
+### 1. Onboard Repositories
+```bash
+# Onboard existing repo (safety checks: clean git, main branch)
+ab onboard /path/to/repo
+
+# Creates: .beads/, .claude/settings.json, adds to AllBeads config
+# Creates: Epic + task beads for onboarding work
+```
+
+### 2. Find Ready Work
+```bash
+ab ready                 # Show unblocked tasks across all repos
+ab show <bead-id>        # Review task details
+```
+
+### 3. Hand Off to Agent
+```bash
+# Hand off to your preferred agent
+ab handoff <bead-id>
+
+# Or specify agent explicitly
+ab handoff <bead-id> --agent codex
+ab handoff <bead-id> --agent gemini
+```
+
+### 4. Agent Completes Work
+The agent:
+1. Creates branch (or uses pre-created for sandboxed agents)
+2. Does the work
+3. Closes the bead: `bd close <bead-id>`
+
+### 5. Commit and Push (if sandboxed agent)
+For sandboxed agents like Codex that can't do git operations:
+```bash
+git add -A
+git commit -m "feat(<bead-id>): <description>"
+bd sync
+git push -u origin bead/<bead-id>
+```
+
+### 6. Repeat
+```bash
+ab ready                 # Find next task
+ab handoff <bead-id>     # Hand off
+```
+
+## Key Learnings
+
+### Onboarding
+- **Safety checks**: Clean git workspace, main/master branch required
+- **Dependency direction**: Epic depends on tasks (tasks ready, epic blocked)
+- **Plugins**: Only beads + allbeads auto-enabled
+
+### Handoff
+- **Sandboxed agents**: Codex can't write to `.git/` - branch pre-created
+- **Codex command**: Uses `codex exec --full-auto` for non-interactive mode
+- **After sandboxed agent**: User commits and pushes the work
+
 ## Agents
 
 AllBeads provides specialized agents:
