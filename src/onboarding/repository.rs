@@ -602,7 +602,12 @@ pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Resul
 }
 
 /// Stage 5: Configure skills marketplace
-pub fn configure_skills(path: &Path) -> Result<()> {
+///
+/// Configures Claude plugin marketplaces from the provided list.
+/// Each marketplace can be specified as:
+/// - GitHub repo: "owner/repo" or "github.com/owner/repo"
+/// - Git URL: "git@github.com:owner/repo.git" or "https://github.com/owner/repo.git"
+pub fn configure_skills(path: &Path, configured_marketplaces: &[String]) -> Result<()> {
     let claude_dir = path.join(".claude");
     let settings_file = claude_dir.join("settings.json");
 
@@ -620,7 +625,6 @@ pub fn configure_skills(path: &Path) -> Result<()> {
         serde_json::json!({})
     };
 
-    // Add AllBeads and Beads marketplaces
     let settings = settings.as_object_mut().ok_or_else(|| {
         crate::AllBeadsError::Config("settings.json is not an object".to_string())
     })?;
@@ -629,21 +633,6 @@ pub fn configure_skills(path: &Path) -> Result<()> {
     if !settings.contains_key("enabledPlugins") {
         settings.insert("enabledPlugins".to_string(), serde_json::json!({}));
     }
-    let enabled_plugins = settings
-        .get_mut("enabledPlugins")
-        .and_then(|v| v.as_object_mut())
-        .ok_or_else(|| {
-            crate::AllBeadsError::Config("enabledPlugins is not an object".to_string())
-        })?;
-
-    enabled_plugins.insert(
-        "allbeads@allbeads-marketplace".to_string(),
-        serde_json::json!(true),
-    );
-    enabled_plugins.insert(
-        "beads@beads-marketplace".to_string(),
-        serde_json::json!(true),
-    );
 
     // Add extraKnownMarketplaces
     if !settings.contains_key("extraKnownMarketplaces") {
@@ -656,35 +645,70 @@ pub fn configure_skills(path: &Path) -> Result<()> {
             crate::AllBeadsError::Config("extraKnownMarketplaces is not an object".to_string())
         })?;
 
-    marketplaces.insert(
-        "allbeads-marketplace".to_string(),
-        serde_json::json!({
-            "source": {
-                "source": "github",
-                "repo": "thrashr888/AllBeads"
-            }
-        }),
-    );
+    let mut added_count = 0;
 
-    marketplaces.insert(
-        "beads-marketplace".to_string(),
-        serde_json::json!({
-            "source": {
-                "source": "github",
-                "repo": "steveyegge/beads"
-            }
-        }),
-    );
+    for marketplace_url in configured_marketplaces {
+        // Parse the marketplace URL to extract repo info
+        let (marketplace_name, source_config) = parse_marketplace_url(marketplace_url);
+
+        marketplaces.insert(marketplace_name.clone(), source_config);
+        println!("    - Added {}", marketplace_name);
+        added_count += 1;
+    }
 
     // Write settings.json
     let content = serde_json::to_string_pretty(&settings)?;
     fs::write(&settings_file, content)?;
 
-    println!("  ✓ Configured .claude/settings.json");
-    println!("    - Added allbeads@allbeads-marketplace");
-    println!("    - Added beads@beads-marketplace");
+    println!("  ✓ Configured .claude/settings.json ({} marketplaces)", added_count);
 
     Ok(())
+}
+
+/// Parse a marketplace URL into a name and source configuration
+///
+/// Supports formats:
+/// - "owner/repo" → github source
+/// - "git@github.com:owner/repo.git" → github source
+/// - "https://github.com/owner/repo.git" → github source
+fn parse_marketplace_url(url: &str) -> (String, serde_json::Value) {
+    // Try to extract owner/repo from various URL formats
+    let repo = if url.starts_with("git@github.com:") {
+        // git@github.com:owner/repo.git
+        let without_prefix = url.strip_prefix("git@github.com:").unwrap_or(url);
+        without_prefix
+            .strip_suffix(".git")
+            .unwrap_or(without_prefix)
+            .to_string()
+    } else if url.starts_with("https://github.com/") {
+        // https://github.com/owner/repo.git or https://github.com/owner/repo
+        let without_prefix = url.strip_prefix("https://github.com/").unwrap_or(url);
+        without_prefix
+            .strip_suffix(".git")
+            .unwrap_or(without_prefix)
+            .to_string()
+    } else if url.contains('/') && !url.contains(':') && !url.contains("://") {
+        // Simple owner/repo format
+        url.to_string()
+    } else {
+        // Unknown format, use as-is
+        url.to_string()
+    };
+
+    // Generate marketplace name from repo name
+    // e.g., "thrashr888/AllBeads" → "allbeads-marketplace"
+    // e.g., "steveyegge/beads" → "beads-marketplace"
+    let name_part = repo.split('/').last().unwrap_or(&repo);
+    let marketplace_name = format!("{}-marketplace", name_part.to_lowercase().replace(".git", ""));
+
+    let source_config = serde_json::json!({
+        "source": {
+            "source": "github",
+            "repo": repo
+        }
+    });
+
+    (marketplace_name, source_config)
 }
 
 /// Stage 7: Detect CI/CD
@@ -949,5 +973,33 @@ mod tests {
         assert!(!info.exists_locally);
         assert!(info.url.is_some());
         assert!(info.organization.is_some());
+    }
+
+    #[test]
+    fn test_parse_marketplace_url_simple() {
+        let (name, config) = parse_marketplace_url("steveyegge/beads");
+        assert_eq!(name, "beads-marketplace");
+        assert_eq!(config["source"]["repo"], "steveyegge/beads");
+    }
+
+    #[test]
+    fn test_parse_marketplace_url_ssh() {
+        let (name, config) = parse_marketplace_url("git@github.com:openprose/prose.git");
+        assert_eq!(name, "prose-marketplace");
+        assert_eq!(config["source"]["repo"], "openprose/prose");
+    }
+
+    #[test]
+    fn test_parse_marketplace_url_https() {
+        let (name, config) = parse_marketplace_url("https://github.com/thrashr888/AllBeads.git");
+        assert_eq!(name, "allbeads-marketplace");
+        assert_eq!(config["source"]["repo"], "thrashr888/AllBeads");
+    }
+
+    #[test]
+    fn test_parse_marketplace_url_https_no_git() {
+        let (name, config) = parse_marketplace_url("https://github.com/anthropics/skills");
+        assert_eq!(name, "skills-marketplace");
+        assert_eq!(config["source"]["repo"], "anthropics/skills");
     }
 }

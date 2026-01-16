@@ -84,16 +84,30 @@ pub struct OnboardingConfig {
     /// Default: "claude"
     #[serde(default = "default_onboarding_agent")]
     pub default_agent: String,
+
+    /// Marketplaces to install during onboarding
+    /// These are passed to `claude plugin marketplace add <url>`
+    /// Default: beads and allbeads marketplaces
+    #[serde(default = "default_marketplaces")]
+    pub marketplaces: Vec<String>,
 }
 
 fn default_onboarding_agent() -> String {
     "claude".to_string()
 }
 
+fn default_marketplaces() -> Vec<String> {
+    vec![
+        "steveyegge/beads".to_string(),
+        "thrashr888/AllBeads".to_string(),
+    ]
+}
+
 impl Default for OnboardingConfig {
     fn default() -> Self {
         Self {
             default_agent: default_onboarding_agent(),
+            marketplaces: default_marketplaces(),
         }
     }
 }

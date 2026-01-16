@@ -9191,7 +9191,7 @@ fn handle_onboard_repository(
     // Stage 5: Configure Skills
     if !skip_skills {
         println!("Stage 5: Configure Skills");
-        repository::configure_skills(&repo_info.path)?;
+        repository::configure_skills(&repo_info.path, &config.onboarding.marketplaces)?;
         println!();
     } else {
         println!("Stage 5: Configure Skills (skipped)");
