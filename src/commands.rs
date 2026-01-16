@@ -577,11 +577,11 @@ pub enum Commands {
 
     /// Onboard a repository into AllBeads
     ///
-    /// Supports GitHub URLs, local paths, or current directory.
+    /// Supports GitHub shorthand (owner/repo), URLs, local paths, or current directory.
     /// Clones if needed, runs bd init, configures skills, and adds to AllBeads context.
     Onboard {
-        /// Repository URL, local path, or current directory ('.')
-        /// Examples: https://github.com/user/repo, git@github.com:user/repo.git, /path/to/repo, .
+        /// Repository: owner/repo, URL, local path, or '.' for current directory
+        /// Examples: thrashr888/myrepo, https://github.com/user/repo, git@github.com:user/repo.git, .
         target: String,
 
         /// Use guided step-by-step wizard with interactive menus

@@ -33,6 +33,13 @@ pub fn discover_repository(
         || target.starts_with("https://")
         || target.starts_with("git@");
 
+    // Check if target is a GitHub shorthand (owner/repo format)
+    let is_github_shorthand = !is_url
+        && !target.starts_with('/')
+        && !target.starts_with('.')
+        && target.matches('/').count() == 1
+        && target.split('/').all(|part| !part.is_empty());
+
     if is_url {
         // Parse URL
         let (name, organization) = parse_repo_url(target)?;
@@ -51,6 +58,30 @@ pub fn discover_repository(
             name,
             path,
             url: Some(target.to_string()),
+            organization: Some(organization),
+            exists_locally: exists,
+        })
+    } else if is_github_shorthand {
+        // Convert owner/repo to GitHub URL
+        let parts: Vec<&str> = target.split('/').collect();
+        let organization = parts[0].to_string();
+        let name = parts[1].to_string();
+        let url = format!("https://github.com/{}/{}.git", organization, name);
+
+        // Determine local path
+        let path = if let Some(custom) = custom_path {
+            PathBuf::from(custom)
+        } else {
+            config.workspace_directory().join(&name)
+        };
+
+        // Check if already exists
+        let exists = path.exists() && path.join(".git").exists();
+
+        Ok(RepoInfo {
+            name,
+            path,
+            url: Some(url),
             organization: Some(organization),
             exists_locally: exists,
         })
