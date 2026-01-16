@@ -8902,7 +8902,7 @@ fn handle_onboard_repository(
     skip_beads: bool,
     skip_skills: bool,
     _skip_hooks: bool, // Handled by bd init
-    _skip_issues: bool,
+    skip_issues: bool,
     context_name: Option<&str>,
     custom_path: Option<&str>,
     config: &AllBeadsConfig,
@@ -8948,10 +8948,28 @@ fn handle_onboard_repository(
         println!();
     }
 
-    // Stage 4: Populate Issues (deferred - requires more integration work)
-    println!("Stage 4: Populate Issues (not yet implemented)");
-    println!("  Use `bd create` to add issues manually");
-    println!();
+    // Stage 4: Populate Issues (create beads for missing agent configs)
+    if !skip_beads && !skip_issues {
+        println!("Stage 4: Populate Issues");
+        let issues = repository::populate_onboarding_issues(&repo_info.path)?;
+        if issues.is_empty() {
+            println!("  ✓ All agent configurations already exist");
+        } else {
+            println!("  Found {} missing agent configurations:", issues.len());
+            for issue in &issues {
+                println!("    • {}", issue.title);
+            }
+            let created = repository::create_onboarding_beads(&repo_info.path, &issues)?;
+            println!("  ✓ Created {} onboarding issues", created);
+        }
+        println!();
+    } else if skip_issues {
+        println!("Stage 4: Populate Issues (skipped)");
+        println!();
+    } else {
+        println!("Stage 4: Populate Issues (skipped - beads not initialized)");
+        println!();
+    }
 
     // Stage 5: Configure Skills
     if !skip_skills {

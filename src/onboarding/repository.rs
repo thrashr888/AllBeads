@@ -201,8 +201,12 @@ pub fn clone_repository(url: &str, path: &Path, non_interactive: bool) -> Result
 
 /// Stage 3: Initialize beads via bd init
 pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
-    // Check if .beads already exists
-    if path.join(".beads").exists() {
+    let beads_dir = path.join(".beads");
+    let db_path = beads_dir.join("beads.db");
+    let jsonl_path = beads_dir.join("issues.jsonl");
+
+    // Check if fully initialized (has both .beads/ and database)
+    if beads_dir.exists() && db_path.exists() {
         println!("  ✓ Beads already initialized");
         return Ok(());
     }
@@ -215,9 +219,16 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
         ));
     }
 
+    // Check if this is a cloned repo (has JSONL but no database)
+    let is_cloned_repo = jsonl_path.exists() && !db_path.exists();
+
     if non_interactive {
-        // Run bd init --quiet
-        println!("  Running: bd init --quiet");
+        if is_cloned_repo {
+            // Cloned repo - just need to create database from existing JSONL
+            println!("  Running: bd init --quiet (creating database from existing JSONL)");
+        } else {
+            println!("  Running: bd init --quiet");
+        }
         let status = Command::new("bd")
             .arg("init")
             .arg("--quiet")
@@ -313,6 +324,140 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Onboarding issue to create
+#[derive(Debug)]
+pub struct OnboardingIssue {
+    pub title: String,
+    pub description: String,
+    pub priority: u8,
+    pub labels: Vec<String>,
+}
+
+/// Stage 4: Populate onboarding issues
+///
+/// Creates beads for missing agent configurations and project setup tasks.
+/// Only creates issues for configs that don't already exist.
+pub fn populate_onboarding_issues(path: &Path) -> Result<Vec<OnboardingIssue>> {
+    let mut issues = Vec::new();
+
+    // Check for Claude Code configuration
+    let claude_md = path.join("CLAUDE.md");
+    if !claude_md.exists() {
+        issues.push(OnboardingIssue {
+            title: "Initialize Claude Code configuration".to_string(),
+            description: "Run `claude` in this directory to create CLAUDE.md with project-specific instructions. \
+                         This file helps Claude understand your codebase architecture, coding conventions, and key patterns.".to_string(),
+            priority: 2,
+            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+        });
+    }
+
+    // Check for Cursor configuration
+    let cursorrules = path.join(".cursorrules");
+    let cursor_dir = path.join(".cursor");
+    if !cursorrules.exists() && !cursor_dir.exists() {
+        issues.push(OnboardingIssue {
+            title: "Add Cursor configuration".to_string(),
+            description: "Create .cursorrules file with project-specific rules for Cursor AI. \
+                         Include coding standards, preferred patterns, and project context.".to_string(),
+            priority: 3,
+            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+        });
+    }
+
+    // Check for Kiro configuration
+    let kiro_dir = path.join(".kiro");
+    if !kiro_dir.exists() {
+        issues.push(OnboardingIssue {
+            title: "Add AWS Kiro configuration".to_string(),
+            description: "Create .kiro/ directory with specs and steering files for AWS Kiro agent. \
+                         Define project requirements and agent behavior guidelines.".to_string(),
+            priority: 3,
+            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+        });
+    }
+
+    // Check for Aider configuration
+    let aider_conf = path.join(".aider.conf.yml");
+    let aiderignore = path.join(".aiderignore");
+    if !aider_conf.exists() && !aiderignore.exists() {
+        issues.push(OnboardingIssue {
+            title: "Add Aider configuration".to_string(),
+            description: "Create .aider.conf.yml with model preferences and .aiderignore to exclude files. \
+                         Configure aider for optimal performance with this codebase.".to_string(),
+            priority: 3,
+            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+        });
+    }
+
+    // Check for GitHub Copilot configuration
+    let copilot_instructions = path.join(".github/copilot-instructions.md");
+    if !copilot_instructions.exists() {
+        issues.push(OnboardingIssue {
+            title: "Add GitHub Copilot instructions".to_string(),
+            description: "Create .github/copilot-instructions.md with project-specific guidance for Copilot. \
+                         Document coding standards and patterns Copilot should follow.".to_string(),
+            priority: 3,
+            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+        });
+    }
+
+    // Check for custom skills/commands
+    let claude_commands = path.join(".claude/commands");
+    let claude_skills = path.join(".claude-plugin");
+    if !claude_commands.exists() && !claude_skills.exists() {
+        issues.push(OnboardingIssue {
+            title: "Add project-specific skills".to_string(),
+            description: "Create custom slash commands in .claude/commands/ or skills in .claude-plugin/ \
+                         for common project workflows like building, testing, and deploying.".to_string(),
+            priority: 3,
+            labels: vec!["onboarding".to_string(), "customization".to_string()],
+        });
+    }
+
+    Ok(issues)
+}
+
+/// Create beads from onboarding issues using bd CLI
+pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Result<usize> {
+    let mut created = 0;
+
+    // Check if we need --no-db mode (JSONL exists but no database)
+    let jsonl_path = path.join(".beads/issues.jsonl");
+    let db_path = path.join(".beads/beads.db");
+    let use_no_db = jsonl_path.exists() && !db_path.exists();
+
+    for issue in issues {
+        let labels = issue.labels.join(",");
+        let mut cmd = Command::new("bd");
+
+        if use_no_db {
+            cmd.arg("--no-db");
+        }
+
+        cmd.arg("create")
+            .arg("--title")
+            .arg(&issue.title)
+            .arg("--body")
+            .arg(&issue.description)
+            .arg("--priority")
+            .arg(issue.priority.to_string())
+            .arg("--type")
+            .arg("task")
+            .arg("--label")
+            .arg(&labels)
+            .arg("--quiet")
+            .current_dir(path);
+
+        let status = cmd.status()?;
+        if status.success() {
+            created += 1;
+        }
+    }
+
+    Ok(created)
 }
 
 /// Stage 5: Configure skills marketplace
