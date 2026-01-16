@@ -323,7 +323,7 @@ pub enum Commands {
         label: Option<String>,
 
         /// Filter by type (epic, task, bug, feature, chore)
-        #[arg(short, long, name = "type")]
+        #[arg(short = 't', long = "type")]
         issue_type: Option<String>,
 
         /// Filter by assignee
@@ -545,6 +545,17 @@ pub enum Commands {
         /// Bead ID that this is a duplicate of
         #[arg(long)]
         of: String,
+    },
+
+    /// Rename the issue prefix for a context (delegates to bd rename-prefix)
+    #[command(name = "rename-prefix")]
+    RenamePrefix {
+        /// New prefix to use (e.g., "proj" becomes "proj-abc")
+        new_prefix: String,
+
+        /// Path to repository (default: current directory)
+        #[arg(short, long, default_value = ".")]
+        path: String,
     },
 
     // =========================================================================

@@ -2070,6 +2070,22 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
+        Commands::RenamePrefix { new_prefix, path } => {
+            let abs_path = std::fs::canonicalize(&path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+            })?;
+            let bd = Beads::with_workdir_and_flags(&abs_path, bd_flags.clone());
+            match bd.rename_prefix(&new_prefix) {
+                Ok(output) => {
+                    println!("{}", output.stdout);
+                    if !output.stderr.is_empty() {
+                        eprintln!("{}", output.stderr);
+                    }
+                }
+                Err(e) => eprintln!("Error: {}", e),
+            }
+        }
+
         Commands::Context(_)
         | Commands::Init { .. }
         | Commands::OnboardRepo { .. }
@@ -8959,8 +8975,11 @@ fn handle_onboard_repository(
             for issue in &issues {
                 println!("    • {}", issue.title);
             }
-            let created = repository::create_onboarding_beads(&repo_info.path, &issues)?;
-            println!("  ✓ Created {} onboarding issues", created);
+            let (epic_id, created) = repository::create_onboarding_beads(&repo_info.path, &issues)?;
+            if let Some(epic) = epic_id {
+                println!("  ✓ Created 'Agent Onboarding' epic: {}", epic);
+            }
+            println!("  ✓ Created {} onboarding tasks", created);
         }
         println!();
     } else if skip_issues {

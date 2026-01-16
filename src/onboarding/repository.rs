@@ -421,13 +421,52 @@ pub fn populate_onboarding_issues(path: &Path) -> Result<Vec<OnboardingIssue>> {
 }
 
 /// Create beads from onboarding issues using bd CLI
-pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Result<usize> {
-    let mut created = 0;
+/// Returns (epic_id, task_count)
+pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Result<(Option<String>, usize)> {
+    if issues.is_empty() {
+        return Ok((None, 0));
+    }
 
     // Check if we need --no-db mode (JSONL exists but no database)
     let jsonl_path = path.join(".beads/issues.jsonl");
     let db_path = path.join(".beads/beads.db");
     let use_no_db = jsonl_path.exists() && !db_path.exists();
+
+    // First, create the parent epic for Agent Onboarding
+    let mut epic_cmd = Command::new("bd");
+    if use_no_db {
+        epic_cmd.arg("--no-db");
+    }
+    epic_cmd
+        .arg("create")
+        .arg("--title")
+        .arg("Agent Onboarding")
+        .arg("--body")
+        .arg("Configure AI agents for this repository. Complete these tasks to set up agent configurations for Claude, Cursor, Kiro, Aider, and GitHub Copilot.")
+        .arg("--priority")
+        .arg("2")
+        .arg("--type")
+        .arg("epic")
+        .arg("--label")
+        .arg("onboarding")
+        .current_dir(path);
+
+    let epic_output = epic_cmd.output()?;
+    let epic_id = if epic_output.status.success() {
+        // Parse the epic ID from output (e.g., "✓ Created issue: proj-abc")
+        let stdout = String::from_utf8_lossy(&epic_output.stdout);
+        stdout
+            .lines()
+            .find(|l| l.contains("Created issue:"))
+            .and_then(|l| l.split(':').last())
+            .map(|s| s.trim().to_string())
+    } else {
+        None
+    };
+
+    // Create individual tasks
+    let mut created = 0;
+    let mut task_ids: Vec<String> = Vec::new();
 
     for issue in issues {
         let labels = issue.labels.join(",");
@@ -448,16 +487,42 @@ pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Resul
             .arg("task")
             .arg("--label")
             .arg(&labels)
-            .arg("--quiet")
             .current_dir(path);
 
-        let status = cmd.status()?;
-        if status.success() {
+        let output = cmd.output()?;
+        if output.status.success() {
             created += 1;
+            // Parse task ID for dependency linking
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(task_id) = stdout
+                .lines()
+                .find(|l| l.contains("Created issue:"))
+                .and_then(|l| l.split(':').last())
+                .map(|s| s.trim().to_string())
+            {
+                task_ids.push(task_id);
+            }
         }
     }
 
-    Ok(created)
+    // Link tasks to epic as dependencies (epic blocks tasks)
+    if let Some(ref epic) = epic_id {
+        for task_id in &task_ids {
+            let mut dep_cmd = Command::new("bd");
+            if use_no_db {
+                dep_cmd.arg("--no-db");
+            }
+            dep_cmd
+                .arg("dep")
+                .arg("add")
+                .arg(task_id)
+                .arg(epic)
+                .current_dir(path);
+            let _ = dep_cmd.status(); // Ignore errors - dependency is optional
+        }
+    }
+
+    Ok((epic_id, created))
 }
 
 /// Stage 5: Configure skills marketplace

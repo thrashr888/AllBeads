@@ -608,6 +608,11 @@ impl Beads {
         self.run_command(&["duplicate", issue, duplicate_of])
     }
 
+    /// Rename the issue prefix for all issues in this repository
+    pub fn rename_prefix(&self, new_prefix: &str) -> Result<CommandOutput> {
+        self.run_command(&["rename-prefix", new_prefix])
+    }
+
     /// Quick create - create an issue and return just the ID
     pub fn quick_create(&self, title: &str) -> Result<String> {
         let output = self.run_command(&["q", title])?;
