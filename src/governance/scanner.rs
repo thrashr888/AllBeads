@@ -323,7 +323,7 @@ impl std::fmt::Display for OnboardingPriority {
     }
 }
 
-/// Detailed info from Git Trees API (BSICH+ features)
+/// Detailed info from Git Trees API (Health Checks+ features)
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct DetailedInfo {
     /// Whether .claude/settings.json exists
@@ -1613,7 +1613,7 @@ async fn detect_agents_for_repo(
     agents
 }
 
-/// Parse tree entries to extract detailed info (BSICH+ features)
+/// Parse tree entries to extract detailed info (Health Checks+ features)
 fn parse_tree_entries(entries: &[GitTreeEntry]) -> DetailedInfo {
     let mut info = DetailedInfo::default();
 
@@ -1821,7 +1821,7 @@ pub fn print_scan_result(result: &ScanResult, show_all: bool) {
         println!();
     }
 
-    // Detailed info summary (BSICH+ features)
+    // Detailed info summary (Health Checks+ features)
     let detailed_repos: Vec<_> = result
         .repositories
         .iter()
@@ -1829,7 +1829,7 @@ pub fn print_scan_result(result: &ScanResult, show_all: bool) {
         .collect();
 
     if !detailed_repos.is_empty() {
-        println!("Detailed Analysis (BSICH+):");
+        println!("Detailed Analysis (Health Checks+):");
         let with_settings = detailed_repos
             .iter()
             .filter(|(_, d)| d.has_settings)

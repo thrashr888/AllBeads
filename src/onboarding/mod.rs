@@ -16,7 +16,7 @@ use crate::git::BossRepo;
 use crate::Result;
 use std::path::PathBuf;
 
-pub use wizard::OnboardingWizard;
+pub use wizard::{AgentTooling, HealthChecks, OnboardingWizard};
 pub use workflow::OnboardingWorkflow;
 
 /// Onboarding stage for a repository

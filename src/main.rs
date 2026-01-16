@@ -1327,6 +1327,173 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 style::success("false")
             };
             println!("  Expired:              {}", expired_str);
+
+            // Health Checks across contexts
+            {
+                use allbeads::onboarding::HealthChecks;
+                use std::collections::HashSet;
+
+                println!();
+                println!("{}", style::subheader("Health Checks"));
+
+                let mut total_beads = 0;
+                let mut total_skills = 0;
+                let mut total_integration = 0;
+                let mut total_cicd = 0;
+                let mut total_hooks = 0;
+                let mut contexts_checked = 0;
+
+                // Agent tooling aggregation
+                let mut all_mcp_servers: HashSet<String> = HashSet::new();
+                let mut repos_with_cursor_rules = 0;
+                let mut repos_with_copilot_rules = 0;
+                let mut repos_with_agents_md = 0;
+
+                for context in &config_for_commands.contexts {
+                    if let Some(ref path) = context.path {
+                        if path.exists() {
+                            let checks = HealthChecks::detect(path);
+                            if checks.beads {
+                                total_beads += 1;
+                            }
+                            if checks.skills {
+                                total_skills += 1;
+                            }
+                            if checks.integration {
+                                total_integration += 1;
+                            }
+                            if checks.cicd {
+                                total_cicd += 1;
+                            }
+                            if checks.hooks {
+                                total_hooks += 1;
+                            }
+
+                            // Collect agent tooling
+                            for server in &checks.agent_tooling.mcp_servers {
+                                all_mcp_servers.insert(server.clone());
+                            }
+                            if checks.agent_tooling.has_cursor_rules {
+                                repos_with_cursor_rules += 1;
+                            }
+                            if checks.agent_tooling.has_copilot_rules {
+                                repos_with_copilot_rules += 1;
+                            }
+                            if checks.agent_tooling.has_agents_md {
+                                repos_with_agents_md += 1;
+                            }
+
+                            contexts_checked += 1;
+                        }
+                    }
+                }
+
+                if contexts_checked > 0 {
+                    let check_display = |count: usize, total: usize| -> String {
+                        use crossterm::style::Stylize;
+                        if count == total {
+                            format!("{}", format!("{}/{}", count, total).green())
+                        } else if count > 0 {
+                            format!("{}", format!("{}/{}", count, total).yellow())
+                        } else {
+                            format!("{}", format!("{}/{}", count, total).dark_grey())
+                        }
+                    };
+
+                    println!(
+                        "  Beads initialized:    {}",
+                        check_display(total_beads, contexts_checked)
+                    );
+                    println!(
+                        "  Skills configured:    {}",
+                        check_display(total_skills, contexts_checked)
+                    );
+                    println!(
+                        "  Integration setup:    {}",
+                        check_display(total_integration, contexts_checked)
+                    );
+                    println!(
+                        "  CI/CD detected:       {}",
+                        check_display(total_cicd, contexts_checked)
+                    );
+                    println!(
+                        "  Hooks installed:      {}",
+                        check_display(total_hooks, contexts_checked)
+                    );
+
+                    // Overall health score
+                    let total_possible = contexts_checked * 5;
+                    let total_passing =
+                        total_beads + total_skills + total_integration + total_cicd + total_hooks;
+                    let health_pct = if total_possible > 0 {
+                        (total_passing * 100) / total_possible
+                    } else {
+                        0
+                    };
+
+                    use crossterm::style::Stylize;
+                    let health_str = if health_pct >= 80 {
+                        format!("{}%", health_pct).green().to_string()
+                    } else if health_pct >= 50 {
+                        format!("{}%", health_pct).yellow().to_string()
+                    } else {
+                        format!("{}%", health_pct).red().to_string()
+                    };
+                    println!();
+                    println!("  Overall Health:       {}", health_str);
+
+                    // Agent Tooling section
+                    if !all_mcp_servers.is_empty()
+                        || repos_with_cursor_rules > 0
+                        || repos_with_copilot_rules > 0
+                        || repos_with_agents_md > 0
+                    {
+                        println!();
+                        println!("{}", style::subheader("Agent Tooling"));
+
+                        if !all_mcp_servers.is_empty() {
+                            let mut servers: Vec<_> = all_mcp_servers.iter().collect();
+                            servers.sort();
+                            println!(
+                                "  MCP Servers:          {} unique ({})",
+                                servers.len(),
+                                if servers.len() <= 5 {
+                                    servers
+                                        .iter()
+                                        .map(|s| s.as_str())
+                                        .collect::<Vec<_>>()
+                                        .join(", ")
+                                } else {
+                                    let display: Vec<_> =
+                                        servers.iter().take(4).map(|s| s.as_str()).collect();
+                                    format!("{}, +{} more", display.join(", "), servers.len() - 4)
+                                }
+                            );
+                        }
+                        if repos_with_cursor_rules > 0 {
+                            println!(
+                                "  Cursor Rules:         {}",
+                                check_display(repos_with_cursor_rules, contexts_checked)
+                            );
+                        }
+                        if repos_with_copilot_rules > 0 {
+                            println!(
+                                "  Copilot Rules:        {}",
+                                check_display(repos_with_copilot_rules, contexts_checked)
+                            );
+                        }
+                        if repos_with_agents_md > 0 {
+                            println!(
+                                "  AGENTS.md:            {}",
+                                check_display(repos_with_agents_md, contexts_checked)
+                            );
+                        }
+                    }
+                } else {
+                    println!("  {}", style::dim("No contexts with local paths to check"));
+                }
+            }
+
             println!();
             println!(
                 "{}",

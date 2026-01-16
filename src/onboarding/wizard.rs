@@ -1,29 +1,123 @@
 //! Guided onboarding wizard for repository setup
 //!
 //! Provides a step-by-step interactive wizard for onboarding repositories
-//! into the AllBeads ecosystem with BSICH status tracking.
+//! into the AllBeads ecosystem with Health Checks status tracking.
 
 use crate::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use crate::Result;
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Select};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// BSICH onboarding status indicator
-#[derive(Debug, Clone, Default)]
-pub struct BSICHStatus {
-    pub beads: bool,       // B: Beads tracking initialized
-    pub skills: bool,      // S: Skills/marketplace configured
-    pub integration: bool, // I: Integration (JIRA/GitHub) configured
-    pub cicd: bool,        // C: CI/CD detected
-    pub hooks: bool,       // H: Git hooks installed
+/// Agent tooling metadata collected from a repository
+///
+/// Tracks MCP servers and agent rules configured in the repository:
+/// - MCP servers from .claude/settings.json
+/// - Cursor rules from .cursorrules
+/// - GitHub Copilot instructions from .github/copilot-instructions.md
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentTooling {
+    /// MCP servers configured in .claude/settings.json
+    pub mcp_servers: Vec<String>,
+    /// Whether .cursorrules file exists
+    pub has_cursor_rules: bool,
+    /// Whether .github/copilot-instructions.md exists
+    pub has_copilot_rules: bool,
+    /// Whether AGENTS.md exists (generic agent instructions)
+    pub has_agents_md: bool,
 }
 
-impl BSICHStatus {
-    /// Get display string
+impl AgentTooling {
+    /// Detect agent tooling configuration for a repository path
+    pub fn detect(repo_path: &Path) -> Self {
+        let has_cursor_rules = repo_path.join(".cursorrules").exists();
+        let has_copilot_rules = repo_path.join(".github/copilot-instructions.md").exists();
+        let has_agents_md = repo_path.join("AGENTS.md").exists();
+        let mcp_servers = Self::detect_mcp_servers(repo_path);
+
+        Self {
+            mcp_servers,
+            has_cursor_rules,
+            has_copilot_rules,
+            has_agents_md,
+        }
+    }
+
+    /// Parse MCP servers from .claude/settings.json
+    fn detect_mcp_servers(repo_path: &Path) -> Vec<String> {
+        let settings_path = repo_path.join(".claude/settings.json");
+        if !settings_path.exists() {
+            return Vec::new();
+        }
+
+        if let Ok(content) = std::fs::read_to_string(&settings_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                // MCP servers are typically in mcpServers key
+                if let Some(servers) = json.get("mcpServers").and_then(|v| v.as_object()) {
+                    return servers.keys().cloned().collect();
+                }
+            }
+        }
+
+        Vec::new()
+    }
+
+    /// Check if any agent tooling is configured
+    pub fn has_any(&self) -> bool {
+        !self.mcp_servers.is_empty()
+            || self.has_cursor_rules
+            || self.has_copilot_rules
+            || self.has_agents_md
+    }
+
+    /// Get summary string
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.mcp_servers.is_empty() {
+            parts.push(format!("{} MCP", self.mcp_servers.len()));
+        }
+        if self.has_cursor_rules {
+            parts.push("Cursor".to_string());
+        }
+        if self.has_copilot_rules {
+            parts.push("Copilot".to_string());
+        }
+        if self.has_agents_md {
+            parts.push("AGENTS.md".to_string());
+        }
+        if parts.is_empty() {
+            "none".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
+}
+
+/// Health Checks status indicator for repository onboarding
+///
+/// Tracks the setup status of key AllBeads ecosystem components:
+/// - Beads: Issue tracking initialized
+/// - Skills: Claude skills marketplace configured
+/// - Integration: External systems (JIRA/GitHub) connected
+/// - CI/CD: Continuous integration workflows detected
+/// - Hooks: Git hooks installed for automation
+#[derive(Debug, Clone, Default)]
+pub struct HealthChecks {
+    pub beads: bool,       // Beads tracking initialized
+    pub skills: bool,      // Skills/marketplace configured
+    pub integration: bool, // Integration (JIRA/GitHub) configured
+    pub cicd: bool,        // CI/CD detected
+    pub hooks: bool,       // Git hooks installed
+    /// Agent tooling metadata (MCP servers, rules files)
+    pub agent_tooling: AgentTooling,
+}
+
+impl HealthChecks {
+    /// Get compact display string with status indicators
     pub fn display(&self) -> String {
         format!(
-            "[B]{} [S]{} [I]{} [C]{} [H]{}",
+            "Beads:{} Skills:{} Integration:{} CI/CD:{} Hooks:{}",
             if self.beads { "✓" } else { "✗" },
             if self.skills { "✓" } else { "✗" },
             if self.integration { "✓" } else { "✗" },
@@ -51,6 +145,50 @@ impl BSICHStatus {
             score += 15;
         }
         score
+    }
+
+    /// Count how many checks are passing
+    pub fn passing_count(&self) -> usize {
+        let mut count = 0;
+        if self.beads {
+            count += 1;
+        }
+        if self.skills {
+            count += 1;
+        }
+        if self.integration {
+            count += 1;
+        }
+        if self.cicd {
+            count += 1;
+        }
+        if self.hooks {
+            count += 1;
+        }
+        count
+    }
+
+    /// Total number of checks
+    pub fn total_checks(&self) -> usize {
+        5
+    }
+
+    /// Detect health checks for a repository path
+    pub fn detect(repo_path: &Path) -> Self {
+        let beads = repo_path.join(".beads").exists();
+        let skills = repo_path.join(".claude/settings.json").exists();
+        let cicd = repo_path.join(".github/workflows").exists();
+        let hooks = repo_path.join(".git/hooks/pre-commit").exists();
+        let agent_tooling = AgentTooling::detect(repo_path);
+
+        Self {
+            beads,
+            skills,
+            integration: false, // Can't detect from filesystem alone
+            cicd,
+            hooks,
+            agent_tooling,
+        }
     }
 }
 
@@ -108,8 +246,8 @@ pub struct OnboardingWizard {
     pub remote_url: Option<String>,
     /// Organization (extracted from URL)
     pub organization: Option<String>,
-    /// Current BSICH status
-    pub status: BSICHStatus,
+    /// Current health checks status
+    pub status: HealthChecks,
     /// Theme for dialoguer
     theme: ColorfulTheme,
 }
@@ -559,18 +697,7 @@ impl OnboardingWizard {
         None
     }
 
-    fn detect_status(repo_path: &Path) -> BSICHStatus {
-        let beads = repo_path.join(".beads").exists();
-        let skills = repo_path.join(".claude/settings.json").exists();
-        let cicd = repo_path.join(".github/workflows").exists();
-        let hooks = repo_path.join(".git/hooks/pre-commit").exists();
-
-        BSICHStatus {
-            beads,
-            skills,
-            integration: false, // Can't detect from filesystem alone
-            cicd,
-            hooks,
-        }
+    fn detect_status(repo_path: &Path) -> HealthChecks {
+        HealthChecks::detect(repo_path)
     }
 }
