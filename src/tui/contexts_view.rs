@@ -338,13 +338,14 @@ pub fn draw(f: &mut Frame, contexts_view: &mut ContextsView, area: Rect) {
 }
 
 fn draw_column_header(f: &mut Frame, area: Rect) {
-    // Column headers: B=Beads, S=Skills, I=Integration, C=CI/CD, H=Hooks
+    // Column headers: Issues, B=Beads, S=Skills, I=Integration, C=CI/CD, H=Hooks, Agent Tooling
     let header = Line::from(vec![
         Span::raw("  "),
         Span::styled(
-            format!("{:<22} ", "Name"),
+            format!("{:<18} ", "Name"),
             Style::default().fg(Color::DarkGray),
         ),
+        Span::styled(format!("{:>5} ", "#"), Style::default().fg(Color::DarkGray)),
         Span::styled(
             "B",
             Style::default()
@@ -379,6 +380,14 @@ fn draw_column_header(f: &mut Frame, area: Rect) {
                 .fg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD),
         ),
+        Span::raw("  "),
+        Span::styled("MCP", Style::default().fg(Color::DarkGray)),
+        Span::raw(" "),
+        Span::styled("Cur", Style::default().fg(Color::DarkGray)),
+        Span::raw(" "),
+        Span::styled("Cop", Style::default().fg(Color::DarkGray)),
+        Span::raw(" "),
+        Span::styled("Agt", Style::default().fg(Color::DarkGray)),
         Span::raw("  "),
         Span::styled("Progress", Style::default().fg(Color::DarkGray)),
     ]);
@@ -471,19 +480,57 @@ fn draw_contexts_list(f: &mut Frame, contexts_view: &mut ContextsView, area: Rec
                 let hooks_char = if status.has_hooks { "✓" } else { "✗" };
 
                 // Truncate name to fit column width
-                let display_name = if status.context_name.len() > 20 {
-                    format!("{}...", &status.context_name[..17])
+                let display_name = if status.context_name.len() > 16 {
+                    format!("{}...", &status.context_name[..13])
                 } else {
                     status.context_name.clone()
+                };
+
+                // Issue count display
+                let issue_str = match status.issue_count {
+                    Some(count) => format!("{:>5}", count),
+                    None => "    -".to_string(),
+                };
+
+                // Agent tooling indicators
+                let mcp_count = status.agent_tooling.mcp_servers.len();
+                let mcp_str = if mcp_count > 0 {
+                    format!("{:>3}", mcp_count)
+                } else {
+                    "  -".to_string()
+                };
+                let cursor_char = if status.agent_tooling.has_cursor_rules {
+                    "✓"
+                } else {
+                    "-"
+                };
+                let copilot_char = if status.agent_tooling.has_copilot_rules {
+                    "✓"
+                } else {
+                    "-"
+                };
+                let agents_char = if status.agent_tooling.has_agents_md {
+                    "✓"
+                } else {
+                    "-"
                 };
 
                 let line = Line::from(vec![
                     Span::raw(format!("{} ", emoji)),
                     Span::styled(
-                        format!("{:<20} ", display_name),
+                        format!("{:<16} ", display_name),
                         Style::default().fg(Color::White),
                     ),
-                    // Status columns (no labels, see header)
+                    // Issue count
+                    Span::styled(
+                        format!("{} ", issue_str),
+                        Style::default().fg(if status.issue_count.is_some() {
+                            Color::Cyan
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    // Health check status columns (no labels, see header)
                     Span::styled(
                         beads_char,
                         Style::default().fg(if status.has_beads_usage() {
@@ -526,6 +573,43 @@ fn draw_contexts_list(f: &mut Frame, contexts_view: &mut ContextsView, area: Rec
                             Color::Green
                         } else {
                             Color::Red
+                        }),
+                    ),
+                    Span::raw("  "),
+                    // Agent tooling columns
+                    Span::styled(
+                        mcp_str,
+                        Style::default().fg(if mcp_count > 0 {
+                            Color::Magenta
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    Span::raw("  "),
+                    Span::styled(
+                        cursor_char,
+                        Style::default().fg(if status.agent_tooling.has_cursor_rules {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        copilot_char,
+                        Style::default().fg(if status.agent_tooling.has_copilot_rules {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    Span::raw("   "),
+                    Span::styled(
+                        agents_char,
+                        Style::default().fg(if status.agent_tooling.has_agents_md {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
                         }),
                     ),
                     Span::raw("  "),
@@ -617,7 +701,15 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                 }
 
                 lines.push(Line::from(""));
+
+                // Health Checks row
                 lines.push(Line::from(vec![
+                    Span::styled(
+                        "Health Checks: ",
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::styled("Beads: ", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_beads_usage() {
@@ -669,6 +761,82 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::Green
                         } else {
                             Color::Red
+                        }),
+                    ),
+                ]));
+
+                // Agent Tooling row
+                let mcp_count = status.agent_tooling.mcp_servers.len();
+                let mcp_text = if mcp_count > 0 {
+                    if mcp_count <= 3 {
+                        status.agent_tooling.mcp_servers.join(", ")
+                    } else {
+                        format!(
+                            "{}, +{} more",
+                            status.agent_tooling.mcp_servers[..2].join(", "),
+                            mcp_count - 2
+                        )
+                    }
+                } else {
+                    "none".to_string()
+                };
+
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        "Agent Tooling: ",
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled("MCP: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        mcp_text,
+                        Style::default().fg(if mcp_count > 0 {
+                            Color::Magenta
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    Span::raw("  "),
+                    Span::styled("Cursor: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        if status.agent_tooling.has_cursor_rules {
+                            "✓"
+                        } else {
+                            "✗"
+                        },
+                        Style::default().fg(if status.agent_tooling.has_cursor_rules {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    Span::raw("  "),
+                    Span::styled("Copilot: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        if status.agent_tooling.has_copilot_rules {
+                            "✓"
+                        } else {
+                            "✗"
+                        },
+                        Style::default().fg(if status.agent_tooling.has_copilot_rules {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
+                        }),
+                    ),
+                    Span::raw("  "),
+                    Span::styled("AGENTS.md: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        if status.agent_tooling.has_agents_md {
+                            "✓"
+                        } else {
+                            "✗"
+                        },
+                        Style::default().fg(if status.agent_tooling.has_agents_md {
+                            Color::Green
+                        } else {
+                            Color::DarkGray
                         }),
                     ),
                 ]));

@@ -153,6 +153,9 @@ pub struct OnboardingStatus {
 
     /// Has Git hooks installed
     pub has_hooks: bool,
+
+    /// Agent tooling metadata (MCP servers, rules files)
+    pub agent_tooling: AgentTooling,
 }
 
 impl OnboardingStatus {
@@ -221,6 +224,9 @@ impl OnboardingStatus {
         let has_ci = Self::has_ci(&repo);
         let has_hooks = Self::has_hooks(&repo);
 
+        // Detect agent tooling
+        let agent_tooling = AgentTooling::detect(repo.path());
+
         Ok(OnboardingStatus {
             context_name: context.name.clone(),
             stage,
@@ -232,6 +238,7 @@ impl OnboardingStatus {
             has_integration,
             has_ci,
             has_hooks,
+            agent_tooling,
         })
     }
 
