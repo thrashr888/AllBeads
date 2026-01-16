@@ -548,12 +548,21 @@ pub enum Commands {
     },
 
     /// Rename the issue prefix for a context (delegates to bd rename-prefix)
+    ///
+    /// Examples:
+    ///   ab rename-prefix tfbad                    # Rename in current directory
+    ///   ab rename-prefix tfbad --path /repo       # Rename in specific path
+    ///   ab rename-prefix tfbad --from=terraform-bad  # Find context by old prefix
     #[command(name = "rename-prefix")]
     RenamePrefix {
         /// New prefix to use (e.g., "proj" becomes "proj-abc")
         new_prefix: String,
 
-        /// Path to repository (default: current directory)
+        /// Find context by current prefix (searches all contexts)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Path to repository (default: current directory, ignored if --from is set)
         #[arg(short, long, default_value = ".")]
         path: String,
     },

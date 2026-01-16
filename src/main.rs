@@ -390,6 +390,16 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_human_command(message);
     }
 
+    // Handle rename-prefix (doesn't need graph)
+    if let Commands::RenamePrefix {
+        ref new_prefix,
+        ref from,
+        ref path,
+    } = command
+    {
+        return handle_rename_prefix_command(new_prefix, from.as_deref(), path, &cli.config);
+    }
+
     // Load configuration
     let config = if let Some(config_path) = cli.config.clone() {
         AllBeadsConfig::load(config_path)?
@@ -2070,23 +2080,8 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::RenamePrefix { new_prefix, path } => {
-            let abs_path = std::fs::canonicalize(&path).map_err(|e| {
-                allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
-            })?;
-            let bd = Beads::with_workdir_and_flags(&abs_path, bd_flags.clone());
-            match bd.rename_prefix(&new_prefix) {
-                Ok(output) => {
-                    println!("{}", output.stdout);
-                    if !output.stderr.is_empty() {
-                        eprintln!("{}", output.stderr);
-                    }
-                }
-                Err(e) => eprintln!("Error: {}", e),
-            }
-        }
-
-        Commands::Context(_)
+        Commands::RenamePrefix { .. }
+        | Commands::Context(_)
         | Commands::Init { .. }
         | Commands::OnboardRepo { .. }
         | Commands::Mail(_)
@@ -2111,6 +2106,115 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             // Handled earlier in the function
             unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Handoff, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, Governance, and Scan commands should be handled before aggregation")
         }
+    }
+
+    Ok(())
+}
+
+fn handle_rename_prefix_command(
+    new_prefix: &str,
+    from: Option<&str>,
+    path: &str,
+    config_path: &Option<String>,
+) -> allbeads::Result<()> {
+    use beads::Beads;
+
+    // Load config for context search
+    let config = if let Some(ref cp) = config_path {
+        AllBeadsConfig::load(cp)?
+    } else {
+        AllBeadsConfig::load_default()?
+    };
+
+    // Determine target path: either from --from prefix search or --path
+    let target_path = if let Some(old_prefix) = from {
+        // Search all contexts for one with matching prefix
+        let mut found_path: Option<std::path::PathBuf> = None;
+
+        for ctx in &config.contexts {
+            if let Some(ref ctx_path) = ctx.path {
+                // First, check config.yaml for issue-prefix
+                let config_file = ctx_path.join(".beads/config.yaml");
+                if config_file.exists() {
+                    if let Ok(content) = std::fs::read_to_string(&config_file) {
+                        for line in content.lines() {
+                            let trimmed = line.trim();
+                            if trimmed.starts_with('#') {
+                                continue;
+                            }
+                            if trimmed.starts_with("issue-prefix:") {
+                                let prefix = trimmed
+                                    .trim_start_matches("issue-prefix:")
+                                    .trim()
+                                    .trim_matches('"')
+                                    .trim_matches('\'');
+                                if prefix == old_prefix {
+                                    found_path = Some(ctx_path.clone());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If not found in config, check issues.jsonl for issue IDs with this prefix
+                if found_path.is_none() {
+                    let jsonl_file = ctx_path.join(".beads/issues.jsonl");
+                    if jsonl_file.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&jsonl_file) {
+                            if let Some(first_line) = content.lines().next() {
+                                if let Ok(issue) = serde_json::from_str::<serde_json::Value>(first_line) {
+                                    if let Some(id) = issue.get("id").and_then(|v| v.as_str()) {
+                                        if let Some(dash_pos) = id.rfind('-') {
+                                            let prefix = &id[..dash_pos];
+                                            if prefix == old_prefix {
+                                                found_path = Some(ctx_path.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if found_path.is_some() {
+                    break;
+                }
+            }
+        }
+
+        match found_path {
+            Some(p) => {
+                println!("Found context with prefix '{}' at {}", old_prefix, p.display());
+                p
+            }
+            None => {
+                eprintln!("Error: No context found with prefix '{}'", old_prefix);
+                eprintln!("Available contexts with local paths:");
+                for ctx in &config.contexts {
+                    if let Some(ref ctx_path) = ctx.path {
+                        eprintln!("  - {} ({})", ctx.name, ctx_path.display());
+                    }
+                }
+                return Ok(());
+            }
+        }
+    } else {
+        std::fs::canonicalize(path).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Invalid path '{}': {}", path, e))
+        })?
+    };
+
+    let bd = Beads::with_workdir(&target_path);
+    match bd.rename_prefix(new_prefix) {
+        Ok(output) => {
+            println!("{}", output.stdout);
+            if !output.stderr.is_empty() {
+                eprintln!("{}", output.stderr);
+            }
+        }
+        Err(e) => eprintln!("Error: {}", e),
     }
 
     Ok(())
