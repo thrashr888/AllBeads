@@ -9160,25 +9160,16 @@ fn handle_onboard_repository(
         println!();
     }
 
-    // Stage 4: Populate Issues (create beads for missing agent configs and skill init)
+    // Stage 4: Populate Issues (create beads for missing agent configs)
     if !skip_beads && !skip_issues {
         println!("Stage 4: Populate Issues");
-
-        // Collect agent config issues
         let agent_type = &config.onboarding.default_agent;
         println!("  Using default agent config: {}", agent_type);
-        let mut issues = repository::populate_onboarding_issues(&repo_info.path, agent_type)?;
-
-        // Collect skill initialization issues
-        if !skip_skills {
-            let skill_issues = repository::populate_skill_issues(&config.onboarding.marketplaces);
-            issues.extend(skill_issues);
-        }
-
+        let issues = repository::populate_onboarding_issues(&repo_info.path, agent_type)?;
         if issues.is_empty() {
-            println!("  ✓ All configurations already exist");
+            println!("  ✓ Agent configuration already exists");
         } else {
-            println!("  Creating issues for onboarding:");
+            println!("  Creating issue for missing configuration:");
             for issue in &issues {
                 println!("    • {}", issue.title);
             }
