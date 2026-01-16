@@ -468,9 +468,171 @@ fn load_config() -> anyhow::Result<Config> {
 ### TUI Commands
 - `ab tui` - Launch dashboard (Tab switches Kanban/Mail)
 
+## Agent Guidelines
+
+### Visual Design Rules
+
+Use small Unicode symbols with semantic colors, NOT emoji:
+
+| Status | Symbol | Color |
+|--------|--------|-------|
+| Open | `○` | default |
+| In Progress | `◐` | yellow |
+| Blocked | `●` | red |
+| Closed | `✓` | green |
+| Frozen | `❄` | cyan |
+
+**Anti-pattern:** Never use colored circle emojis (🔴🟡🟢). They cause cognitive overload.
+
+### Interactive Command Restrictions
+
+**DO NOT use these commands** (they require interactive input):
+- `bd edit` - Opens $EDITOR
+- `ab tui` - Opens TUI
+- Any command requiring stdin
+
+**Instead use:**
+- `bd update <id> --title="..." --description="..."`
+- `bd comments add <id> "comment text"`
+
+### Session Completion Protocol
+
+Before ending any session, you **MUST**:
+
+```bash
+[ ] 1. git status              # Check what changed
+[ ] 2. git add <files>         # Stage code changes
+[ ] 3. bd sync                 # Commit beads changes
+[ ] 4. git commit -m "..."     # Commit code
+[ ] 5. bd sync                 # Commit any new beads
+[ ] 6. git push                # Push to remote
+```
+
+**CRITICAL:** Work is NOT complete until `git push` succeeds. Never leave work uncommitted locally.
+
+### Multi-Context Workflow
+
+AllBeads aggregates beads across multiple repositories:
+
+```bash
+# Work across contexts
+ab list -C AllBeads,rookery    # Filter to specific contexts
+ab search "auth" --context=@work  # Search in @work contexts
+
+# Create in specific context
+ab create --context=AllBeads --title="Fix bug" --type=bug
+
+# Onboard new repos
+ab context new myproject --private  # Create new GitHub repo
+ab onboard /path/to/repo            # Onboard existing repo
+```
+
+### Agent Types
+
+#### Task Agent
+Autonomous agent that finds and completes ready work:
+1. `ab ready` - Find unblocked tasks
+2. `ab update <id> --status=in_progress` - Claim
+3. Complete the work
+4. `ab close <id>` - Complete
+5. Repeat
+
+#### Governance Agent
+Enforces policies across managed repositories:
+```bash
+ab governance check        # Check all repos
+ab agents list            # List detected agents
+ab scan github <user>     # Scan for unmanaged repos
+```
+
+#### Planning Agent
+Plans new projects without writing code:
+```bash
+ab context new <name>     # Create repo
+bd create --type=epic     # Create planning beads
+# STOP - don't implement yet
+```
+
+### Discovery Pattern
+
+When you find bugs, TODOs, or related work while implementing:
+```bash
+bd create --title="Found: ..." --type=bug
+bd dep add <new-id> <current-id>  # Link as discovered-from
+```
+
+This maintains context for future work.
+
+### Quality Gates
+
+Before closing any task:
+- [ ] Tests pass: `cargo test`
+- [ ] Linter clean: `cargo clippy`
+- [ ] Formatted: `cargo fmt`
+- [ ] No secrets committed
+- [ ] Changes pushed to remote
+
+## Recommended Claude Agents
+
+The following agent types are useful for AllBeads workflows:
+
+### Task Agent (beads:task-agent)
+Autonomous agent that finds and completes ready work from beads. Ideal for:
+- Processing backlog items
+- Implementing well-defined features
+- Bug fixes with clear reproduction steps
+
+```bash
+ab ready && ab handoff <bead-id>
+```
+
+### Documentation Agent
+Maintains project documentation including:
+- Updating DEMO.md with new features
+- Keeping CLAUDE.md current with codebase changes
+- Writing spec documents for new features
+- Generating API documentation
+
+### Release Agent
+Handles the release process:
+- Run quality gates (fmt, clippy, test)
+- Update version in Cargo.toml
+- Create annotated tags with release notes
+- Monitor CI/CD builds
+- Update homebrew tap
+
+### Review Agent
+Performs code review on pull requests:
+- Check for security vulnerabilities
+- Validate error handling
+- Ensure tests are adequate
+- Review architectural decisions
+
+### Onboarding Agent
+Helps onboard new repositories:
+- Detect project type and languages
+- Initialize beads with appropriate prefix
+- Configure coding agent settings
+- Create initial epic and tasks
+
+### Planning Agent
+Plans features without implementing:
+- Create epic with breakdown tasks
+- Set dependencies between tasks
+- Estimate scope and complexity
+- Identify potential blockers
+
+### Governance Agent
+Enforces policies across repositories:
+- Scan for AI agent configurations
+- Check compliance with policies
+- Track agent adoption metrics
+- Generate governance reports
+
 ## References
 
 - **PRD**: `specs/PRD-00.md` - Complete architectural specification
+- **ARCHITECTURE**: `specs/ARCHITECTURE.md` - Technical architecture overview
 - **DEMO.md**: Usage examples and command reference
 - **Beads Project**: https://github.com/steveyegge/beads
 - **Rust Book**: https://doc.rust-lang.org/book/

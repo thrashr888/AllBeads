@@ -185,6 +185,15 @@ allbeads context add <path> --auth personal_access_token
 
 # List all configured contexts
 allbeads context list
+allbeads context list --local     # Only contexts with local paths
+allbeads context list --beads     # Only contexts with beads initialized
+allbeads context list --names     # One name per line (for scripting)
+
+# Show onboarding status
+allbeads context onboarding
+allbeads context onboarding --beads         # Filter to repos with beads
+allbeads context onboarding --format=csv    # Export as CSV
+allbeads context onboarding --format=json   # Export as JSON
 
 # Remove a context
 allbeads context remove <name>
@@ -589,6 +598,7 @@ The messaging protocol enables agents to:
 ## Documentation
 
 - **[PRD](specs/PRD-00.md)**: 20,000+ word architectural specification
+- **[ARCHITECTURE.md](specs/ARCHITECTURE.md)**: Technical architecture overview
 - **[DEMO.md](DEMO.md)**: Usage examples and command reference
 - **[CLAUDE.md](CLAUDE.md)**: Development guide for AI agents
 

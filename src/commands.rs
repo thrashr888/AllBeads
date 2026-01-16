@@ -47,6 +47,7 @@ Usage:
   show               Show detailed information about a bead
   ready              Show beads that are ready to work on (no blockers)
   blocked            Show all blocked beads
+  open               Open a bead or external issue (JIRA/GitHub) in browser
   search             Search beads by text (title, description, notes)
   duplicates         Find potential duplicate beads
   stats              Show aggregated statistics
@@ -366,6 +367,12 @@ pub enum Commands {
 
     /// Show all blocked beads
     Blocked,
+
+    /// Open a bead or linked external issue in the browser
+    Open {
+        /// Bead ID (e.g., ab-123) or external issue reference (PROJ-123, owner/repo#123)
+        id: String,
+    },
 
     /// Search beads by text (title, description, notes)
     Search {
@@ -1715,6 +1722,20 @@ pub enum ContextCommands {
         /// Skip interactive prompts, use defaults
         #[arg(long)]
         non_interactive: bool,
+    },
+
+    /// Uninstall beads from a repository (remove .beads/, hooks, context)
+    Uninstall {
+        /// Context name or path to repository
+        target: String,
+
+        /// Also remove the context from AllBeads config
+        #[arg(long)]
+        remove_context: bool,
+
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        force: bool,
     },
 }
 

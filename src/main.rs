@@ -572,6 +572,76 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
     let config_for_commands = config.clone();
 
     // Try to load from cache first
+    // Handle Open command (doesn't need graph, just config)
+    if let Commands::Open { ref id } = command {
+        // Try to determine what kind of ID this is and open in browser
+        let url = if id.contains('/') && id.contains('#') {
+            // GitHub issue: owner/repo#123
+            let parts: Vec<&str> = id.split('#').collect();
+            if parts.len() == 2 {
+                let repo_path = parts[0];
+                let issue_num = parts[1];
+                format!("https://github.com/{}/issues/{}", repo_path, issue_num)
+            } else {
+                return Err(allbeads::AllBeadsError::Other(
+                    "Invalid GitHub issue format. Use owner/repo#123".to_string(),
+                ));
+            }
+        } else if id.contains('-') && id.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+            // Looks like JIRA issue: PROJ-123
+            // Check if we have a JIRA URL in config
+            let jira_url = config
+                .contexts
+                .iter()
+                .find_map(|ctx| ctx.integrations.jira.as_ref().map(|j| j.url.clone()));
+
+            if let Some(url) = jira_url {
+                format!("{}/browse/{}", url, id)
+            } else {
+                return Err(allbeads::AllBeadsError::Other(
+                    "No JIRA URL configured. Add JIRA integration to your context.".to_string(),
+                ));
+            }
+        } else {
+            return Err(allbeads::AllBeadsError::Other(format!(
+                "Unknown ID format '{}'. Use:\n  - GitHub: owner/repo#123\n  - JIRA: PROJ-123",
+                id
+            )));
+        };
+
+        println!("Opening: {}", style::dim(&url));
+
+        // Open in default browser
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg(&url)
+                .spawn()
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Other(format!("Failed to open browser: {}", e))
+                })?;
+        }
+        #[cfg(target_os = "linux")]
+        {
+            std::process::Command::new("xdg-open")
+                .arg(&url)
+                .spawn()
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Other(format!("Failed to open browser: {}", e))
+                })?;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("cmd")
+                .args(["/C", "start", &url])
+                .spawn()
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Other(format!("Failed to open browser: {}", e))
+                })?;
+        }
+        return Ok(());
+    }
+
     let cache_config = CacheConfig::default();
     let cache = Cache::new(cache_config)?;
 
@@ -894,6 +964,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     );
                 }
             }
+        }
+
+        Commands::Open { .. } => {
+            // Handled early (before graph loading) - should not reach here
+            unreachable!("Open command should be handled early");
         }
 
         Commands::Search {
@@ -6516,6 +6591,105 @@ fn handle_context_command(
                     name
                 )));
             }
+        }
+
+        ContextCommands::Uninstall {
+            target,
+            remove_context,
+            force,
+        } => {
+            // Resolve target - could be context name or path
+            let repo_path = if std::path::Path::new(target).exists() {
+                std::path::PathBuf::from(target)
+            } else if let Some(ctx) = config.contexts.iter().find(|c| c.name == *target) {
+                match &ctx.path {
+                    Some(path) => path.clone(),
+                    None => {
+                        return Err(allbeads::AllBeadsError::Config(format!(
+                            "Context '{}' has no local path configured",
+                            target
+                        )));
+                    }
+                }
+            } else {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Target '{}' not found as path or context name",
+                    target
+                )));
+            };
+
+            let beads_dir = repo_path.join(".beads");
+            let hooks_dir = repo_path.join(".git/hooks");
+
+            // Check if there's anything to uninstall
+            if !beads_dir.exists() {
+                println!("No .beads/ directory found in {:?}", repo_path);
+                return Ok(());
+            }
+
+            // Confirm unless --force
+            if !force {
+                println!("This will remove:");
+                println!("  - {:?}", beads_dir);
+                if hooks_dir.join("post-commit").exists() {
+                    println!("  - {:?}/post-commit (beads hook)", hooks_dir);
+                }
+                if *remove_context {
+                    println!("  - Context configuration from AllBeads");
+                }
+                print!("\nProceed? [y/N] ");
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).ok();
+                if !input.trim().eq_ignore_ascii_case("y") {
+                    println!("Cancelled.");
+                    return Ok(());
+                }
+            }
+
+            // Remove .beads/ directory
+            if beads_dir.exists() {
+                std::fs::remove_dir_all(&beads_dir).map_err(|e| {
+                    allbeads::AllBeadsError::Other(format!("Failed to remove .beads/: {}", e))
+                })?;
+                println!("Removed {:?}", beads_dir);
+            }
+
+            // Remove beads-related git hooks
+            let post_commit_hook = hooks_dir.join("post-commit");
+            if post_commit_hook.exists() {
+                // Check if it's a beads hook
+                if let Ok(content) = std::fs::read_to_string(&post_commit_hook) {
+                    if content.contains("bd sync") || content.contains("beads") {
+                        std::fs::remove_file(&post_commit_hook).map_err(|e| {
+                            allbeads::AllBeadsError::Other(format!(
+                                "Failed to remove post-commit hook: {}",
+                                e
+                            ))
+                        })?;
+                        println!("Removed post-commit hook");
+                    }
+                }
+            }
+
+            // Remove context from config if requested
+            if *remove_context {
+                // Find context by path
+                let context_name = config
+                    .contexts
+                    .iter()
+                    .find(|c| c.path.as_ref() == Some(&repo_path))
+                    .map(|c| c.name.clone());
+
+                if let Some(name) = context_name {
+                    config.remove_context(&name);
+                    config.save(&config_file)?;
+                    println!("Removed context '{}' from AllBeads config", name);
+                }
+            }
+
+            println!("\nBeads uninstalled from {:?}", repo_path);
         }
 
         ContextCommands::Onboarding {

@@ -43,7 +43,14 @@ ab init --remote <url>            # Clone existing Boss repo
 ab context add <path>             # Add repo (infers name/URL from git)
 ab context add . --url <url>      # Add current dir with explicit URL
 ab context list                   # List all contexts
+ab context list --local           # Only contexts with local paths
+ab context list --beads           # Only contexts with beads initialized
+ab context list --names           # One name per line (for scripting)
+ab context onboarding             # Show onboarding status
+ab context onboarding --format=csv  # Export as CSV
 ab context remove <name>          # Remove a context
+ab open owner/repo#123            # Open GitHub issue in browser
+ab open PROJ-123                  # Open JIRA issue in browser
 
 # Viewing beads
 ab tui                            # Launch TUI (Kanban + Mail)
@@ -152,6 +159,15 @@ ab context add . --auth personal_access_token
 
 ```bash
 ab context list
+
+# Filter to contexts with local paths
+ab context list --local
+
+# Filter to contexts with beads initialized
+ab context list --beads
+
+# Output just names (for scripting)
+ab context list --names
 ```
 
 Example output:
@@ -174,6 +190,22 @@ Configured contexts (3):
 
 ```bash
 ab context remove ethertext
+```
+
+### Check onboarding status
+
+```bash
+# Show onboarding status for all contexts
+ab context onboarding
+
+# Filter to repos with beads initialized
+ab context onboarding --beads
+
+# Export as CSV for reporting
+ab context onboarding --format=csv
+
+# Export as JSON
+ab context onboarding --format=json
 ```
 
 ## TUI Dashboard

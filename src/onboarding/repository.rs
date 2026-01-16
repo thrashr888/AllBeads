@@ -715,7 +715,7 @@ pub fn create_onboarding_beads(
 ///
 /// Each marketplace can be specified as:
 /// - GitHub repo: "owner/repo" or "github.com/owner/repo"
-/// - Git URL: "git@github.com:owner/repo.git" or "https://github.com/owner/repo.git"
+/// - Git URL: "git@github.com:owner/repo.git" or "<https://github.com/owner/repo.git>"
 pub fn configure_skills(path: &Path, configured_marketplaces: &[String]) -> Result<()> {
     let claude_dir = path.join(".claude");
     let settings_file = claude_dir.join("settings.json");
