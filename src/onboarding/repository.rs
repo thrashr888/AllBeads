@@ -337,84 +337,160 @@ pub struct OnboardingIssue {
 
 /// Stage 4: Populate onboarding issues
 ///
-/// Creates beads for missing agent configurations and project setup tasks.
-/// Only creates issues for configs that don't already exist.
-pub fn populate_onboarding_issues(path: &Path) -> Result<Vec<OnboardingIssue>> {
+/// Creates a bead for the specified agent configuration if it doesn't exist.
+/// The agent_type parameter controls which config to create:
+/// - "claude": CLAUDE.md for Claude Code
+/// - "agent-skills": .agent/skills/ directory (Open Agent Skills spec)
+/// - "cursor": .cursorrules for Cursor AI
+/// - "copilot": .github/copilot-instructions.md for GitHub Copilot
+/// - "aider": .aider.conf.yml for Aider
+/// - "kiro": .kiro/ directory for AWS Kiro
+/// - "all": All agent configurations (legacy behavior)
+pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<OnboardingIssue>> {
     let mut issues = Vec::new();
 
-    // Check for Claude Code configuration
-    let claude_md = path.join("CLAUDE.md");
-    if !claude_md.exists() {
-        issues.push(OnboardingIssue {
-            title: "Initialize Claude Code configuration".to_string(),
-            description: "Run `claude` in this directory to create CLAUDE.md with project-specific instructions. \
-                         This file helps Claude understand your codebase architecture, coding conventions, and key patterns.".to_string(),
-            priority: 2,
-            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
-        });
-    }
+    match agent_type {
+        "claude" => {
+            let claude_md = path.join("CLAUDE.md");
+            if !claude_md.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Initialize Claude Code configuration".to_string(),
+                    description: "Create CLAUDE.md with project-specific instructions. \
+                                 This file helps Claude understand your codebase architecture, \
+                                 coding conventions, and key patterns.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
+        }
+        "agent-skills" => {
+            let agent_skills = path.join(".agent/skills");
+            if !agent_skills.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Initialize Open Agent Skills".to_string(),
+                    description: "Create .agent/skills/ directory with SKILL.md files following \
+                                 the Open Agent Skills specification (agentskills.io). \
+                                 This format is supported by multiple AI agents.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
+        }
+        "cursor" => {
+            let cursorrules = path.join(".cursorrules");
+            let cursor_dir = path.join(".cursor");
+            if !cursorrules.exists() && !cursor_dir.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add Cursor configuration".to_string(),
+                    description: "Create .cursorrules file with project-specific rules for Cursor AI. \
+                                 Include coding standards, preferred patterns, and project context.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
+        }
+        "copilot" => {
+            let copilot_instructions = path.join(".github/copilot-instructions.md");
+            if !copilot_instructions.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add GitHub Copilot instructions".to_string(),
+                    description: "Create .github/copilot-instructions.md with project-specific guidance. \
+                                 Document coding standards and patterns Copilot should follow.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
+        }
+        "aider" => {
+            let aider_conf = path.join(".aider.conf.yml");
+            let aiderignore = path.join(".aiderignore");
+            if !aider_conf.exists() && !aiderignore.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add Aider configuration".to_string(),
+                    description: "Create .aider.conf.yml with model preferences and .aiderignore. \
+                                 Configure aider for optimal performance with this codebase.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
+        }
+        "kiro" => {
+            let kiro_dir = path.join(".kiro");
+            if !kiro_dir.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add AWS Kiro configuration".to_string(),
+                    description: "Create .kiro/ directory with specs and steering files for AWS Kiro. \
+                                 Define project requirements and agent behavior guidelines.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
+        }
+        "all" | _ => {
+            // Legacy behavior: create issues for all missing configs
+            let claude_md = path.join("CLAUDE.md");
+            if !claude_md.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Initialize Claude Code configuration".to_string(),
+                    description: "Create CLAUDE.md with project-specific instructions.".to_string(),
+                    priority: 2,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
 
-    // Check for Cursor configuration
-    let cursorrules = path.join(".cursorrules");
-    let cursor_dir = path.join(".cursor");
-    if !cursorrules.exists() && !cursor_dir.exists() {
-        issues.push(OnboardingIssue {
-            title: "Add Cursor configuration".to_string(),
-            description: "Create .cursorrules file with project-specific rules for Cursor AI. \
-                         Include coding standards, preferred patterns, and project context.".to_string(),
-            priority: 3,
-            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
-        });
-    }
+            let cursorrules = path.join(".cursorrules");
+            let cursor_dir = path.join(".cursor");
+            if !cursorrules.exists() && !cursor_dir.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add Cursor configuration".to_string(),
+                    description: "Create .cursorrules file with project-specific rules.".to_string(),
+                    priority: 3,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
 
-    // Check for Kiro configuration
-    let kiro_dir = path.join(".kiro");
-    if !kiro_dir.exists() {
-        issues.push(OnboardingIssue {
-            title: "Add AWS Kiro configuration".to_string(),
-            description: "Create .kiro/ directory with specs and steering files for AWS Kiro agent. \
-                         Define project requirements and agent behavior guidelines.".to_string(),
-            priority: 3,
-            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
-        });
-    }
+            let kiro_dir = path.join(".kiro");
+            if !kiro_dir.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add AWS Kiro configuration".to_string(),
+                    description: "Create .kiro/ directory with specs and steering files.".to_string(),
+                    priority: 3,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
 
-    // Check for Aider configuration
-    let aider_conf = path.join(".aider.conf.yml");
-    let aiderignore = path.join(".aiderignore");
-    if !aider_conf.exists() && !aiderignore.exists() {
-        issues.push(OnboardingIssue {
-            title: "Add Aider configuration".to_string(),
-            description: "Create .aider.conf.yml with model preferences and .aiderignore to exclude files. \
-                         Configure aider for optimal performance with this codebase.".to_string(),
-            priority: 3,
-            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
-        });
-    }
+            let aider_conf = path.join(".aider.conf.yml");
+            let aiderignore = path.join(".aiderignore");
+            if !aider_conf.exists() && !aiderignore.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add Aider configuration".to_string(),
+                    description: "Create .aider.conf.yml with model preferences.".to_string(),
+                    priority: 3,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
 
-    // Check for GitHub Copilot configuration
-    let copilot_instructions = path.join(".github/copilot-instructions.md");
-    if !copilot_instructions.exists() {
-        issues.push(OnboardingIssue {
-            title: "Add GitHub Copilot instructions".to_string(),
-            description: "Create .github/copilot-instructions.md with project-specific guidance for Copilot. \
-                         Document coding standards and patterns Copilot should follow.".to_string(),
-            priority: 3,
-            labels: vec!["onboarding".to_string(), "agent-config".to_string()],
-        });
-    }
+            let copilot_instructions = path.join(".github/copilot-instructions.md");
+            if !copilot_instructions.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add GitHub Copilot instructions".to_string(),
+                    description: "Create .github/copilot-instructions.md with project guidance.".to_string(),
+                    priority: 3,
+                    labels: vec!["onboarding".to_string(), "agent-config".to_string()],
+                });
+            }
 
-    // Check for custom skills/commands
-    let claude_commands = path.join(".claude/commands");
-    let claude_skills = path.join(".claude-plugin");
-    if !claude_commands.exists() && !claude_skills.exists() {
-        issues.push(OnboardingIssue {
-            title: "Add project-specific skills".to_string(),
-            description: "Create custom slash commands in .claude/commands/ or skills in .claude-plugin/ \
-                         for common project workflows like building, testing, and deploying.".to_string(),
-            priority: 3,
-            labels: vec!["onboarding".to_string(), "customization".to_string()],
-        });
+            let claude_commands = path.join(".claude/commands");
+            let claude_skills = path.join(".claude-plugin");
+            if !claude_commands.exists() && !claude_skills.exists() {
+                issues.push(OnboardingIssue {
+                    title: "Add project-specific skills".to_string(),
+                    description: "Create custom slash commands in .claude/commands/ or skills in .claude-plugin/.".to_string(),
+                    priority: 3,
+                    labels: vec!["onboarding".to_string(), "customization".to_string()],
+                });
+            }
+        }
     }
 
     Ok(issues)

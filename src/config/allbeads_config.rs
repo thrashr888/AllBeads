@@ -76,6 +76,28 @@ impl Default for VisualizationConfig {
     }
 }
 
+/// Onboarding configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OnboardingConfig {
+    /// Default agent configuration to create during onboarding
+    /// Options: "claude", "agent-skills", "cursor", "copilot", "aider", "kiro", "all"
+    /// Default: "claude"
+    #[serde(default = "default_onboarding_agent")]
+    pub default_agent: String,
+}
+
+fn default_onboarding_agent() -> String {
+    "claude".to_string()
+}
+
+impl Default for OnboardingConfig {
+    fn default() -> Self {
+        Self {
+            default_agent: default_onboarding_agent(),
+        }
+    }
+}
+
 /// AllBeads configuration
 ///
 /// Represents the complete ~/.config/allbeads/config.yaml file with multiple
@@ -92,6 +114,10 @@ pub struct AllBeadsConfig {
     /// Visualization settings
     #[serde(default)]
     pub visualization: VisualizationConfig,
+
+    /// Onboarding settings
+    #[serde(default)]
+    pub onboarding: OnboardingConfig,
 
     /// Default workspace directory for cloning repositories
     /// Defaults to ~/Workspace if not specified
@@ -112,6 +138,7 @@ impl AllBeadsConfig {
             contexts: Vec::new(),
             agent_mail: AgentMailConfig::default(),
             visualization: VisualizationConfig::default(),
+            onboarding: OnboardingConfig::default(),
             workspace_directory: default_workspace_dir(),
         }
     }

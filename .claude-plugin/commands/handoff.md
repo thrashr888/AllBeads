@@ -61,14 +61,26 @@ ab handoff ab-xyz --agent gemini    # Use Gemini instead of preferred
 ## What Happens
 
 1. Bead context is loaded (title, description, dependencies, labels)
-2. A prompt is generated from the bead content
+2. A prompt is generated from the bead content with workflow instructions
 3. Bead status is updated to `in_progress`
-4. Handoff is recorded (comment + label)
+4. Handoff is recorded (comment + `handed-off` label)
 5. If `--worktree` is used, a git worktree is created in `.worktrees/`
 6. Agent is launched with the prompt
-   - CLI agents: launched with prompt argument
+   - CLI agents: launched with prompt argument (use `codex exec --full-auto` for non-interactive)
    - IDE agents: launched with chat command
    - Web agents: browser opened with deep-link URL
+
+## Agent Workflow (What the Agent Does)
+
+The handoff prompt instructs the agent to:
+
+1. **Create a branch** for the work: `git checkout -b bead/<id>`
+2. **Do the work** described in the bead
+3. **Commit changes**: `git add -A && git commit -m "feat(<id>): <description>"`
+4. **Close the bead**: `bd close <id>` (use `--force` if blocked by an epic)
+5. **Sync and push**: `bd sync && git push -u origin bead/<id>`
+
+This ensures clean git history and proper bead tracking.
 
 ## Worktrees
 

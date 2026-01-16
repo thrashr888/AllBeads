@@ -5579,7 +5579,39 @@ fn build_handoff_prompt(issue: &beads::Issue) -> String {
         prompt.push_str(&format!("\n## Labels\n{}\n", issue.labels.join(", ")));
     }
 
-    prompt.push_str("\n## Instructions\nPlease work on this issue. When done, commit your changes and update the bead status.\n");
+    // Add comprehensive workflow instructions
+    prompt.push_str(&format!(
+        r#"
+## Workflow
+
+1. **Create a branch** for this work:
+   ```bash
+   git checkout -b bead/{}
+   ```
+
+2. **Do the work** described above
+
+3. **Commit your changes**:
+   ```bash
+   git add -A
+   git commit -m "feat({}): <description>"
+   ```
+
+4. **Close the bead** (use --force if blocked by an epic):
+   ```bash
+   bd close {}
+   ```
+
+5. **Sync and push**:
+   ```bash
+   bd sync
+   git push -u origin bead/{}
+   ```
+
+When finished, the bead should be closed and all changes pushed to the remote branch.
+"#,
+        issue.id, issue.id, issue.id, issue.id
+    ));
 
     prompt
 }
@@ -9131,11 +9163,13 @@ fn handle_onboard_repository(
     // Stage 4: Populate Issues (create beads for missing agent configs)
     if !skip_beads && !skip_issues {
         println!("Stage 4: Populate Issues");
-        let issues = repository::populate_onboarding_issues(&repo_info.path)?;
+        let agent_type = &config.onboarding.default_agent;
+        println!("  Using default agent config: {}", agent_type);
+        let issues = repository::populate_onboarding_issues(&repo_info.path, agent_type)?;
         if issues.is_empty() {
-            println!("  ✓ All agent configurations already exist");
+            println!("  ✓ Agent configuration already exists");
         } else {
-            println!("  Found {} missing agent configurations:", issues.len());
+            println!("  Creating issue for missing configuration:");
             for issue in &issues {
                 println!("    • {}", issue.title);
             }
@@ -9143,7 +9177,7 @@ fn handle_onboard_repository(
             if let Some(epic) = epic_id {
                 println!("  ✓ Created 'Agent Onboarding' epic: {}", epic);
             }
-            println!("  ✓ Created {} onboarding tasks", created);
+            println!("  ✓ Created {} onboarding task(s)", created);
         }
         println!();
     } else if skip_issues {

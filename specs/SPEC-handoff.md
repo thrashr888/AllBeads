@@ -143,6 +143,34 @@ ab handoff --stop ab-xyz
 ab handoff --message ab-xyz "Consider using async/await"
 ```
 
+### Agent-Side Workflow
+
+The handoff prompt instructs agents to follow a standard git workflow:
+
+```bash
+# 1. Create a branch for the work
+git checkout -b bead/<bead-id>
+
+# 2. Do the work described in the bead
+
+# 3. Commit changes
+git add -A
+git commit -m "feat(<bead-id>): <description>"
+
+# 4. Close the bead (use --force if blocked by epic)
+bd close <bead-id>
+
+# 5. Sync and push
+bd sync
+git push -u origin bead/<bead-id>
+```
+
+This ensures:
+- Clean git history with bead-specific branches
+- Proper bead status tracking
+- Automatic sync of beads data
+- Work is pushed to remote for review/merge
+
 ### Core Workflow
 
 ```
