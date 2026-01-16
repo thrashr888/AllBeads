@@ -601,9 +601,54 @@ pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Resul
     Ok((epic_id, created))
 }
 
+/// Known marketplace plugins mapping
+/// Maps marketplace repo patterns to their available plugins
+/// Each plugin entry is (plugin_name, description, needs_init_bead)
+fn get_known_plugins(marketplace_repo: &str) -> Vec<(&'static str, &'static str, bool)> {
+    match marketplace_repo.to_lowercase().as_str() {
+        repo if repo.contains("beads") && !repo.contains("allbeads") => {
+            vec![("beads", "Git-backed issue tracking with dependencies", true)]
+        }
+        repo if repo.contains("allbeads") => {
+            vec![("allbeads", "Multi-repo aggregation and boss architecture", true)]
+        }
+        repo if repo.contains("claude-plugins-official") || repo.contains("anthropics/claude-plugins-official") => {
+            vec![
+                ("github", "GitHub integration for issues and PRs", false),
+                ("code-simplifier", "Code simplification and refactoring", false),
+                ("rust-analyzer-lsp", "Rust language server integration", false),
+                ("swift-lsp", "Swift language server integration", false),
+            ]
+        }
+        repo if repo.contains("anthropics/claude-code") => {
+            vec![
+                // claude-code plugins - add common ones
+            ]
+        }
+        repo if repo.contains("anthropics/skills") => {
+            vec![
+                // anthropic agent skills
+            ]
+        }
+        repo if repo.contains("chrome-devtools") => {
+            vec![("chrome-devtools", "Chrome DevTools Protocol integration", false)]
+        }
+        repo if repo.contains("ast-grep") => {
+            vec![("ast-grep", "AST-based code search and refactoring", false)]
+        }
+        repo if repo.contains("repomix") => {
+            vec![("repomix", "Repository code bundling for LLM context", false)]
+        }
+        repo if repo.contains("prose") || repo.contains("openprose") => {
+            vec![("open-prose", "OpenProse programming language for AI sessions", true)]
+        }
+        _ => vec![],
+    }
+}
+
 /// Stage 5: Configure skills marketplace
 ///
-/// Configures Claude plugin marketplaces from the provided list.
+/// Configures Claude plugin marketplaces from the provided list and enables their plugins.
 /// Each marketplace can be specified as:
 /// - GitHub repo: "owner/repo" or "github.com/owner/repo"
 /// - Git URL: "git@github.com:owner/repo.git" or "https://github.com/owner/repo.git"
@@ -629,40 +674,109 @@ pub fn configure_skills(path: &Path, configured_marketplaces: &[String]) -> Resu
         crate::AllBeadsError::Config("settings.json is not an object".to_string())
     })?;
 
-    // Add enabledPlugins
+    // Ensure both sections exist first
     if !settings.contains_key("enabledPlugins") {
         settings.insert("enabledPlugins".to_string(), serde_json::json!({}));
     }
-
-    // Add extraKnownMarketplaces
     if !settings.contains_key("extraKnownMarketplaces") {
         settings.insert("extraKnownMarketplaces".to_string(), serde_json::json!({}));
     }
-    let marketplaces = settings
-        .get_mut("extraKnownMarketplaces")
-        .and_then(|v| v.as_object_mut())
-        .ok_or_else(|| {
-            crate::AllBeadsError::Config("extraKnownMarketplaces is not an object".to_string())
-        })?;
 
-    let mut added_count = 0;
+    let mut marketplace_count = 0;
+    let mut plugin_count = 0;
+
+    // Collect all changes to make
+    let mut marketplace_entries: Vec<(String, serde_json::Value)> = Vec::new();
+    let mut plugin_entries: Vec<(String, String)> = Vec::new(); // (plugin_key, plugin_name for display)
 
     for marketplace_url in configured_marketplaces {
         // Parse the marketplace URL to extract repo info
         let (marketplace_name, source_config) = parse_marketplace_url(marketplace_url);
+        marketplace_entries.push((marketplace_name.clone(), source_config));
 
-        marketplaces.insert(marketplace_name.clone(), source_config);
-        println!("    - Added {}", marketplace_name);
-        added_count += 1;
+        // Collect known plugins from this marketplace
+        let plugins = get_known_plugins(marketplace_url);
+        for (plugin_name, _description, _needs_init) in plugins {
+            let plugin_key = format!("{}@{}", plugin_name, marketplace_name);
+            plugin_entries.push((plugin_key, plugin_name.to_string()));
+        }
+    }
+
+    // Now apply marketplace changes
+    {
+        let marketplaces = settings
+            .get_mut("extraKnownMarketplaces")
+            .and_then(|v| v.as_object_mut())
+            .ok_or_else(|| {
+                crate::AllBeadsError::Config("extraKnownMarketplaces is not an object".to_string())
+            })?;
+
+        for (name, config) in marketplace_entries {
+            marketplaces.insert(name.clone(), config);
+            println!("    Marketplace: {}", name);
+            marketplace_count += 1;
+        }
+    }
+
+    // Apply plugin changes
+    {
+        let enabled_plugins = settings
+            .get_mut("enabledPlugins")
+            .and_then(|v| v.as_object_mut())
+            .ok_or_else(|| {
+                crate::AllBeadsError::Config("enabledPlugins is not an object".to_string())
+            })?;
+
+        for (plugin_key, plugin_name) in plugin_entries {
+            enabled_plugins.insert(plugin_key, serde_json::json!(true));
+            println!("      ✓ Enabled {}", plugin_name);
+            plugin_count += 1;
+        }
     }
 
     // Write settings.json
     let content = serde_json::to_string_pretty(&settings)?;
     fs::write(&settings_file, content)?;
 
-    println!("  ✓ Configured .claude/settings.json ({} marketplaces)", added_count);
+    println!(
+        "  ✓ Configured .claude/settings.json ({} marketplaces, {} plugins)",
+        marketplace_count, plugin_count
+    );
 
     Ok(())
+}
+
+/// Generate onboarding issues for skills that need initialization
+///
+/// Returns issues for each skill that requires setup/configuration beads
+pub fn populate_skill_issues(configured_marketplaces: &[String]) -> Vec<OnboardingIssue> {
+    let mut issues = Vec::new();
+
+    for marketplace_url in configured_marketplaces {
+        let plugins = get_known_plugins(marketplace_url);
+        let (marketplace_name, _) = parse_marketplace_url(marketplace_url);
+
+        for (plugin_name, description, needs_init) in plugins {
+            if needs_init {
+                issues.push(OnboardingIssue {
+                    title: format!("Initialize {} skill", plugin_name),
+                    description: format!(
+                        "Configure and initialize the {} plugin from {}.\n\n{}\n\n\
+                        Run any required setup commands and verify the skill is working correctly.",
+                        plugin_name, marketplace_name, description
+                    ),
+                    priority: 3,
+                    labels: vec![
+                        "onboarding".to_string(),
+                        "skill-init".to_string(),
+                        plugin_name.to_string(),
+                    ],
+                });
+            }
+        }
+    }
+
+    issues
 }
 
 /// Parse a marketplace URL into a name and source configuration
