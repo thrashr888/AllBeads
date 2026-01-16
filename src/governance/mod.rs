@@ -47,8 +47,8 @@ pub use repo_policy::{
 };
 pub use rules::PolicyRule;
 pub use scanner::{
-    print_scan_result, GitHubScanner, OnboardingPriority, ScanFilter, ScanResult, ScanSource,
-    ScanSummary, ScannedRepo,
+    format_scan_result_csv, format_scan_result_junit, print_scan_result, GitHubScanner,
+    OnboardingPriority, ScanFilter, ScanResult, ScanSource, ScanSummary, ScannedRepo,
 };
 pub use storage::PolicyStorage;
 pub use usage::{print_usage_stats, UsageRecord, UsageStats, UsageStorage, UsageTrend};

@@ -59,7 +59,9 @@ impl SwarmView {
                     // Parse JSON output (simplified - would need proper parsing)
                     if stdout.trim().is_empty() || stdout.contains("[]") {
                         self.molecules.clear();
-                        self.status_message = "No swarm molecules found. Create one with: bd swarm create <epic-id>".to_string();
+                        self.status_message =
+                            "No swarm molecules found. Create one with: bd swarm create <epic-id>"
+                                .to_string();
                     } else {
                         self.status_message = "Swarm molecules loaded".to_string();
                         // For now, just show that we have data

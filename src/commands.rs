@@ -2,7 +2,32 @@
 //!
 //! All CLI structs and subcommand enums are defined here.
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+/// Output format for scan results
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub enum OutputFormat {
+    /// Plain text output (default)
+    #[default]
+    Text,
+    /// JSON output
+    Json,
+    /// CSV output
+    Csv,
+    /// JUnit XML output (for CI integration)
+    Junit,
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutputFormat::Text => write!(f, "text"),
+            OutputFormat::Json => write!(f, "json"),
+            OutputFormat::Csv => write!(f, "csv"),
+            OutputFormat::Junit => write!(f, "junit"),
+        }
+    }
+}
 
 /// Generate the custom help output matching bd's style
 pub fn custom_help() -> String {
@@ -1228,9 +1253,9 @@ pub enum ScanCommands {
         #[arg(long)]
         all: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        /// Output format (text, json, csv, junit)
+        #[arg(long, short = 'f', value_enum, default_value = "text")]
+        format: OutputFormat,
     },
 
     /// Scan a single repository by URL
@@ -1238,9 +1263,9 @@ pub enum ScanCommands {
         /// Repository URL (e.g., github.com/user/repo or full URL)
         url: String,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        /// Output format (text, json, csv, junit)
+        #[arg(long, short = 'f', value_enum, default_value = "text")]
+        format: OutputFormat,
     },
 
     /// Scan a GitHub user's repositories
@@ -1272,9 +1297,9 @@ pub enum ScanCommands {
         #[arg(long)]
         all: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        /// Output format (text, json, csv, junit)
+        #[arg(long, short = 'f', value_enum, default_value = "text")]
+        format: OutputFormat,
     },
 
     /// Scan a GitHub organization's repositories
@@ -1310,16 +1335,16 @@ pub enum ScanCommands {
         #[arg(long)]
         all: bool,
 
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        /// Output format (text, json, csv, junit)
+        #[arg(long, short = 'f', value_enum, default_value = "text")]
+        format: OutputFormat,
     },
 
     /// Compare scanned repos with managed contexts
     Compare {
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
+        /// Output format (text, json, csv, junit)
+        #[arg(long, short = 'f', value_enum, default_value = "text")]
+        format: OutputFormat,
     },
 }
 

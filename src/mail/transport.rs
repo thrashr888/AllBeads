@@ -33,8 +33,11 @@ pub trait MailTransport: Send + Sync {
     fn inbox(&self, address: &Address) -> Result<Vec<StoredMessage>>;
 
     /// Get messages with a specific status
-    fn inbox_with_status(&self, address: &Address, status: DeliveryStatus)
-        -> Result<Vec<StoredMessage>>;
+    fn inbox_with_status(
+        &self,
+        address: &Address,
+        status: DeliveryStatus,
+    ) -> Result<Vec<StoredMessage>>;
 
     /// Get messages sent by an address (outbox)
     fn outbox(&self, address: &Address) -> Result<Vec<StoredMessage>>;

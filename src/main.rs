@@ -8470,7 +8470,11 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
     use std::process::Command;
 
     match cmd {
-        SwarmCommands::Create { epic_id, coordinator, force } => {
+        SwarmCommands::Create {
+            epic_id,
+            coordinator,
+            force,
+        } => {
             let mut args = vec!["swarm", "create", epic_id];
 
             let coord_arg;
@@ -8483,16 +8487,18 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
                 args.push("--force");
             }
 
-            let output = Command::new("bd")
-                .args(&args)
-                .output()
-                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
+            let output = Command::new("bd").args(&args).output().map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e))
+            })?;
 
             if output.status.success() {
                 print!("{}", String::from_utf8_lossy(&output.stdout));
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(allbeads::AllBeadsError::Config(format!("bd swarm create failed: {}", stderr)));
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "bd swarm create failed: {}",
+                    stderr
+                )));
             }
         }
 
@@ -8500,7 +8506,9 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
             let output = Command::new("bd")
                 .args(["swarm", "list"])
                 .output()
-                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e))
+                })?;
 
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
@@ -8513,7 +8521,10 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
                 }
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(allbeads::AllBeadsError::Config(format!("bd swarm list failed: {}", stderr)));
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "bd swarm list failed: {}",
+                    stderr
+                )));
             }
         }
 
@@ -8521,13 +8532,18 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
             let output = Command::new("bd")
                 .args(["swarm", "status"])
                 .output()
-                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e))
+                })?;
 
             if output.status.success() {
                 print!("{}", String::from_utf8_lossy(&output.stdout));
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(allbeads::AllBeadsError::Config(format!("bd swarm status failed: {}", stderr)));
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "bd swarm status failed: {}",
+                    stderr
+                )));
             }
         }
 
@@ -8535,13 +8551,18 @@ fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
             let output = Command::new("bd")
                 .args(["swarm", "validate", epic_id])
                 .output()
-                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
+                .map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e))
+                })?;
 
             if output.status.success() {
                 print!("{}", String::from_utf8_lossy(&output.stdout));
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                return Err(allbeads::AllBeadsError::Config(format!("bd swarm validate failed: {}", stderr)));
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "bd swarm validate failed: {}",
+                    stderr
+                )));
             }
         }
     }
@@ -10303,12 +10324,34 @@ fn handle_governance_command(
     }
 }
 
+/// Output scan results in the specified format
+fn output_scan_result(
+    result: &allbeads::governance::ScanResult,
+    format: &commands::OutputFormat,
+    show_all: bool,
+) {
+    use allbeads::governance::{format_scan_result_csv, format_scan_result_junit, print_scan_result};
+
+    match format {
+        commands::OutputFormat::Text => print_scan_result(result, show_all),
+        commands::OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(result).unwrap_or_default());
+        }
+        commands::OutputFormat::Csv => {
+            print!("{}", format_scan_result_csv(result));
+        }
+        commands::OutputFormat::Junit => {
+            print!("{}", format_scan_result_junit(result));
+        }
+    }
+}
+
 /// Handle the `scan` command - scan GitHub user/org for repositories
 async fn handle_scan_command(
     cmd: &commands::ScanCommands,
     _config_path: &Option<String>,
 ) -> allbeads::Result<()> {
-    use allbeads::governance::{print_scan_result, GitHubScanner, ScanFilter};
+    use allbeads::governance::{GitHubScanner, ScanFilter};
 
     // Get GitHub token from environment
     let token = std::env::var("GITHUB_TOKEN").ok();
@@ -10330,7 +10373,7 @@ async fn handle_scan_command(
             exclude_forks,
             exclude_archived,
             all,
-            json,
+            format,
         } => {
             let filter = ScanFilter {
                 min_stars: *min_stars,
@@ -10343,12 +10386,7 @@ async fn handle_scan_command(
             };
 
             let result = scanner.scan_user(username, &filter).await?;
-
-            if *json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
-            } else {
-                print_scan_result(&result, *all);
-            }
+            output_scan_result(&result, format, *all);
 
             Ok(())
         }
@@ -10362,7 +10400,7 @@ async fn handle_scan_command(
             exclude_archived,
             exclude_private,
             all,
-            json,
+            format,
         } => {
             let filter = ScanFilter {
                 min_stars: *min_stars,
@@ -10375,53 +10413,83 @@ async fn handle_scan_command(
             };
 
             let result = scanner.scan_org(org, &filter).await?;
-
-            if *json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
-            } else {
-                print_scan_result(&result, *all);
-            }
+            output_scan_result(&result, format, *all);
 
             Ok(())
         }
 
-        commands::ScanCommands::Compare { json } => {
+        commands::ScanCommands::Compare { format } => {
             // For now, just show a summary comparing managed vs GitHub
             use allbeads::config::AllBeadsConfig;
 
             let config_path = AllBeadsConfig::default_path();
             let config = AllBeadsConfig::load(&config_path)?;
 
-            println!("Managed Contexts vs GitHub");
-            println!("═══════════════════════════════════════════════════════════════");
-            println!();
-            println!("Managed contexts in AllBeads: {}", config.contexts.len());
-            for ctx in &config.contexts {
-                let path_str = ctx
-                    .path
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "(no local path)".to_string());
-                println!("  • {} - {}", ctx.name, path_str);
-            }
-            println!();
-            println!("To scan GitHub for unmanaged repos, run:");
-            println!("  ab scan user <username>");
-            println!("  ab scan org <organization>");
-
-            if *json {
-                let contexts: Vec<_> = config
-                    .contexts
-                    .iter()
-                    .map(|c| {
-                        serde_json::json!({
-                            "name": c.name,
-                            "url": c.url,
-                            "path": c.path.as_ref().map(|p| p.display().to_string())
-                        })
+            let contexts: Vec<_> = config
+                .contexts
+                .iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "name": c.name,
+                        "url": c.url,
+                        "path": c.path.as_ref().map(|p| p.display().to_string())
                     })
-                    .collect();
-                println!("{}", serde_json::json!({ "contexts": contexts }));
+                })
+                .collect();
+
+            match format {
+                commands::OutputFormat::Text => {
+                    println!("Managed Contexts vs GitHub");
+                    println!("═══════════════════════════════════════════════════════════════");
+                    println!();
+                    println!("Managed contexts in AllBeads: {}", config.contexts.len());
+                    for ctx in &config.contexts {
+                        let path_str = ctx
+                            .path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_else(|| "(no local path)".to_string());
+                        println!("  • {} - {}", ctx.name, path_str);
+                    }
+                    println!();
+                    println!("To scan GitHub for unmanaged repos, run:");
+                    println!("  ab scan user <username>");
+                    println!("  ab scan org <organization>");
+                }
+                commands::OutputFormat::Json => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({ "contexts": contexts }))?
+                    );
+                }
+                commands::OutputFormat::Csv => {
+                    println!("name,url,path");
+                    for ctx in &config.contexts {
+                        let path_str = ctx
+                            .path
+                            .as_ref()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default();
+                        println!("{},{},{}", ctx.name, ctx.url, path_str);
+                    }
+                }
+                commands::OutputFormat::Junit => {
+                    // JUnit doesn't make sense for compare, output empty testsuite
+                    println!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+                    println!(
+                        "<testsuites name=\"allbeads-compare\" tests=\"{}\" failures=\"0\">",
+                        config.contexts.len()
+                    );
+                    println!(
+                        "  <testsuite name=\"managed-contexts\" tests=\"{}\">",
+                        config.contexts.len()
+                    );
+                    for ctx in &config.contexts {
+                        println!("    <testcase name=\"{}\" classname=\"context\" />", ctx.name);
+                    }
+                    println!("  </testsuite>");
+                    println!("</testsuites>");
+                }
             }
 
             Ok(())
@@ -10435,7 +10503,7 @@ async fn handle_scan_command(
             exclude_forks,
             exclude_archived,
             all,
-            json,
+            format,
         } => {
             // Auto-detect target type: repo URL, user, or org
             let filter = ScanFilter {
@@ -10463,12 +10531,7 @@ async fn handle_scan_command(
                     let owner = parts[0];
                     let repo = parts[1].trim_end_matches(".git");
                     let result = scanner.scan_single_repo(owner, repo).await?;
-
-                    if *json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        print_scan_result(&result, true);
-                    }
+                    output_scan_result(&result, format, true);
                     return Ok(());
                 }
             }
@@ -10479,29 +10542,20 @@ async fn handle_scan_command(
 
             match result {
                 Ok(scan_result) if !scan_result.repositories.is_empty() => {
-                    if *json {
-                        println!("{}", serde_json::to_string_pretty(&scan_result)?);
-                    } else {
-                        print_scan_result(&scan_result, *all);
-                    }
+                    output_scan_result(&scan_result, format, *all);
                 }
                 _ => {
                     // Try as org
                     eprintln!("Not a user, trying as organization...");
                     let result = scanner.scan_org(target, &filter).await?;
-
-                    if *json {
-                        println!("{}", serde_json::to_string_pretty(&result)?);
-                    } else {
-                        print_scan_result(&result, *all);
-                    }
+                    output_scan_result(&result, format, *all);
                 }
             }
 
             Ok(())
         }
 
-        commands::ScanCommands::Repo { url, json } => {
+        commands::ScanCommands::Repo { url, format } => {
             // Parse repo URL
             let parts: Vec<&str> = url
                 .trim_start_matches("https://")
@@ -10520,12 +10574,7 @@ async fn handle_scan_command(
             let owner = parts[0];
             let repo = parts[1].trim_end_matches(".git");
             let result = scanner.scan_single_repo(owner, repo).await?;
-
-            if *json {
-                println!("{}", serde_json::to_string_pretty(&result)?);
-            } else {
-                print_scan_result(&result, true);
-            }
+            output_scan_result(&result, format, true);
 
             Ok(())
         }

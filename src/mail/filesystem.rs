@@ -74,9 +74,7 @@ impl FilesystemTransport {
 
     /// Get the inbox directory for an address
     fn inbox_dir(&self, address: &Address) -> PathBuf {
-        self.base_path
-            .join("inbox")
-            .join(sanitize_address(address))
+        self.base_path.join("inbox").join(sanitize_address(address))
     }
 
     /// Get the outbox directory for an address
@@ -115,7 +113,11 @@ impl FilesystemTransport {
     }
 
     /// Update a message on disk
-    fn update_message(&self, path: &Path, update_fn: impl FnOnce(&mut MessageRecord)) -> Result<()> {
+    fn update_message(
+        &self,
+        path: &Path,
+        update_fn: impl FnOnce(&mut MessageRecord),
+    ) -> Result<()> {
         let content = fs::read_to_string(path)?;
         let mut record: MessageRecord = serde_json::from_str(&content)?;
         update_fn(&mut record);
@@ -218,7 +220,10 @@ impl MailTransport for FilesystemTransport {
         status: DeliveryStatus,
     ) -> Result<Vec<StoredMessage>> {
         let messages = self.inbox(address)?;
-        Ok(messages.into_iter().filter(|m| m.status == status).collect())
+        Ok(messages
+            .into_iter()
+            .filter(|m| m.status == status)
+            .collect())
     }
 
     fn outbox(&self, address: &Address) -> Result<Vec<StoredMessage>> {
@@ -302,7 +307,10 @@ fn message_to_json(message: &Message) -> MessageJson {
         message_type: msg_type.to_string(),
         payload,
         timestamp: message.timestamp.to_rfc3339(),
-        correlation_id: message.correlation_id.as_ref().map(|id| id.as_str().to_string()),
+        correlation_id: message
+            .correlation_id
+            .as_ref()
+            .map(|id| id.as_str().to_string()),
     }
 }
 
@@ -384,9 +392,15 @@ fn parse_message_type(type_name: &str, payload: &serde_json::Value) -> Result<Me
 
     match type_name {
         "Lock" => Ok(MessageType::Lock(serde_json::from_value(payload.clone())?)),
-        "Unlock" => Ok(MessageType::Unlock(serde_json::from_value(payload.clone())?)),
-        "Notify" => Ok(MessageType::Notify(serde_json::from_value(payload.clone())?)),
-        "Request" => Ok(MessageType::Request(serde_json::from_value(payload.clone())?)),
+        "Unlock" => Ok(MessageType::Unlock(serde_json::from_value(
+            payload.clone(),
+        )?)),
+        "Notify" => Ok(MessageType::Notify(serde_json::from_value(
+            payload.clone(),
+        )?)),
+        "Request" => Ok(MessageType::Request(serde_json::from_value(
+            payload.clone(),
+        )?)),
         "Broadcast" => Ok(MessageType::Broadcast(serde_json::from_value(
             payload.clone(),
         )?)),

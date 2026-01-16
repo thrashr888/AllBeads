@@ -1237,6 +1237,167 @@ pub fn print_scan_result(result: &ScanResult, show_all: bool) {
     println!("Run: ab onboard <repo> to start onboarding");
 }
 
+/// Format scan results as CSV
+pub fn format_scan_result_csv(result: &ScanResult) -> String {
+    let mut csv = String::new();
+
+    // Header
+    csv.push_str("name,full_name,url,language,stars,forks,is_fork,is_archived,is_private,days_since_push,managed,priority,agents\n");
+
+    // Data rows
+    for repo in &result.repositories {
+        let agents: Vec<_> = repo.detected_agents.iter().map(|a| a.name()).collect();
+        let agents_str = agents.join(";");
+        let days = repo
+            .days_since_push
+            .map(|d| d.to_string())
+            .unwrap_or_default();
+
+        csv.push_str(&format!(
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
+            escape_csv(&repo.name),
+            escape_csv(&repo.full_name),
+            escape_csv(&repo.url),
+            escape_csv(repo.language.as_deref().unwrap_or("")),
+            repo.stars,
+            repo.forks,
+            repo.is_fork,
+            repo.is_archived,
+            repo.is_private,
+            days,
+            repo.managed,
+            format!("{:?}", repo.onboarding_priority),
+            escape_csv(&agents_str),
+        ));
+    }
+
+    csv
+}
+
+/// Escape a field for CSV output
+fn escape_csv(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
+}
+
+/// Format scan results as JUnit XML (for CI integration)
+///
+/// Each repository is a test case:
+/// - Managed repos are "passed" tests
+/// - High priority unmanaged repos are "failures" (needs attention)
+/// - Medium priority are "warnings" (skipped with message)
+/// - Low priority are "passed" (info only)
+pub fn format_scan_result_junit(result: &ScanResult) -> String {
+    let mut xml = String::new();
+
+    let source_name = match &result.source {
+        ScanSource::User(u) => format!("user:{}", u),
+        ScanSource::Organization(o) => format!("org:{}", o),
+        ScanSource::Repository(r) => format!("repo:{}", r),
+    };
+
+    let total = result.repositories.len();
+    let failures = result
+        .repositories
+        .iter()
+        .filter(|r| !r.managed && r.onboarding_priority == OnboardingPriority::High)
+        .count();
+    let skipped = result
+        .repositories
+        .iter()
+        .filter(|r| !r.managed && r.onboarding_priority == OnboardingPriority::Medium)
+        .count();
+
+    xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    xml.push_str(&format!(
+        "<testsuites name=\"allbeads-scan\" tests=\"{}\" failures=\"{}\" skipped=\"{}\">\n",
+        total, failures, skipped
+    ));
+    xml.push_str(&format!(
+        "  <testsuite name=\"{}\" tests=\"{}\" failures=\"{}\" skipped=\"{}\" timestamp=\"{}\">\n",
+        escape_xml(&source_name),
+        total,
+        failures,
+        skipped,
+        result.timestamp.to_rfc3339()
+    ));
+
+    for repo in &result.repositories {
+        let agents: Vec<_> = repo.detected_agents.iter().map(|a| a.name()).collect();
+        let agents_str = if agents.is_empty() {
+            "none".to_string()
+        } else {
+            agents.join(", ")
+        };
+
+        xml.push_str(&format!(
+            "    <testcase name=\"{}\" classname=\"{}\"",
+            escape_xml(&repo.name),
+            escape_xml(&repo.full_name)
+        ));
+
+        if repo.managed {
+            // Managed repos pass
+            xml.push_str(" />\n");
+        } else {
+            match repo.onboarding_priority {
+                OnboardingPriority::High => {
+                    // High priority unmanaged = failure
+                    xml.push_str(">\n");
+                    xml.push_str(&format!(
+                        "      <failure message=\"Unmanaged repo with agent configs: {}\" type=\"high_priority\">\n",
+                        agents_str
+                    ));
+                    xml.push_str(&format!(
+                        "Repository {} has agent configuration but is not managed by AllBeads.\n",
+                        repo.full_name
+                    ));
+                    xml.push_str(&format!(
+                        "Stars: {}, Language: {}\n",
+                        repo.stars,
+                        repo.language.as_deref().unwrap_or("unknown")
+                    ));
+                    xml.push_str(&format!("URL: {}\n", repo.url));
+                    xml.push_str("Run: ab onboard ");
+                    xml.push_str(&repo.full_name);
+                    xml.push_str("\n");
+                    xml.push_str("      </failure>\n");
+                    xml.push_str("    </testcase>\n");
+                }
+                OnboardingPriority::Medium => {
+                    // Medium priority = skipped with message
+                    xml.push_str(">\n");
+                    xml.push_str(&format!(
+                        "      <skipped message=\"Active repo without agent config\" />\n"
+                    ));
+                    xml.push_str("    </testcase>\n");
+                }
+                OnboardingPriority::Low | OnboardingPriority::Skip => {
+                    // Low priority = pass (info only)
+                    xml.push_str(" />\n");
+                }
+            }
+        }
+    }
+
+    xml.push_str("  </testsuite>\n");
+    xml.push_str("</testsuites>\n");
+
+    xml
+}
+
+/// Escape a string for XML output
+fn escape_xml(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
