@@ -58,7 +58,11 @@ impl AgentType {
         match self {
             Self::Claude => vec![prompt.to_string()],
             Self::OpenCode => vec!["--prompt".to_string(), prompt.to_string()],
-            Self::Codex => vec![prompt.to_string()],
+            Self::Codex => vec![
+                "exec".to_string(),
+                "--full-auto".to_string(),
+                prompt.to_string(),
+            ],
             Self::Gemini => vec!["-p".to_string(), prompt.to_string()],
             Self::Aider => vec!["--message".to_string(), prompt.to_string()],
             Self::Cody => vec!["chat".to_string(), prompt.to_string()],
@@ -88,6 +92,15 @@ impl AgentType {
             self,
             Self::Cursor | Self::Kiro | Self::Antigravity | Self::Copilot
         )
+    }
+
+    /// Check if this agent runs in a sandbox that prevents git operations
+    ///
+    /// Sandboxed agents typically can't write to `.git/` directories, which
+    /// prevents branch creation, commits, and pushes. For these agents,
+    /// AllBeads should handle git operations before/after the agent runs.
+    pub fn is_sandboxed(&self) -> bool {
+        matches!(self, Self::Codex)
     }
 
     /// Get the web URL for this agent (for web agents)
@@ -330,6 +343,10 @@ mod tests {
         assert_eq!(
             AgentType::OpenCode.prompt_args(prompt),
             vec!["--prompt", "Fix the bug"]
+        );
+        assert_eq!(
+            AgentType::Codex.prompt_args(prompt),
+            vec!["exec", "--full-auto", "Fix the bug"]
         );
     }
 

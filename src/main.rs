@@ -5178,8 +5178,11 @@ fn handle_handoff_command(
         allbeads::AllBeadsError::Config(format!("Failed to load bead '{}': {}{}", bead_id, e, hint))
     })?;
 
-    // Build prompt from bead
-    let prompt = build_handoff_prompt(&issue);
+    // Check if agent is sandboxed (can't do git operations)
+    let is_sandboxed = agent_type.is_sandboxed();
+
+    // Build prompt from bead (with sandboxed flag)
+    let prompt = build_handoff_prompt(&issue, is_sandboxed);
 
     // Create worktree if requested
     let working_dir = if worktree && !agent_type.is_web_agent() {
@@ -5231,6 +5234,13 @@ fn handle_handoff_command(
         if worktree {
             println!("  {} Would create worktree for bead", style::dim("→"));
         }
+        if is_sandboxed {
+            println!(
+                "  {} Would create branch 'bead/{}' (sandboxed agent)",
+                style::dim("→"),
+                bead_id
+            );
+        }
 
         // Show web URL for web agents
         if agent_type.is_web_agent() {
@@ -5281,6 +5291,77 @@ fn handle_handoff_command(
             style::warning("⚠"),
             e
         );
+    }
+
+    // For sandboxed agents, create the branch before launching
+    // (they can't write to .git/ directories)
+    if is_sandboxed && cli_available && working_dir.is_none() {
+        let branch_name = format!("bead/{}", bead_id);
+        println!(
+            "  {} Creating branch for sandboxed agent...",
+            style::dim("→")
+        );
+
+        // Get the working directory for git operations
+        let work_dir = context_path.as_ref().map(|p| p.as_path());
+
+        // Create and checkout the branch
+        let mut checkout_cmd = Command::new("git");
+        checkout_cmd
+            .args(["checkout", "-b", &branch_name]);
+        if let Some(dir) = work_dir {
+            checkout_cmd.current_dir(dir);
+        }
+
+        match checkout_cmd.output() {
+            Ok(output) if output.status.success() => {
+                println!(
+                    "  {} Created branch '{}'",
+                    style::success("✓"),
+                    style::highlight(&branch_name)
+                );
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                // Branch might already exist, try to checkout
+                if stderr.contains("already exists") {
+                    let mut switch_cmd = Command::new("git");
+                    switch_cmd.args(["checkout", &branch_name]);
+                    if let Some(dir) = work_dir {
+                        switch_cmd.current_dir(dir);
+                    }
+                    if switch_cmd.output().map(|o| o.status.success()).unwrap_or(false) {
+                        println!(
+                            "  {} Switched to existing branch '{}'",
+                            style::success("✓"),
+                            style::highlight(&branch_name)
+                        );
+                    } else {
+                        eprintln!(
+                            "  {} Failed to switch to branch '{}': {}",
+                            style::warning("⚠"),
+                            branch_name,
+                            stderr.trim()
+                        );
+                    }
+                } else {
+                    eprintln!(
+                        "  {} Failed to create branch '{}': {}",
+                        style::warning("⚠"),
+                        branch_name,
+                        stderr.trim()
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "  {} Failed to create branch '{}': {}",
+                    style::warning("⚠"),
+                    branch_name,
+                    e
+                );
+            }
+        }
     }
 
     println!(
@@ -5558,7 +5639,7 @@ fn create_handoff_worktree(bead_id: &str) -> allbeads::Result<PathBuf> {
     Ok(worktree_path)
 }
 
-fn build_handoff_prompt(issue: &beads::Issue) -> String {
+fn build_handoff_prompt(issue: &beads::Issue, is_sandboxed: bool) -> String {
     let mut prompt = format!(
         "You are working on bead {}.\n\n## Title\n{}\n",
         issue.id, issue.title
@@ -5579,9 +5660,32 @@ fn build_handoff_prompt(issue: &beads::Issue) -> String {
         prompt.push_str(&format!("\n## Labels\n{}\n", issue.labels.join(", ")));
     }
 
-    // Add comprehensive workflow instructions
-    prompt.push_str(&format!(
-        r#"
+    // Add workflow instructions - different for sandboxed agents
+    if is_sandboxed {
+        // Sandboxed agents can't do git operations - branch already created
+        prompt.push_str(&format!(
+            r#"
+## Workflow
+
+**Note:** You are running in a sandboxed environment. Git operations (branch, commit, push)
+will be handled externally. Focus on the work itself.
+
+1. **Do the work** described above - make the necessary code changes
+
+2. **Close the bead** when finished:
+   ```bash
+   bd close {}
+   ```
+
+The branch `bead/{}` has already been created. After you complete the work,
+the changes will be committed and pushed externally.
+"#,
+            issue.id, issue.id
+        ));
+    } else {
+        // Full workflow for non-sandboxed agents
+        prompt.push_str(&format!(
+            r#"
 ## Workflow
 
 1. **Create a branch** for this work:
@@ -5610,8 +5714,9 @@ fn build_handoff_prompt(issue: &beads::Issue) -> String {
 
 When finished, the bead should be closed and all changes pushed to the remote branch.
 "#,
-        issue.id, issue.id, issue.id, issue.id
-    ));
+            issue.id, issue.id, issue.id, issue.id
+        ));
+    }
 
     prompt
 }
