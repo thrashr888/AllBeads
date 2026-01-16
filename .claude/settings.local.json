@@ -35,6 +35,7 @@
       "Bash(cargo doc:*)",
       "Bash(cargo fix:*)",
       "Bash(cargo fmt:*)",
+      "Bash(cargo install --path .:*)",
       "Bash(cargo run:*)",
       "Bash(cargo search:*)",
       "Bash(cargo test:*)",
@@ -71,7 +72,8 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:jules.google.com)",
-      "Bash(gh search code:*)"
+      "Bash(gh search code:*)",
+      "Bash(cargo install:*)"
     ]
   }
 }
