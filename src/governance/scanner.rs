@@ -314,7 +314,20 @@ impl GitHubScanner {
 
     /// Scan a single repository by owner and name
     pub async fn scan_single_repo(&self, owner: &str, repo: &str) -> Result<ScanResult> {
-        eprintln!("Fetching repository info for {}/{}...", owner, repo);
+        self.scan_single_repo_with_options(owner, repo, &ScanOptions::default())
+            .await
+    }
+
+    /// Scan a single repository with options
+    pub async fn scan_single_repo_with_options(
+        &self,
+        owner: &str,
+        repo: &str,
+        options: &ScanOptions,
+    ) -> Result<ScanResult> {
+        if options.show_progress {
+            eprintln!("Fetching repository info for {}/{}...", owner, repo);
+        }
 
         let url = format!("{}/repos/{}/{}", self.base_url, owner, repo);
 
@@ -337,7 +350,9 @@ impl GitHubScanner {
         let github_repo: GitHubRepo = response.json().await?;
 
         // For single repo, directly check for agent files instead of search API
-        eprintln!("Checking for agent configurations...");
+        if options.show_progress {
+            eprintln!("Checking for agent configurations...");
+        }
         let detected_agents = self.detect_agents_in_repo(owner, repo).await;
 
         // Check if managed
@@ -400,7 +415,9 @@ impl GitHubScanner {
             days_since_push,
         };
 
-        eprintln!("Scan complete!");
+        if options.show_progress {
+            eprintln!("Scan complete!");
+        }
 
         Ok(ScanResult {
             timestamp: chrono::Utc::now(),

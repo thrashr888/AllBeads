@@ -10346,17 +10346,36 @@ fn output_scan_result(
     }
 }
 
+/// Helper to check if format is text (for showing progress)
+fn is_text_format(format: &commands::OutputFormat) -> bool {
+    matches!(format, commands::OutputFormat::Text)
+}
+
 /// Handle the `scan` command - scan GitHub user/org for repositories
 async fn handle_scan_command(
     cmd: &commands::ScanCommands,
     _config_path: &Option<String>,
 ) -> allbeads::Result<()> {
-    use allbeads::governance::{GitHubScanner, ScanFilter};
+    use allbeads::governance::{GitHubScanner, ScanFilter, ScanOptions};
+
+    // Determine if we should show progress (only for text format)
+    let show_progress = match cmd {
+        commands::ScanCommands::User { format, .. }
+        | commands::ScanCommands::Org { format, .. }
+        | commands::ScanCommands::GitHub { format, .. }
+        | commands::ScanCommands::Repo { format, .. }
+        | commands::ScanCommands::Compare { format, .. } => is_text_format(format),
+    };
+
+    let scan_options = ScanOptions {
+        show_progress,
+        ..Default::default()
+    };
 
     // Get GitHub token from environment
     let token = std::env::var("GITHUB_TOKEN").ok();
 
-    if token.is_none() {
+    if token.is_none() && show_progress {
         eprintln!("Warning: GITHUB_TOKEN not set. Rate limits will be strict and private repos won't be visible.");
         eprintln!("Set GITHUB_TOKEN environment variable for better results.");
         eprintln!();
@@ -10385,7 +10404,9 @@ async fn handle_scan_command(
                 topics: Vec::new(),
             };
 
-            let result = scanner.scan_user(username, &filter).await?;
+            let result = scanner
+                .scan_user_with_options(username, &filter, &scan_options)
+                .await?;
             output_scan_result(&result, format, *all);
 
             Ok(())
@@ -10412,7 +10433,9 @@ async fn handle_scan_command(
                 topics: Vec::new(),
             };
 
-            let result = scanner.scan_org(org, &filter).await?;
+            let result = scanner
+                .scan_org_with_options(org, &filter, &scan_options)
+                .await?;
             output_scan_result(&result, format, *all);
 
             Ok(())
@@ -10530,15 +10553,21 @@ async fn handle_scan_command(
                     // It's a repo reference
                     let owner = parts[0];
                     let repo = parts[1].trim_end_matches(".git");
-                    let result = scanner.scan_single_repo(owner, repo).await?;
+                    let result = scanner
+                        .scan_single_repo_with_options(owner, repo, &scan_options)
+                        .await?;
                     output_scan_result(&result, format, true);
                     return Ok(());
                 }
             }
 
             // Try as user first, then org if that fails
-            eprintln!("Scanning {}...", target);
-            let result = scanner.scan_user(target, &filter).await;
+            if show_progress {
+                eprintln!("Scanning {}...", target);
+            }
+            let result = scanner
+                .scan_user_with_options(target, &filter, &scan_options)
+                .await;
 
             match result {
                 Ok(scan_result) if !scan_result.repositories.is_empty() => {
@@ -10546,8 +10575,12 @@ async fn handle_scan_command(
                 }
                 _ => {
                     // Try as org
-                    eprintln!("Not a user, trying as organization...");
-                    let result = scanner.scan_org(target, &filter).await?;
+                    if show_progress {
+                        eprintln!("Not a user, trying as organization...");
+                    }
+                    let result = scanner
+                        .scan_org_with_options(target, &filter, &scan_options)
+                        .await?;
                     output_scan_result(&result, format, *all);
                 }
             }
@@ -10573,7 +10606,9 @@ async fn handle_scan_command(
 
             let owner = parts[0];
             let repo = parts[1].trim_end_matches(".git");
-            let result = scanner.scan_single_repo(owner, repo).await?;
+            let result = scanner
+                .scan_single_repo_with_options(owner, repo, &scan_options)
+                .await?;
             output_scan_result(&result, format, true);
 
             Ok(())
