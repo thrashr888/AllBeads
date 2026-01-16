@@ -672,7 +672,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     filtered.retain(|i| {
                         i.assignee
                             .as_ref()
-                            .map_or(false, |a| a.contains(assignee_str))
+                            .is_some_and(|a| a.contains(assignee_str))
                     });
                 }
 
@@ -756,7 +756,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 beads.retain(|b| {
                     b.assignee
                         .as_ref()
-                        .map_or(false, |a| a.contains(&assignee_str))
+                        .is_some_and(|a| a.contains(&assignee_str))
                 });
             }
 
@@ -5407,7 +5407,7 @@ fn handle_handoff_command(
         );
 
         // Get the working directory for git operations
-        let work_dir = context_path.as_ref().map(|p| p.as_path());
+        let work_dir = context_path.as_deref();
 
         // Create and checkout the branch
         let mut checkout_cmd = Command::new("git");
@@ -5876,7 +5876,7 @@ fn handle_handoff_agents() -> allbeads::Result<()> {
     let agents = detect_installed_agents();
 
     // Terminal agents
-    println!("  {} {}", style::dim("Terminal Agents:"), "");
+    println!("  {} ", style::dim("Terminal Agents:"));
     for (agent, installed) in &agents {
         if !agent.is_web_agent() && !agent.is_ide_agent() {
             let status = if *installed {
@@ -5900,7 +5900,7 @@ fn handle_handoff_agents() -> allbeads::Result<()> {
 
     // IDE agents
     println!();
-    println!("  {} {}", style::dim("IDE Agents:"), "");
+    println!("  {} ", style::dim("IDE Agents:"));
     for (agent, installed) in &agents {
         if agent.is_ide_agent() {
             let status = if *installed {
@@ -5924,7 +5924,7 @@ fn handle_handoff_agents() -> allbeads::Result<()> {
 
     // Web agents
     println!();
-    println!("  {} {}", style::dim("Web Agents (browser):"), "");
+    println!("  {} ", style::dim("Web Agents (browser):"));
     for (agent, _) in &agents {
         if agent.is_web_agent() {
             if let Some(url) = agent.web_url() {

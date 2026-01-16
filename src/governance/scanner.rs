@@ -57,7 +57,7 @@ pub enum ScanField {
 
 impl ScanField {
     /// Parse a field name string into a ScanField
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "name" => Some(Self::Name),
             "full_name" | "fullname" => Some(Self::FullName),
@@ -208,7 +208,7 @@ impl FieldSet {
                     }
                 }
                 _ => {
-                    if let Some(field) = ScanField::from_str(part) {
+                    if let Some(field) = ScanField::parse(part) {
                         set.add(field);
                     } else {
                         return Err(format!("Unknown field: '{}'. Available fields: name, full_name, url, language, stars, forks, fork, archived, private, days, managed, priority, agents, settings, workflows, commands, beads. Shortcuts: all, basic, detailed", part));
@@ -1629,20 +1629,22 @@ fn parse_tree_entries(entries: &[GitTreeEntry]) -> DetailedInfo {
         }
 
         // Check for .github/workflows directory
-        if path.starts_with(".github/workflows/") && entry.entry_type == "blob" {
-            if path.ends_with(".yml") || path.ends_with(".yaml") {
-                workflow_files += 1;
-            }
+        if path.starts_with(".github/workflows/")
+            && entry.entry_type == "blob"
+            && (path.ends_with(".yml") || path.ends_with(".yaml"))
+        {
+            workflow_files += 1;
         }
         if path == ".github/workflows" && entry.entry_type == "tree" {
             info.has_workflows = true;
         }
 
         // Check for .claude/commands directory
-        if path.starts_with(".claude/commands/") && entry.entry_type == "blob" {
-            if path.ends_with(".md") {
-                command_files += 1;
-            }
+        if path.starts_with(".claude/commands/")
+            && entry.entry_type == "blob"
+            && path.ends_with(".md")
+        {
+            command_files += 1;
         }
         if path == ".claude/commands" && entry.entry_type == "tree" {
             info.has_commands = true;
@@ -2091,16 +2093,16 @@ pub fn format_scan_result_junit(result: &ScanResult) -> String {
                     xml.push_str(&format!("URL: {}\n", repo.url));
                     xml.push_str("Run: ab onboard ");
                     xml.push_str(&repo.full_name);
-                    xml.push_str("\n");
+                    xml.push('\n');
                     xml.push_str("      </failure>\n");
                     xml.push_str("    </testcase>\n");
                 }
                 OnboardingPriority::Medium => {
                     // Medium priority = skipped with message
                     xml.push_str(">\n");
-                    xml.push_str(&format!(
-                        "      <skipped message=\"Active repo without agent config\" />\n"
-                    ));
+                    xml.push_str(
+                        "      <skipped message=\"Active repo without agent config\" />\n",
+                    );
                     xml.push_str("    </testcase>\n");
                 }
                 OnboardingPriority::Low | OnboardingPriority::Skip => {

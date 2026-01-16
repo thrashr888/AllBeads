@@ -308,7 +308,6 @@ impl Aggregator {
                 let completed = Arc::clone(&completed);
                 let results = Arc::clone(&results);
                 let callback = Arc::clone(&callback);
-                let total = total;
                 let is_pull = self.agg_config.sync_mode == SyncMode::Pull;
                 let skip_errors = self.agg_config.skip_errors;
 

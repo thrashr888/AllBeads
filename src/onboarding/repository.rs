@@ -524,7 +524,7 @@ pub fn populate_onboarding_issues(path: &Path, agent_type: &str) -> Result<Vec<O
                 });
             }
         }
-        "all" | _ => {
+        _ => {
             // Legacy behavior: create issues for all missing configs
             let claude_md = path.join("CLAUDE.md");
             if !claude_md.exists() {
@@ -638,7 +638,7 @@ pub fn create_onboarding_beads(
         stdout
             .lines()
             .find(|l| l.contains("Created issue:"))
-            .and_then(|l| l.split(':').last())
+            .and_then(|l| l.split(':').next_back())
             .map(|s| s.trim().to_string())
     } else {
         None
@@ -677,7 +677,7 @@ pub fn create_onboarding_beads(
             if let Some(task_id) = stdout
                 .lines()
                 .find(|l| l.contains("Created issue:"))
-                .and_then(|l| l.split(':').last())
+                .and_then(|l| l.split(':').next_back())
                 .map(|s| s.trim().to_string())
             {
                 task_ids.push(task_id);
@@ -874,7 +874,7 @@ fn parse_marketplace_url(url: &str) -> (String, serde_json::Value) {
     // Generate marketplace name from repo name
     // e.g., "thrashr888/AllBeads" → "allbeads-marketplace"
     // e.g., "steveyegge/beads" → "beads-marketplace"
-    let name_part = repo.split('/').last().unwrap_or(&repo);
+    let name_part = repo.split('/').next_back().unwrap_or(&repo);
     let marketplace_name = format!(
         "{}-marketplace",
         name_part.to_lowercase().replace(".git", "")
