@@ -670,18 +670,20 @@ pub fn create_onboarding_beads(path: &Path, issues: &[OnboardingIssue]) -> Resul
         }
     }
 
-    // Link tasks to epic as dependencies (epic blocks tasks)
+    // Link epic to tasks as dependencies (tasks block epic - epic can't close until tasks done)
     if let Some(ref epic) = epic_id {
         for task_id in &task_ids {
             let mut dep_cmd = Command::new("bd");
             if use_no_db {
                 dep_cmd.arg("--no-db");
             }
+            // bd dep add <issue> <depends-on>
+            // epic depends on task (task blocks epic)
             dep_cmd
                 .arg("dep")
                 .arg("add")
-                .arg(task_id)
                 .arg(epic)
+                .arg(task_id)
                 .current_dir(path);
             let _ = dep_cmd.status(); // Ignore errors - dependency is optional
         }
