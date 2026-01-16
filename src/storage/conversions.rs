@@ -134,7 +134,11 @@ pub fn issue_to_bead(issue: beads::Issue) -> Result<Bead> {
         created_by: "unknown".to_string(), // beads::Issue doesn't track creator
         assignee: issue.assignee,
         dependencies: issue.depends_on.into_iter().map(BeadId::new).collect(),
-        blocks: issue.blocks.into_iter().map(|d| BeadId::new(d.id)).collect(),
+        blocks: issue
+            .blocks
+            .into_iter()
+            .map(|d| BeadId::new(d.id))
+            .collect(),
         labels: issue.labels.into_iter().collect(),
         notes: None,
         aiki_tasks: Vec::new(),

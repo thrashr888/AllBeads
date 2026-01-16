@@ -299,10 +299,20 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         ref agent,
         ready,
         list,
+        agents,
         dry_run,
+        worktree,
     } = command
     {
-        return handle_handoff_command(id.as_deref(), agent.as_deref(), ready, list, dry_run);
+        return handle_handoff_command(
+            id.as_deref(),
+            agent.as_deref(),
+            ready,
+            list,
+            agents,
+            dry_run,
+            worktree,
+        );
     }
 
     // Handle governance commands (don't need graph)
@@ -510,13 +520,108 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             priority,
             context,
             label,
+            issue_type,
+            assignee,
+            ready,
+            all,
+            limit,
+            local,
         } => {
+            // Fast path: use local bd list directly (skip aggregation)
+            if local {
+                let bd = Beads::new().map_err(|e| {
+                    allbeads::AllBeadsError::Config(format!("Not in a beads repository: {}", e))
+                })?;
+
+                // Use bd ready if --ready flag is set
+                let issues = if ready {
+                    bd.ready().map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!("Failed to get ready beads: {}", e))
+                    })?
+                } else {
+                    // Build bd list arguments
+                    let status_arg = status.as_deref();
+                    bd.list(status_arg, None).map_err(|e| {
+                        allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e))
+                    })?
+                };
+
+                // Apply additional filters that bd list doesn't support
+                let mut filtered: Vec<_> = issues.iter().collect();
+
+                if let Some(priority_str) = &priority {
+                    let p = priority_str.trim_start_matches('P').parse::<u8>().ok();
+                    filtered.retain(|i| i.priority == p);
+                }
+
+                if let Some(label_str) = &label {
+                    filtered.retain(|i| i.labels.contains(label_str));
+                }
+
+                if let Some(type_str) = &issue_type {
+                    let type_lower = type_str.to_lowercase();
+                    filtered.retain(|i| i.issue_type.to_lowercase() == type_lower);
+                }
+
+                if let Some(assignee_str) = &assignee {
+                    filtered.retain(|i| {
+                        i.assignee
+                            .as_ref()
+                            .map_or(false, |a| a.contains(assignee_str))
+                    });
+                }
+
+                // Filter closed unless --all
+                if !all && status.is_none() && !ready {
+                    filtered.retain(|i| i.status != "closed");
+                }
+
+                // Sort by priority
+                filtered.sort_by_key(|i| i.priority.unwrap_or(2));
+
+                // Apply limit
+                let display_count = filtered.len().min(limit);
+                let total = filtered.len();
+
+                println!("Found {} beads (local):", total);
+                println!();
+                for issue in filtered.into_iter().take(limit) {
+                    let p = issue.priority.unwrap_or(2);
+                    println!(
+                        "{} [P{}] [{}] {} - {}",
+                        style::status_indicator(&issue.status),
+                        p,
+                        issue.issue_type,
+                        style::issue_id(&issue.id),
+                        issue.title
+                    );
+                }
+                if display_count < total {
+                    println!();
+                    println!(
+                        "  {} Showing {} of {} (use --limit 0 for all)",
+                        style::dim("..."),
+                        display_count,
+                        total
+                    );
+                }
+                return Ok(());
+            }
+
             let mut beads: Vec<_> = graph.beads.values().collect();
+
+            // Apply ready filter (open, no blockers)
+            if ready {
+                beads.retain(|b| b.status == Status::Open && b.dependencies.is_empty());
+            }
 
             // Apply filters
             if let Some(status_str) = status {
                 let status_filter = parse_status(&status_str)?;
                 beads.retain(|b| b.status == status_filter);
+            } else if !all && !ready {
+                // Default: exclude closed unless --all or --ready
+                beads.retain(|b| b.status != Status::Closed);
             }
 
             if let Some(priority_str) = priority {
@@ -537,14 +642,43 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 beads.retain(|b| b.labels.contains(&label_str));
             }
 
+            if let Some(type_str) = issue_type {
+                let type_filter = parse_issue_type(&type_str)?;
+                beads.retain(|b| b.issue_type == type_filter);
+            }
+
+            if let Some(assignee_str) = assignee {
+                beads.retain(|b| {
+                    b.assignee
+                        .as_ref()
+                        .map_or(false, |a| a.contains(&assignee_str))
+                });
+            }
+
             // Sort by priority then status
             beads.sort_by_key(|b| (b.priority, status_to_sort_key(b.status)));
 
+            // Apply limit
+            let total = beads.len();
+            let display_count = if limit == 0 { total } else { total.min(limit) };
+
             // Display results
-            println!("Found {} beads:", beads.len());
+            println!("Found {} beads:", total);
             println!();
-            for bead in beads {
+            for bead in beads
+                .into_iter()
+                .take(if limit == 0 { usize::MAX } else { limit })
+            {
                 print_bead_summary(bead);
+            }
+            if display_count < total {
+                println!();
+                println!(
+                    "  {} Showing {} of {} (use --limit 0 for all)",
+                    style::dim("..."),
+                    display_count,
+                    total
+                );
             }
         }
 
@@ -556,6 +690,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             let bead_id = BeadId::new(&id);
             if let Some(bead) = graph.get_bead(&bead_id) {
                 print_bead_detailed(bead);
+
+                // Show handoff info if bead has been handed off
+                if bead.labels.iter().any(|l| l == "handed-off") {
+                    show_handoff_info(&id, bead)?;
+                }
 
                 // Show provenance information if requested
                 if provenance {
@@ -2662,6 +2801,23 @@ fn parse_priority_arg(s: &str) -> Option<Priority> {
     parse_priority(s).ok()
 }
 
+fn parse_issue_type(s: &str) -> allbeads::Result<IssueType> {
+    match s.to_lowercase().as_str() {
+        "bug" => Ok(IssueType::Bug),
+        "feature" => Ok(IssueType::Feature),
+        "task" => Ok(IssueType::Task),
+        "epic" => Ok(IssueType::Epic),
+        "chore" => Ok(IssueType::Chore),
+        "merge_request" | "merge-request" | "mr" => Ok(IssueType::MergeRequest),
+        "molecule" => Ok(IssueType::Molecule),
+        "gate" => Ok(IssueType::Gate),
+        _ => Err(allbeads::AllBeadsError::Parse(format!(
+            "Invalid type: {}. Must be one of: bug, feature, task, epic, chore, merge_request, molecule, gate",
+            s
+        ))),
+    }
+}
+
 fn status_to_sort_key(status: Status) -> u8 {
     match status {
         Status::Open => 0,
@@ -2787,6 +2943,67 @@ fn print_bead_detailed(bead: &allbeads::graph::Bead) {
         println!("{}", style::subheader("Notes:"));
         println!("{}", notes);
     }
+}
+
+/// Show handoff info for a bead that has been handed off to an agent
+fn show_handoff_info(bead_id: &str, bead: &allbeads::graph::Bead) -> allbeads::Result<()> {
+    // Try to load comments from the beads crate
+    let beads = match Beads::new() {
+        Ok(b) => b,
+        Err(_) => return Ok(()), // Silently skip if beads not available
+    };
+
+    let comments = match beads.comments(bead_id) {
+        Ok(c) => c,
+        Err(_) => return Ok(()), // Silently skip if comments not found
+    };
+
+    println!();
+    println!("{}", style::subheader("Handoff Info:"));
+
+    // Parse comments to find handoff info
+    let mut agent_info: Option<String> = None;
+    let mut handoff_time: Option<String> = None;
+    let mut task_url: Option<String> = None;
+
+    for comment in &comments {
+        let content = &comment.content;
+        if content.starts_with("[HANDOFF]") {
+            // Parse: [HANDOFF] Agent: Claude Code, Time: 2026-01-15T10:30:00Z
+            if let Some(agent_part) = content.strip_prefix("[HANDOFF] Agent: ") {
+                if let Some(comma_pos) = agent_part.find(", Time:") {
+                    agent_info = Some(agent_part[..comma_pos].to_string());
+                    let time_part = &agent_part[comma_pos + 7..]; // Skip ", Time:"
+                    handoff_time = Some(time_part.trim().to_string());
+                }
+            }
+        } else if content.starts_with("[TASK_URL]") {
+            // Parse: [TASK_URL] https://...
+            if let Some(url) = content.strip_prefix("[TASK_URL] ") {
+                task_url = Some(url.trim().to_string());
+            }
+        }
+    }
+
+    if let Some(agent) = agent_info {
+        println!("  {} {}", style::dim("Agent:"), style::highlight(&agent));
+    }
+
+    if let Some(time) = handoff_time {
+        println!("  {} {}", style::dim("Handed off:"), time);
+    }
+
+    if let Some(url) = task_url {
+        println!("  {} {}", style::dim("Task URL:"), style::path(&url));
+    }
+
+    // Show context path if we can determine it
+    if let Some(ctx_label) = bead.labels.iter().find(|l| l.starts_with('@')) {
+        let ctx_name = ctx_label.trim_start_matches('@');
+        println!("  {} @{}", style::dim("Context:"), ctx_name);
+    }
+
+    Ok(())
 }
 
 fn format_status(status: Status) -> &'static str {
@@ -4713,10 +4930,17 @@ fn handle_handoff_command(
     agent: Option<&str>,
     ready: bool,
     list: bool,
+    agents: bool,
     dry_run: bool,
+    worktree: bool,
 ) -> allbeads::Result<()> {
     use allbeads::handoff::AgentType;
     use std::process::Command;
+
+    // Show available agents
+    if agents {
+        return handle_handoff_agents();
+    }
 
     // List handed off beads
     if list {
@@ -4735,26 +4959,35 @@ fn handle_handoff_command(
         )
     })?;
 
-    // Parse agent type (or default to Claude)
+    // Parse agent type: explicit > config > prompt
     let agent_type = if let Some(agent_name) = agent {
+        // Explicit --agent flag
         agent_name.parse::<AgentType>().map_err(|e| {
             allbeads::AllBeadsError::Config(format!("Invalid agent '{}': {}", agent_name, e))
         })?
+    } else if let Some(preferred) = allbeads::handoff::get_preferred_agent() {
+        // Saved preference
+        preferred
     } else {
-        AgentType::Claude
+        // First use - prompt user to select
+        prompt_for_agent_selection()?
     };
 
     // Check if agent is available (skip in dry-run mode)
     let agent_cmd = agent_type.command();
-    if !dry_run && !agent_type.is_web_agent() {
-        let check = Command::new(agent_cmd).arg("--version").output();
-        if check.is_err() || !check.unwrap().status.success() {
-            return Err(allbeads::AllBeadsError::Config(format!(
-                "Agent '{}' not found. Is {} installed?",
-                agent_type.display_name(),
-                agent_cmd
-            )));
-        }
+    let cli_available = if dry_run || agent_type.is_web_agent() {
+        false // Web agents don't have CLI
+    } else {
+        agent_type.is_installed()
+    };
+
+    // If CLI not available and no web fallback, error out
+    if !dry_run && !cli_available && !agent_type.has_web_fallback() && !agent_type.is_web_agent() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Agent '{}' not found. Is {} installed?",
+            agent_type.display_name(),
+            agent_cmd
+        )));
     }
 
     // Load bead to get context
@@ -4768,24 +5001,69 @@ fn handle_handoff_command(
     // Build prompt from bead
     let prompt = build_handoff_prompt(&issue);
 
+    // Create worktree if requested
+    let working_dir = if worktree && !agent_type.is_web_agent() {
+        let worktree_path = create_handoff_worktree(bead_id)?;
+        println!(
+            "  {} Created worktree at: {}",
+            style::success("✓"),
+            style::path(&worktree_path.display().to_string())
+        );
+        Some(worktree_path)
+    } else {
+        None
+    };
+
     // Display handoff info
     println!();
     println!("{}", style::header("Handoff"));
     println!();
     println!("  Bead:    {} - {}", style::highlight(bead_id), issue.title);
     println!("  Agent:   {}", style::highlight(agent_type.display_name()));
-    println!("  Command: {} {}", agent_cmd, agent_type.prompt_args(&prompt).join(" "));
+    if let Some(ref wt_path) = working_dir {
+        println!(
+            "  Worktree: {}",
+            style::path(&wt_path.display().to_string())
+        );
+    }
+    println!(
+        "  Command: {} {}",
+        agent_cmd,
+        agent_type.prompt_args(&prompt).join(" ")
+    );
     println!();
 
     if dry_run {
-        println!("  {} Dry run - showing prompt that would be sent:", style::dim("→"));
+        println!(
+            "  {} Dry run - showing prompt that would be sent:",
+            style::dim("→")
+        );
         println!();
         println!("{}", style::dim("--- PROMPT START ---"));
         println!("{}", prompt);
         println!("{}", style::dim("--- PROMPT END ---"));
         println!();
         println!("  {} Would set AB_ACTIVE_BEAD={}", style::dim("→"), bead_id);
-        println!("  {} Would update bead status to in_progress", style::dim("→"));
+        println!(
+            "  {} Would update bead status to in_progress",
+            style::dim("→")
+        );
+        if worktree {
+            println!("  {} Would create worktree for bead", style::dim("→"));
+        }
+
+        // Show web URL for web agents
+        if agent_type.is_web_agent() {
+            let repo_url = get_git_remote_url();
+            if let Some(url) = agent_type.build_web_url(&prompt, repo_url.as_deref()) {
+                println!(
+                    "  {} Would open browser to: {}",
+                    style::dim("→"),
+                    style::highlight(&url)
+                );
+            }
+        }
+
         return Ok(());
     }
 
@@ -4800,6 +5078,31 @@ fn handle_handoff_command(
             allbeads::AllBeadsError::Config(format!("Failed to update bead '{}': {}", bead_id, e))
         })?;
 
+    // Add handoff info as a comment
+    let handoff_comment = format!(
+        "[HANDOFF] Agent: {}, Time: {}",
+        agent_type.display_name(),
+        chrono::Utc::now().to_rfc3339()
+    );
+    if let Err(e) = beads.comment_add(bead_id, &handoff_comment) {
+        // Non-fatal - log but continue
+        eprintln!(
+            "  {} Failed to add handoff comment: {}",
+            style::warning("⚠"),
+            e
+        );
+    }
+
+    // Add handoff label for easy filtering
+    if let Err(e) = beads.label_add(bead_id, "handed-off") {
+        // Non-fatal - log but continue
+        eprintln!(
+            "  {} Failed to add handoff label: {}",
+            style::warning("⚠"),
+            e
+        );
+    }
+
     println!(
         "  {} Launching {}...",
         style::success("✓"),
@@ -4813,15 +5116,20 @@ fn handle_handoff_command(
     // Set environment variable for agent context
     std::env::set_var("AB_ACTIVE_BEAD", bead_id);
 
-    // Launch the agent (replacing current process for CLI agents)
-    if !agent_type.is_web_agent() {
-        let status = Command::new(agent_cmd)
-            .args(&args)
-            .env("AB_ACTIVE_BEAD", bead_id)
-            .status()
-            .map_err(|e| {
-                allbeads::AllBeadsError::Config(format!("Failed to launch {}: {}", agent_cmd, e))
-            })?;
+    // Launch the agent: CLI if available, web fallback otherwise
+    if cli_available {
+        // Launch via CLI
+        let mut cmd = Command::new(agent_cmd);
+        cmd.args(&args).env("AB_ACTIVE_BEAD", bead_id);
+
+        // Run in worktree if created
+        if let Some(ref wt_path) = working_dir {
+            cmd.current_dir(wt_path);
+        }
+
+        let status = cmd.status().map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to launch {}: {}", agent_cmd, e))
+        })?;
 
         if !status.success() {
             return Err(allbeads::AllBeadsError::Config(format!(
@@ -4829,15 +5137,245 @@ fn handle_handoff_command(
                 agent_type.display_name()
             )));
         }
-    } else {
+    } else if agent_type.is_web_agent() || agent_type.has_web_fallback() {
         // Web agents - open browser (fire and forget)
-        println!(
-            "  {} Web agent launch not yet implemented. Use CLI agents for now.",
-            style::warning("⚠")
-        );
+        // Try to get the repo URL for the web agent
+        let repo_url = get_git_remote_url();
+
+        if let Some(url) = agent_type.build_web_url(&prompt, repo_url.as_deref()) {
+            // Add the URL to the bead as a comment
+            let url_comment = format!("[TASK_URL] {}", url);
+            if let Err(e) = beads.comment_add(bead_id, &url_comment) {
+                eprintln!("  {} Failed to store task URL: {}", style::warning("⚠"), e);
+            }
+
+            // Open browser
+            println!(
+                "  {} Opening {} in browser...",
+                style::dim("→"),
+                agent_type.display_name()
+            );
+            println!("  {} {}", style::dim("URL:"), style::highlight(&url));
+
+            #[cfg(target_os = "macos")]
+            {
+                let _ = Command::new("open").arg(&url).spawn();
+            }
+            #[cfg(target_os = "linux")]
+            {
+                let _ = Command::new("xdg-open").arg(&url).spawn();
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let _ = Command::new("cmd").args(["/C", "start", &url]).spawn();
+            }
+
+            println!();
+            println!(
+                "  {} Handed off to {} (fire and forget)",
+                style::success("✓"),
+                agent_type.display_name()
+            );
+            println!("  {} The agent will work asynchronously.", style::dim("→"));
+        } else {
+            println!(
+                "  {} Web agent launch failed - no URL available for {}",
+                style::warning("⚠"),
+                agent_type.display_name()
+            );
+        }
     }
 
     Ok(())
+}
+
+/// Get the git remote URL (origin) for the current repo
+/// Prompt user to select their preferred agent (first-time use)
+fn prompt_for_agent_selection() -> allbeads::Result<allbeads::handoff::AgentType> {
+    use allbeads::handoff::{get_installed_agents, save_preferred_agent, AgentType};
+    use std::io::{self, Write};
+
+    println!();
+    println!("{}", style::header("First-time Agent Selection"));
+    println!();
+    println!(
+        "  {} No preferred agent set. Let's choose one!",
+        style::dim("→")
+    );
+    println!();
+
+    // Get installed agents
+    let installed = get_installed_agents();
+
+    if installed.is_empty() {
+        return Err(allbeads::AllBeadsError::Config(
+            "No agents detected! Install claude, gemini, cursor, or another supported agent."
+                .to_string(),
+        ));
+    }
+
+    // Show numbered list
+    println!("  Available agents:");
+    for (i, agent) in installed.iter().enumerate() {
+        let marker = if *agent == AgentType::Claude {
+            format!("{} (recommended)", style::success("*"))
+        } else {
+            String::new()
+        };
+        println!("    {}. {} {}", i + 1, agent.display_name(), marker);
+    }
+    println!();
+
+    // Prompt for selection
+    print!("  Select agent [1-{}]: ", installed.len());
+    io::stdout()
+        .flush()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to flush stdout: {}", e)))?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to read input: {}", e)))?;
+
+    let selection: usize = input.trim().parse().map_err(|_| {
+        allbeads::AllBeadsError::Config("Invalid selection. Please enter a number.".to_string())
+    })?;
+
+    if selection < 1 || selection > installed.len() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Invalid selection. Please enter 1-{}.",
+            installed.len()
+        )));
+    }
+
+    let selected = installed[selection - 1];
+
+    // Save preference
+    if let Err(e) = save_preferred_agent(selected) {
+        eprintln!("  {} Failed to save preference: {}", style::warning("⚠"), e);
+    } else {
+        println!();
+        println!(
+            "  {} Saved {} as your preferred agent.",
+            style::success("✓"),
+            selected.display_name()
+        );
+        println!(
+            "  {} Change with: ab handoff --agent <name>",
+            style::dim("Tip:")
+        );
+    }
+
+    println!();
+    Ok(selected)
+}
+
+fn get_git_remote_url() -> Option<String> {
+    use std::process::Command;
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !url.is_empty() {
+            return Some(url);
+        }
+    }
+    None
+}
+
+/// Create a git worktree for isolated agent work on a bead
+fn create_handoff_worktree(bead_id: &str) -> allbeads::Result<PathBuf> {
+    use std::process::Command;
+
+    // Get the repository root
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to get git root: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Not in a git repository".to_string(),
+        ));
+    }
+
+    let repo_root = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    let worktrees_dir = repo_root.join(".worktrees");
+
+    // Create worktrees directory if it doesn't exist
+    if !worktrees_dir.exists() {
+        std::fs::create_dir_all(&worktrees_dir).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to create worktrees directory: {}", e))
+        })?;
+    }
+
+    // Sanitize bead ID for use as directory name
+    let safe_name = bead_id.replace(['/', '\\', ':'], "-");
+    let worktree_path = worktrees_dir.join(&safe_name);
+
+    // If worktree already exists, return it
+    if worktree_path.exists() {
+        println!("  {} Using existing worktree", style::dim("→"));
+        return Ok(worktree_path);
+    }
+
+    // Create branch name for this bead
+    let branch_name = format!("ab/{}", safe_name);
+
+    // Get current branch to base off
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to get HEAD: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(allbeads::AllBeadsError::Config(
+            "Failed to get current commit".to_string(),
+        ));
+    }
+
+    // Create the worktree with a new branch
+    println!("  {} Creating worktree for {}...", style::dim("→"), bead_id);
+    let output = Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            "-b",
+            &branch_name,
+            worktree_path.to_str().unwrap_or(""),
+        ])
+        .output()
+        .map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to create worktree: {}", e))
+        })?;
+
+    if !output.status.success() {
+        // Try without -b if branch already exists
+        let output = Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                worktree_path.to_str().unwrap_or(""),
+                &branch_name,
+            ])
+            .output()
+            .map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to create worktree: {}", e))
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Failed to create worktree: {}",
+                stderr.trim()
+            )));
+        }
+    }
+
+    Ok(worktree_path)
 }
 
 fn build_handoff_prompt(issue: &beads::Issue) -> String {
@@ -4871,18 +5409,26 @@ fn handle_handoff_list() -> allbeads::Result<()> {
     println!("{}", style::header("Handed Off Beads"));
     println!();
 
-    // Load beads and filter by handoff status
+    // Load beads and filter by handoff label
     let beads = Beads::new().map_err(|e| {
         allbeads::AllBeadsError::Config(format!("Failed to initialize beads: {}", e))
     })?;
-    let issues = beads.list(Some("in_progress"), None).map_err(|e| {
-        allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e))
-    })?;
+    let issues = beads
+        .list(Some("in_progress"), None)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to list beads: {}", e)))?;
 
-    if issues.is_empty() {
-        println!("  No beads currently in progress.");
+    // Filter to only those with handed-off label
+    let handed_off: Vec<_> = issues
+        .iter()
+        .filter(|i| i.labels.iter().any(|l| l == "handed-off"))
+        .collect();
+
+    if handed_off.is_empty() {
+        println!("  No beads currently handed off to agents.");
+        println!();
+        println!("  Use 'ab handoff <bead-id>' to hand off a bead.");
     } else {
-        for issue in &issues {
+        for issue in &handed_off {
             println!(
                 "  {} {} - {}",
                 style::highlight(&issue.id),
@@ -4893,6 +5439,88 @@ fn handle_handoff_list() -> allbeads::Result<()> {
     }
 
     println!();
+    Ok(())
+}
+
+fn handle_handoff_agents() -> allbeads::Result<()> {
+    use allbeads::handoff::detect_installed_agents;
+
+    println!();
+    println!("{}", style::header("Available Agents"));
+    println!();
+
+    let agents = detect_installed_agents();
+
+    // Terminal agents
+    println!("  {} {}", style::dim("Terminal Agents:"), "");
+    for (agent, installed) in &agents {
+        if !agent.is_web_agent() && !agent.is_ide_agent() {
+            let status = if *installed {
+                style::success("✓")
+            } else {
+                style::dim("○")
+            };
+            let cmd = if *installed {
+                format!("({})", agent.command())
+            } else {
+                String::new()
+            };
+            println!(
+                "    {} {} {}",
+                status,
+                agent.display_name(),
+                style::dim(&cmd)
+            );
+        }
+    }
+
+    // IDE agents
+    println!();
+    println!("  {} {}", style::dim("IDE Agents:"), "");
+    for (agent, installed) in &agents {
+        if agent.is_ide_agent() {
+            let status = if *installed {
+                style::success("✓")
+            } else {
+                style::dim("○")
+            };
+            let cmd = if *installed {
+                format!("({})", agent.command())
+            } else {
+                String::new()
+            };
+            println!(
+                "    {} {} {}",
+                status,
+                agent.display_name(),
+                style::dim(&cmd)
+            );
+        }
+    }
+
+    // Web agents
+    println!();
+    println!("  {} {}", style::dim("Web Agents (browser):"), "");
+    for (agent, _) in &agents {
+        if agent.is_web_agent() {
+            if let Some(url) = agent.web_url() {
+                println!(
+                    "    {} {} {}",
+                    style::success("✓"),
+                    agent.display_name(),
+                    style::dim(&format!("({})", url))
+                );
+            }
+        }
+    }
+
+    println!();
+    println!(
+        "  {} Use '--agent <name>' to specify an agent",
+        style::dim("Tip:")
+    );
+    println!();
+
     Ok(())
 }
 
@@ -7837,132 +8465,85 @@ fn handle_github_command(cmd: &GitHubCommands) -> allbeads::Result<()> {
     Ok(())
 }
 
+/// Handle swarm commands by wrapping bd swarm
 fn handle_swarm_command(cmd: &SwarmCommands) -> allbeads::Result<()> {
-    use allbeads::swarm::{AgentManager, AgentPersona, SpawnRequest};
-
-    // Create a shared agent manager (in a real app, this would be persisted)
-    let manager = AgentManager::new();
+    use std::process::Command;
 
     match cmd {
-        SwarmCommands::List { context, active } => {
-            let agents = if let Some(ctx) = context {
-                manager.list_by_context(ctx)
-            } else if *active {
-                manager.list_active()
-            } else {
-                manager.list()
-            };
+        SwarmCommands::Create { epic_id, coordinator, force } => {
+            let mut args = vec!["swarm", "create", epic_id];
 
-            if agents.is_empty() {
-                println!("No agents found.");
-                println!();
-                println!("Spawn a demo agent with: ab swarm spawn-demo");
+            let coord_arg;
+            if let Some(coord) = coordinator {
+                coord_arg = format!("--coordinator={}", coord);
+                args.push(&coord_arg);
+            }
+
+            if *force {
+                args.push("--force");
+            }
+
+            let output = Command::new("bd")
+                .args(&args)
+                .output()
+                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
+
+            if output.status.success() {
+                print!("{}", String::from_utf8_lossy(&output.stdout));
             } else {
-                println!("Agents ({}):", agents.len());
-                println!();
-                for agent in &agents {
-                    let status_emoji = agent.status.emoji();
-                    let rig_str = agent
-                        .rig
-                        .as_ref()
-                        .map(|r| format!(" [{}]", r))
-                        .unwrap_or_default();
-                    println!(
-                        "{} {} ({}) - {}{} - ${:.2} - {}",
-                        status_emoji,
-                        agent.name,
-                        agent.id,
-                        agent.persona,
-                        rig_str,
-                        agent.cost.total_usd,
-                        agent.format_runtime()
-                    );
-                    if !agent.status_message.is_empty() {
-                        println!("    {}", agent.status_message);
-                    }
-                }
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(allbeads::AllBeadsError::Config(format!("bd swarm create failed: {}", stderr)));
             }
         }
 
-        SwarmCommands::Stats => {
-            let stats = manager.stats();
+        SwarmCommands::List => {
+            let output = Command::new("bd")
+                .args(["swarm", "list"])
+                .output()
+                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
 
-            println!();
-            println!("Agent Swarm Statistics");
-            println!();
-            println!("Agents:");
-            println!("  Total:     {}", stats.total_agents);
-            println!("  Active:    {}", stats.active_agents);
-            println!("  Completed: {}", stats.completed_agents);
-            println!("  Errored:   {}", stats.errored_agents);
-            println!();
-            println!("Cost:");
-            println!("  Total:     ${:.2}", stats.total_cost);
-            if stats.total_budget > 0.0 {
-                println!("  Budget:    ${:.2}", stats.total_budget);
-                let percent = (stats.total_cost / stats.total_budget) * 100.0;
-                println!("  Used:      {:.1}%", percent);
-            }
-        }
-
-        SwarmCommands::Budget { context, limit } => {
-            manager.set_budget(context, *limit);
-            println!("Set budget for context '{}' to ${:.2}", context, limit);
-        }
-
-        SwarmCommands::SpawnDemo {
-            name,
-            context,
-            persona,
-        } => {
-            let agent_persona = match persona.to_lowercase().as_str() {
-                "general" => AgentPersona::General,
-                "refactor-bot" | "refactorbot" => AgentPersona::RefactorBot,
-                "test-writer" | "testwriter" => AgentPersona::TestWriter,
-                "security-specialist" | "securityspecialist" => AgentPersona::SecuritySpecialist,
-                "frontend-expert" | "frontendexpert" => AgentPersona::FrontendExpert,
-                "backend-developer" | "backenddeveloper" => AgentPersona::BackendDeveloper,
-                "devops" => AgentPersona::DevOps,
-                "tech-writer" | "techwriter" => AgentPersona::TechWriter,
-                _ => AgentPersona::Custom(persona.clone()),
-            };
-
-            let request = SpawnRequest::new(name, context, "Demo task - exploring codebase")
-                .with_persona(agent_persona);
-
-            match manager.spawn(request) {
-                Ok(agent_id) => {
-                    println!("Spawned demo agent:");
-                    println!("  ID:      {}", agent_id);
-                    println!("  Name:    {}", name);
-                    println!("  Context: {}", context);
-                    println!("  Persona: {}", persona);
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                if stdout.trim().is_empty() {
+                    println!("No swarm molecules found.");
                     println!();
-                    println!("Note: This is a demo agent - it will not actually perform any work.");
-                    println!(
-                        "In a full implementation, agents would be connected to AI providers."
-                    );
+                    println!("Create one with: ab swarm create <epic-id>");
+                } else {
+                    print!("{}", stdout);
                 }
-                Err(e) => {
-                    return Err(e);
-                }
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(allbeads::AllBeadsError::Config(format!("bd swarm list failed: {}", stderr)));
             }
         }
 
-        SwarmCommands::Kill { id } => match manager.kill(id) {
-            Ok(()) => println!("Killed agent '{}'", id),
-            Err(e) => return Err(e),
-        },
+        SwarmCommands::Status => {
+            let output = Command::new("bd")
+                .args(["swarm", "status"])
+                .output()
+                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
 
-        SwarmCommands::Pause { id } => match manager.pause(id) {
-            Ok(()) => println!("Paused agent '{}'", id),
-            Err(e) => return Err(e),
-        },
+            if output.status.success() {
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(allbeads::AllBeadsError::Config(format!("bd swarm status failed: {}", stderr)));
+            }
+        }
 
-        SwarmCommands::Resume { id } => match manager.resume(id) {
-            Ok(()) => println!("Resumed agent '{}'", id),
-            Err(e) => return Err(e),
-        },
+        SwarmCommands::Validate { epic_id } => {
+            let output = Command::new("bd")
+                .args(["swarm", "validate", epic_id])
+                .output()
+                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to run bd swarm: {}", e)))?;
+
+            if output.status.success() {
+                print!("{}", String::from_utf8_lossy(&output.stdout));
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(allbeads::AllBeadsError::Config(format!("bd swarm validate failed: {}", stderr)));
+            }
+        }
     }
 
     Ok(())

@@ -196,14 +196,37 @@ allbeads context remove <name>
 # Show aggregated statistics
 allbeads stats
 
-# List all beads
+# List all beads (aggregated from all contexts)
 allbeads list
+
+# Fast local list (current directory only, skips aggregation)
+allbeads list --local
 
 # Filter by status (open, in_progress, blocked, deferred, closed)
 allbeads list --status <status>
 
 # Filter by priority (P0-P4 or 0-4)
 allbeads list --priority <priority>
+
+# Filter by type (epic, task, bug, feature, chore)
+allbeads list --type <type>
+allbeads list --local --type epic
+
+# Filter by assignee
+allbeads list --assignee <username>
+
+# Show only ready issues (no blockers)
+allbeads list --ready
+
+# Show all including closed
+allbeads list --all
+
+# Limit results (default: 50, use 0 for unlimited)
+allbeads list --limit 10
+allbeads list -n 0
+
+# Combine filters
+allbeads list --local --type task --ready -n 20
 
 # Show beads ready to work (no blockers)
 allbeads ready
@@ -331,6 +354,48 @@ allbeads agents stats                    # Last 30 days
 allbeads agents stats --days 7           # Last 7 days
 allbeads agents stats --json             # JSON output
 ```
+
+#### Agent Handoff
+
+Fire-and-forget delegation to AI agents. Launches agents with full bead context (title, description, dependencies) and moves on.
+
+```bash
+# Hand off a bead to your preferred agent
+allbeads handoff <bead-id>
+
+# Hand off to a specific agent
+allbeads handoff <bead-id> --agent gemini
+allbeads handoff <bead-id> --agent cursor
+allbeads handoff <bead-id> --agent jules    # Opens browser
+
+# Hand off in an isolated git worktree
+allbeads handoff <bead-id> --worktree
+
+# Show available agents (auto-detected)
+allbeads handoff --agents
+
+# Show beads that have been handed off
+allbeads handoff --list
+
+# Show ready beads for handoff
+allbeads handoff --ready
+
+# Dry run (see what would happen)
+allbeads handoff <bead-id> --dry-run
+```
+
+**Supported Agents:**
+- **CLI Agents**: claude, opencode, codex, gemini, aider, cody
+- **IDE Agents**: cursor, kiro, antigravity, copilot
+- **Web Agents**: jules (Google), chatgpt-codex
+
+On first use, you'll be prompted to select your preferred agent. The preference is saved to `.beads/config.yaml`.
+
+When a bead is handed off:
+1. Status is updated to `in_progress`
+2. Handoff info is recorded (agent, time, task URL)
+3. Agent is launched with the bead context
+4. `ab show <bead-id>` displays handoff details
 
 #### Governance
 

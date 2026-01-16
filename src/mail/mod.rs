@@ -26,6 +26,12 @@
 //! - `all@project_id` - Broadcast to all agents
 //! - `postmaster@project_id` - The postmaster service
 //!
+//! # Transports
+//!
+//! Agent Mail supports pluggable storage backends:
+//! - **SQLite** (default) - Fast local storage via Postmaster
+//! - **Filesystem** - Git-trackable JSON files in `.beads/mail/`
+//!
 //! # Examples
 //!
 //! ```
@@ -44,12 +50,15 @@
 //! ```
 
 mod address;
+mod filesystem;
 mod locks;
 mod message;
 mod postmaster;
 mod server;
+mod transport;
 
 pub use address::{Address, AddressError, RoutingTarget};
+pub use filesystem::FilesystemTransport;
 pub use locks::{ConflictStrategy, LockInfo, LockManager, LockResult};
 pub use message::{
     AgentStatus, BroadcastCategory, BroadcastPayload, HeartbeatPayload, LockRequest, Message,
@@ -58,3 +67,4 @@ pub use message::{
 };
 pub use postmaster::{DeliveryStatus, Postmaster, PostmasterError, SendResult, StoredMessage};
 pub use server::{MailServer, ServerError};
+pub use transport::{MailTransport, TransportError};

@@ -205,8 +205,8 @@ where
                         });
                     }
                     serde_json::Value::Object(_) => {
-                        let dep: DependencyRef = serde_json::from_value(value)
-                            .map_err(de::Error::custom)?;
+                        let dep: DependencyRef =
+                            serde_json::from_value(value).map_err(de::Error::custom)?;
                         deps.push(dep);
                     }
                     _ => {

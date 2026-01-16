@@ -63,7 +63,18 @@
       "Skill(beads:stats)",
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:github.com)",
-      "Bash(GITHUB_TOKEN=* cargo run:*)"
+      "Bash(GITHUB_TOKEN=* cargo run:*)",
+      "Bash(shasum:*)",
+      "WebFetch(domain:jules.google.com)",
+      "WebFetch(domain:conductor.build)",
+      "Bash(jules:*)",
+      "Bash(cursor:*)",
+      "Bash(codex:*)",
+      "Bash(gemini:*)",
+      "Bash(opencode:*)",
+      "Bash(./target/release/allbeads list:*)",
+      "Bash(bd swarm:*)",
+      "Bash(./target/release/allbeads swarm:*)"
     ]
   }
 }

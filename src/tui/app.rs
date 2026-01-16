@@ -11,7 +11,6 @@ use super::swarm_view::SwarmView;
 use super::timeline_view::TimelineView;
 use crate::graph::{Bead, FederatedGraph, Status};
 use crate::mail::{Address, Postmaster};
-use crate::swarm::AgentManager;
 use ratatui::widgets::ListState;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -154,11 +153,6 @@ impl App {
     /// Get active agent count
     pub fn active_agent_count(&self) -> usize {
         self.swarm_view.active_count()
-    }
-
-    /// Set the agent manager for swarm view
-    pub fn set_agent_manager(&mut self, manager: Arc<AgentManager>) {
-        self.swarm_view.set_manager(manager);
     }
 
     /// Switch to next tab

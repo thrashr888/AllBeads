@@ -873,29 +873,34 @@ AB_POSTMASTER_URL=localhost:7878  # Agent Mail endpoint
 
 ## Phased Implementation
 
-### Phase 1: Claude Code Hand-off (MVP)
-- [ ] `ab handoff <bead-id>` launches Claude Code with bead context
-- [ ] Auto-update bead status to `in_progress`
-- [ ] Set `AB_ACTIVE_BEAD` environment variable
-- [ ] Store handoff info in bead (agent type, timestamp)
+### Phase 1: Claude Code Hand-off (MVP) ✅
+- [x] `ab handoff <bead-id>` launches Claude Code with bead context
+- [x] Auto-update bead status to `in_progress`
+- [x] Set `AB_ACTIVE_BEAD` environment variable
+- [x] AgentHandoff struct defined (agent type, timestamp, workdir, note)
+- [x] Handoff module with AgentType enum (11+ agents)
+- [x] `--dry-run` flag for testing
+- [x] Store handoff info in bead (comment + label)
 
-### Phase 2: Agent Selection
-- [ ] Detect installed CLI agents in parallel
-- [ ] Prompt user to select preferred agent (first use)
-- [ ] Save preference to `.beads/config.yaml`
-- [ ] Allow `--agent` override per command
-- [ ] Support Aider as second agent
+### Phase 2: Agent Selection ✅
+- [x] Detect installed CLI agents (`ab handoff --agents`)
+- [x] Allow `--agent` override per command
+- [x] Support Aider, OpenCode, Codex, Gemini, Cursor, and more
+- [x] Prompt user to select preferred agent (first use)
+- [x] Save preference to `.beads/config.yaml`
 
-### Phase 3: Web Agent Hand-off (Jules)
-- [ ] Jules CLI integration (if installed)
-- [ ] Jules URL deep-link fallback (open browser)
-- [ ] Store task URL in bead handoff info
-- [ ] No polling - fire and forget
+### Phase 3: Web Agent Hand-off (Jules) ✅
+- [x] Jules CLI integration (`jules new "prompt"`)
+- [x] Jules URL deep-link fallback (if CLI not installed)
+- [x] ChatGPT Codex URL deep-link fallback
+- [x] Store task URL in bead (as comment)
+- [x] No polling - fire and forget (design decision)
 
-### Phase 4: Worktrees & Bulk Operations
-- [ ] `ab handoff --ready` hands off all unblocked beads
-- [ ] Optional worktree creation for isolation
-- [ ] `bd show` displays handoff info and task URL
+### Phase 4: Worktrees & Bulk Operations ✅
+- [x] `ab handoff --ready` shows unblocked beads
+- [x] `ab handoff --list` shows handed-off beads
+- [x] Optional worktree creation for isolation (`--worktree`)
+- [x] `ab show` displays handoff info and task URL
 
 **Deferred / Out of Scope:**
 - Agent lifecycle management (not doing this)

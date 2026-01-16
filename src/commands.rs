@@ -296,6 +296,30 @@ pub enum Commands {
         /// Filter by label/tag
         #[arg(short, long)]
         label: Option<String>,
+
+        /// Filter by type (epic, task, bug, feature, chore)
+        #[arg(short, long, name = "type")]
+        issue_type: Option<String>,
+
+        /// Filter by assignee
+        #[arg(short, long)]
+        assignee: Option<String>,
+
+        /// Show only ready issues (no blockers, not closed)
+        #[arg(long)]
+        ready: bool,
+
+        /// Show all issues including closed
+        #[arg(long)]
+        all: bool,
+
+        /// Limit number of results (default: 50)
+        #[arg(short = 'n', long, default_value = "50")]
+        limit: usize,
+
+        /// Only show beads from current directory (skip aggregation)
+        #[arg(long)]
+        local: bool,
     },
 
     /// Show detailed information about a bead
@@ -698,9 +722,17 @@ pub enum Commands {
         #[arg(short, long)]
         list: bool,
 
+        /// Show available agents (detected on system)
+        #[arg(long)]
+        agents: bool,
+
         /// Dry run: show what would be done without launching agent
         #[arg(long)]
         dry_run: bool,
+
+        /// Create a git worktree for isolated development
+        #[arg(long)]
+        worktree: bool,
     },
 
     // =========================================================================
@@ -854,62 +886,33 @@ pub enum GitHubCommands {
     Status,
 }
 
+/// Swarm commands - wraps bd swarm for molecule management
 #[derive(Subcommand, Debug)]
 pub enum SwarmCommands {
-    /// List all agents
-    List {
-        /// Filter by context
+    /// Create a swarm molecule from an epic
+    Create {
+        /// Epic ID to create swarm for
+        epic_id: String,
+
+        /// Coordinator address (e.g., gastown/witness)
         #[arg(long)]
-        context: Option<String>,
+        coordinator: Option<String>,
 
-        /// Only show active agents
-        #[arg(short, long)]
-        active: bool,
+        /// Create new swarm even if one already exists
+        #[arg(long)]
+        force: bool,
     },
 
-    /// Show aggregated swarm statistics
-    Stats,
+    /// List all swarm molecules
+    List,
 
-    /// Set budget for a context
-    Budget {
-        /// Context name
-        context: String,
+    /// Show current swarm status
+    Status,
 
-        /// Budget limit in USD
-        limit: f64,
-    },
-
-    /// Spawn a test agent (for demonstration)
-    SpawnDemo {
-        /// Agent name
-        #[arg(default_value = "test-agent")]
-        name: String,
-
-        /// Context
-        #[arg(long, default_value = "default")]
-        context: String,
-
-        /// Agent persona (general, refactor-bot, test-writer, security-specialist)
-        #[arg(short, long, default_value = "general")]
-        persona: String,
-    },
-
-    /// Kill an agent
-    Kill {
-        /// Agent ID
-        id: String,
-    },
-
-    /// Pause an agent
-    Pause {
-        /// Agent ID
-        id: String,
-    },
-
-    /// Resume a paused agent
-    Resume {
-        /// Agent ID
-        id: String,
+    /// Validate epic structure for swarming
+    Validate {
+        /// Epic ID to validate
+        epic_id: String,
     },
 }
 
