@@ -4155,7 +4155,10 @@ async fn handle_login_command(host: &str, with_token: Option<&str>) -> allbeads:
     let mut config = match AllBeadsConfig::load_default() {
         Ok(config) => config,
         Err(_) => {
-            println!("  {} No configuration found, creating one...", style::dim("○"));
+            println!(
+                "  {} No configuration found, creating one...",
+                style::dim("○")
+            );
             let config = AllBeadsConfig::new();
             config.save_default()?;
             config
@@ -4200,8 +4203,14 @@ async fn handle_login_command(host: &str, with_token: Option<&str>) -> allbeads:
     println!("  Scopes: {}", auth_result.scopes.join(", "));
     println!();
     println!("  You can now use:");
-    println!("    {} - Sync your contexts to the web", style::info("ab context sync"));
-    println!("    {} - Show authentication status", style::info("ab auth"));
+    println!(
+        "    {} - Sync your contexts to the web",
+        style::info("ab context sync")
+    );
+    println!(
+        "    {} - Show authentication status",
+        style::info("ab auth")
+    );
 
     Ok(())
 }
@@ -4227,11 +4236,7 @@ fn handle_logout_command() -> allbeads::Result<()> {
         return Ok(());
     }
 
-    let username = config
-        .web_auth
-        .github_username
-        .clone()
-        .unwrap_or_default();
+    let username = config.web_auth.github_username.clone().unwrap_or_default();
 
     auth::clear_auth(&mut config)?;
 
@@ -7216,7 +7221,13 @@ fn handle_context_command(
             let rt = tokio::runtime::Runtime::new().map_err(|e| {
                 allbeads::AllBeadsError::Other(format!("Failed to create runtime: {}", e))
             })?;
-            rt.block_on(handle_context_sync(&config, &config_file, *push, *pull, *dry_run))?;
+            rt.block_on(handle_context_sync(
+                &config,
+                &config_file,
+                *push,
+                *pull,
+                *dry_run,
+            ))?;
         }
     }
 
@@ -7313,7 +7324,12 @@ async fn handle_context_sync(
         } else {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            println!("    {} Pull failed: {} - {}", style::error("✗"), status, body);
+            println!(
+                "    {} Pull failed: {} - {}",
+                style::error("✗"),
+                status,
+                body
+            );
         }
     }
 
@@ -7379,7 +7395,12 @@ async fn handle_context_sync(
             } else {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
-                println!("    {} Push failed: {} - {}", style::error("✗"), status, body);
+                println!(
+                    "    {} Push failed: {} - {}",
+                    style::error("✗"),
+                    status,
+                    body
+                );
             }
         }
     }

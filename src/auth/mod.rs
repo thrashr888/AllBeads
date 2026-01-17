@@ -1,7 +1,7 @@
 //! Authentication module for AllBeads web app integration
 //!
 //! Implements GitHub Device Code flow for CLI authentication.
-//! This allows users to authenticate without exposing tokens in the terminal.
+//! For localhost development, uses direct GitHub PAT authentication.
 
 use crate::config::{AllBeadsConfig, WebAuthConfig};
 use crate::Result;
@@ -10,8 +10,16 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// GitHub OAuth App Client ID for AllBeads CLI
-/// In production, this should match the GitHub OAuth app configured for allbeads.co
-const GITHUB_CLIENT_ID: &str = "Ov23liYBvwY3xJVvWYDq";
+/// Set via ALLBEADS_GITHUB_CLIENT_ID env var, or use default for allbeads.co
+fn github_client_id() -> String {
+    std::env::var("ALLBEADS_GITHUB_CLIENT_ID")
+        .unwrap_or_else(|_| "Ov23liDRaWPXhE6raeLd".to_string())
+}
+
+/// Check if host is localhost (for development mode)
+pub fn is_localhost(host: &str) -> bool {
+    host.contains("localhost") || host.contains("127.0.0.1")
+}
 
 /// GitHub Device Code API endpoints
 const DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -67,11 +75,12 @@ pub struct AuthResult {
 /// Request a device code from GitHub
 pub async fn request_device_code() -> Result<DeviceCodeResponse> {
     let client = reqwest::Client::new();
+    let client_id = github_client_id();
 
     let response = client
         .post(DEVICE_CODE_URL)
         .header("Accept", "application/json")
-        .form(&[("client_id", GITHUB_CLIENT_ID), ("scope", SCOPES)])
+        .form(&[("client_id", client_id.as_str()), ("scope", SCOPES)])
         .send()
         .await
         .context("Failed to request device code from GitHub")?;
@@ -80,7 +89,7 @@ pub async fn request_device_code() -> Result<DeviceCodeResponse> {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
         return Err(anyhow::anyhow!(
-            "GitHub device code request failed: {} - {}",
+            "GitHub device code request failed: {} - {}\n\nFor localhost development, use: ab login --with-token <your-github-token>\nCreate a token at: https://github.com/settings/tokens/new?scopes=read:user,repo",
             status,
             body
         )
@@ -104,11 +113,12 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<AccessTo
     for attempt in 0..max_attempts {
         tokio::time::sleep(poll_interval).await;
 
+        let client_id = github_client_id();
         let response = client
             .post(ACCESS_TOKEN_URL)
             .header("Accept", "application/json")
             .form(&[
-                ("client_id", GITHUB_CLIENT_ID),
+                ("client_id", client_id.as_str()),
                 ("device_code", device_code),
                 ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             ])
@@ -137,17 +147,20 @@ pub async fn poll_for_token(device_code: &str, interval: u64) -> Result<AccessTo
                 continue;
             }
             Some("expired_token") => {
-                return Err(anyhow::anyhow!(
-                    "Device code expired. Please run 'ab login' again."
-                )
-                .into());
+                return Err(
+                    anyhow::anyhow!("Device code expired. Please run 'ab login' again.").into(),
+                );
             }
             Some("access_denied") => {
-                return Err(anyhow::anyhow!("Access denied. User cancelled the authorization.").into());
+                return Err(
+                    anyhow::anyhow!("Access denied. User cancelled the authorization.").into(),
+                );
             }
             Some(error) => {
                 let description = token_response.error_description.unwrap_or_default();
-                return Err(anyhow::anyhow!("GitHub OAuth error: {} - {}", error, description).into());
+                return Err(
+                    anyhow::anyhow!("GitHub OAuth error: {} - {}", error, description).into(),
+                );
             }
             None => {
                 // Success! We got a token
@@ -195,7 +208,10 @@ pub async fn device_code_flow(host: &str) -> Result<AuthResult> {
 
     // Step 2: Display instructions to user
     println!();
-    println!("  Please visit: \x1b[36m{}\x1b[0m", device_code.verification_uri);
+    println!(
+        "  Please visit: \x1b[36m{}\x1b[0m",
+        device_code.verification_uri
+    );
     println!("  And enter code: \x1b[1m{}\x1b[0m", device_code.user_code);
     println!();
     println!("  Waiting for authorization...");

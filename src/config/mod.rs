@@ -13,7 +13,9 @@ mod allbeads_config;
 mod boss_context;
 pub mod validation;
 
-pub use allbeads_config::{AgentMailConfig, AllBeadsConfig, OnboardingConfig, VisualizationConfig, WebAuthConfig};
+pub use allbeads_config::{
+    AgentMailConfig, AllBeadsConfig, OnboardingConfig, VisualizationConfig, WebAuthConfig,
+};
 pub use boss_context::{
     AuthStrategy, BossContext, GitHubIntegration, Integrations, JiraIntegration,
 };
