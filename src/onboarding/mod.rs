@@ -19,6 +19,23 @@ use std::path::PathBuf;
 pub use wizard::{AgentTooling, HealthChecks, OnboardingWizard};
 pub use workflow::OnboardingWorkflow;
 
+/// Breakdown of beads by status and priority for a repository
+#[derive(Debug, Clone, Default)]
+pub struct BeadBreakdown {
+    /// Count by status
+    pub status_open: usize,
+    pub status_in_progress: usize,
+    pub status_blocked: usize,
+    pub status_closed: usize,
+    pub status_deferred: usize,
+    /// Count by priority
+    pub priority_p0: usize,
+    pub priority_p1: usize,
+    pub priority_p2: usize,
+    pub priority_p3: usize,
+    pub priority_p4: usize,
+}
+
 /// Onboarding stage for a repository
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum OnboardingStage {
@@ -156,6 +173,9 @@ pub struct OnboardingStatus {
 
     /// Agent tooling metadata (MCP servers, rules files)
     pub agent_tooling: AgentTooling,
+
+    /// Breakdown of beads by status and priority
+    pub bead_breakdown: Option<BeadBreakdown>,
 }
 
 impl OnboardingStatus {
@@ -213,10 +233,11 @@ impl OnboardingStatus {
             None
         };
 
-        let issue_count = if repo.has_issues_jsonl() {
-            Some(Self::count_issues(&repo)?)
+        let (issue_count, bead_breakdown) = if repo.has_issues_jsonl() {
+            let (count, breakdown) = Self::count_issues_with_breakdown(&repo)?;
+            (Some(count), Some(breakdown))
         } else {
-            None
+            (None, None)
         };
 
         let has_skills = Self::has_skills(&repo);
@@ -239,20 +260,50 @@ impl OnboardingStatus {
             has_ci,
             has_hooks,
             agent_tooling,
+            bead_breakdown,
         })
     }
 
-    /// Count issues in the repository
-    fn count_issues(repo: &BossRepo) -> Result<usize> {
+    /// Count issues in the repository and return breakdown
+    fn count_issues_with_breakdown(repo: &BossRepo) -> Result<(usize, BeadBreakdown)> {
+        use crate::graph::{Priority, Status};
         use crate::storage::JsonlReader;
 
         if !repo.has_issues_jsonl() {
-            return Ok(0);
+            return Ok((0, BeadBreakdown::default()));
         }
 
         let mut reader = JsonlReader::open(repo.issues_jsonl_path())?;
         let beads: Vec<crate::graph::Bead> = reader.read_all()?;
-        Ok(beads.len())
+
+        let mut breakdown = BeadBreakdown::default();
+        for bead in &beads {
+            // Count by status
+            match bead.status {
+                Status::Open => breakdown.status_open += 1,
+                Status::InProgress => breakdown.status_in_progress += 1,
+                Status::Blocked => breakdown.status_blocked += 1,
+                Status::Closed => breakdown.status_closed += 1,
+                Status::Deferred => breakdown.status_deferred += 1,
+                Status::Tombstone => {} // Skip tombstones
+            }
+            // Count by priority
+            match bead.priority {
+                Priority::P0 => breakdown.priority_p0 += 1,
+                Priority::P1 => breakdown.priority_p1 += 1,
+                Priority::P2 => breakdown.priority_p2 += 1,
+                Priority::P3 => breakdown.priority_p3 += 1,
+                Priority::P4 => breakdown.priority_p4 += 1,
+            }
+        }
+
+        Ok((beads.len(), breakdown))
+    }
+
+    /// Count issues in the repository (legacy wrapper)
+    fn count_issues(repo: &BossRepo) -> Result<usize> {
+        let (count, _) = Self::count_issues_with_breakdown(repo)?;
+        Ok(count)
     }
 
     /// Check if repository has skills configured

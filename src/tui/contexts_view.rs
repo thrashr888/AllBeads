@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Bar, BarChart, BarGroup, Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
 
@@ -277,14 +277,14 @@ impl Default for ContextsView {
 /// Draw the contexts view
 pub fn draw(f: &mut Frame, contexts_view: &mut ContextsView, area: Rect) {
     if contexts_view.show_detail {
-        // Detail view layout
+        // Detail view layout - increased height for charts
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),  // Title
                 Constraint::Length(1),  // Column header
-                Constraint::Min(10),    // Contexts list
-                Constraint::Length(10), // Selected context details
+                Constraint::Min(8),     // Contexts list (reduced)
+                Constraint::Length(20), // Selected context details (increased for charts)
                 Constraint::Length(3),  // Help
             ])
             .split(area);
@@ -657,47 +657,53 @@ fn draw_contexts_list(f: &mut Frame, contexts_view: &mut ContextsView, area: Rec
 }
 
 fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect) {
-    let details_lines: Vec<Line> = if let Some(ref report) = contexts_view.report {
+    // Split area into info section and charts section
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(8), // Basic info
+            Constraint::Min(6),    // Charts
+        ])
+        .split(area);
+
+    // Draw info section
+    let info_lines: Vec<Line> = if let Some(ref report) = contexts_view.report {
         if let Some(selected_idx) = contexts_view.list_state.selected() {
             if let Some(status) = report.statuses.get(selected_idx) {
-                let mut lines = vec![
-                    Line::from(vec![
-                        Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            status.context_name.clone(),
-                            Style::default()
-                                .fg(Color::White)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                    ]),
-                    Line::from(vec![
-                        Span::styled("URL: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(status.url.clone(), Style::default().fg(Color::Blue)),
-                    ]),
-                ];
+                let mut lines = vec![Line::from(vec![
+                    Span::styled("Name: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        status.context_name.clone(),
+                        Style::default()
+                            .fg(Color::White)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw("  "),
+                    Span::styled("URL: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled(status.url.clone(), Style::default().fg(Color::Blue)),
+                ])];
 
+                // Organization and path on one line
+                let mut org_path_spans = Vec::new();
                 if let Some(ref org) = status.organization {
-                    lines.push(Line::from(vec![
-                        Span::styled("Organization: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(org.clone(), Style::default().fg(Color::Magenta)),
-                    ]));
+                    org_path_spans
+                        .push(Span::styled("Org: ", Style::default().fg(Color::DarkGray)));
+                    org_path_spans.push(Span::styled(
+                        org.clone(),
+                        Style::default().fg(Color::Magenta),
+                    ));
+                    org_path_spans.push(Span::raw("  "));
                 }
-
                 if let Some(ref path) = status.path {
-                    lines.push(Line::from(vec![
-                        Span::styled("Path: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(
-                            path.display().to_string(),
-                            Style::default().fg(Color::Yellow),
-                        ),
-                    ]));
+                    org_path_spans
+                        .push(Span::styled("Path: ", Style::default().fg(Color::DarkGray)));
+                    org_path_spans.push(Span::styled(
+                        path.display().to_string(),
+                        Style::default().fg(Color::Yellow),
+                    ));
                 }
-
-                if let Some(count) = status.issue_count {
-                    lines.push(Line::from(vec![
-                        Span::styled("Issues: ", Style::default().fg(Color::DarkGray)),
-                        Span::styled(count.to_string(), Style::default().fg(Color::Cyan)),
-                    ]));
+                if !org_path_spans.is_empty() {
+                    lines.push(Line::from(org_path_spans));
                 }
 
                 lines.push(Line::from(""));
@@ -705,12 +711,12 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                 // Health Checks row
                 lines.push(Line::from(vec![
                     Span::styled(
-                        "Health Checks: ",
+                        "Health: ",
                         Style::default()
                             .fg(Color::White)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled("Beads: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("Beads:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_beads_usage() {
                             "✓"
@@ -723,8 +729,8 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::Red
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("Skills: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("Skills:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_skills { "✓" } else { "✗" },
                         Style::default().fg(if status.has_skills {
@@ -733,8 +739,8 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::Red
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("Integration: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("Int:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_integration { "✓" } else { "✗" },
                         Style::default().fg(if status.has_integration {
@@ -743,8 +749,8 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::Red
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("CI/CD: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("CI:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_ci { "✓" } else { "✗" },
                         Style::default().fg(if status.has_ci {
@@ -753,8 +759,8 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::Red
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("Hooks: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("Hooks:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.has_hooks { "✓" } else { "✗" },
                         Style::default().fg(if status.has_hooks {
@@ -765,45 +771,31 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                     ),
                 ]));
 
-                // Agent Tooling row
+                // Agent Tooling row (compact)
                 let mcp_count = status.agent_tooling.mcp_servers.len();
-                let mcp_text = if mcp_count > 0 {
-                    if mcp_count <= 3 {
-                        status.agent_tooling.mcp_servers.join(", ")
-                    } else {
-                        format!(
-                            "{}, +{} more",
-                            status.agent_tooling.mcp_servers[..2].join(", "),
-                            mcp_count - 2
-                        )
-                    }
-                } else {
-                    "none".to_string()
-                };
-
                 lines.push(Line::from(vec![
                     Span::styled(
-                        "Agent Tooling: ",
+                        "Agents: ",
                         Style::default()
                             .fg(Color::White)
                             .add_modifier(Modifier::BOLD),
                     ),
-                    Span::styled("MCP: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("MCP:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
-                        mcp_text,
+                        format!("{}", mcp_count),
                         Style::default().fg(if mcp_count > 0 {
                             Color::Magenta
                         } else {
                             Color::DarkGray
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("Cursor: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("Cursor:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.agent_tooling.has_cursor_rules {
                             "✓"
                         } else {
-                            "✗"
+                            "-"
                         },
                         Style::default().fg(if status.agent_tooling.has_cursor_rules {
                             Color::Green
@@ -811,13 +803,13 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::DarkGray
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("Copilot: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("Copilot:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.agent_tooling.has_copilot_rules {
                             "✓"
                         } else {
-                            "✗"
+                            "-"
                         },
                         Style::default().fg(if status.agent_tooling.has_copilot_rules {
                             Color::Green
@@ -825,13 +817,13 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
                             Color::DarkGray
                         }),
                     ),
-                    Span::raw("  "),
-                    Span::styled("AGENTS.md: ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(" "),
+                    Span::styled("AGENTS.md:", Style::default().fg(Color::DarkGray)),
                     Span::styled(
                         if status.agent_tooling.has_agents_md {
                             "✓"
                         } else {
-                            "✗"
+                            "-"
                         },
                         Style::default().fg(if status.agent_tooling.has_agents_md {
                             Color::Green
@@ -852,12 +844,117 @@ fn draw_context_details(f: &mut Frame, contexts_view: &ContextsView, area: Rect)
         vec![Line::from("Loading...")]
     };
 
-    let paragraph = Paragraph::new(details_lines).block(
+    let info_paragraph = Paragraph::new(info_lines).block(
         Block::default()
             .title(" Details ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::DarkGray)),
     );
+    f.render_widget(info_paragraph, chunks[0]);
 
-    f.render_widget(paragraph, area);
+    // Draw charts section
+    if let Some(ref report) = contexts_view.report {
+        if let Some(selected_idx) = contexts_view.list_state.selected() {
+            if let Some(status) = report.statuses.get(selected_idx) {
+                if let Some(ref breakdown) = status.bead_breakdown {
+                    // Split charts area horizontally
+                    let chart_chunks = Layout::default()
+                        .direction(Direction::Horizontal)
+                        .constraints([
+                            Constraint::Percentage(50), // Status chart
+                            Constraint::Percentage(50), // Priority chart
+                        ])
+                        .split(chunks[1]);
+
+                    // Status bar chart
+                    let status_data = [
+                        ("Open", breakdown.status_open as u64, Color::White),
+                        ("InProg", breakdown.status_in_progress as u64, Color::Yellow),
+                        ("Blocked", breakdown.status_blocked as u64, Color::Red),
+                        ("Closed", breakdown.status_closed as u64, Color::Green),
+                    ];
+
+                    let status_bars: Vec<Bar> = status_data
+                        .iter()
+                        .map(|(label, value, color)| {
+                            Bar::default()
+                                .value(*value)
+                                .label(Line::from(value.to_string()))
+                                .style(Style::default().fg(*color))
+                                .text_value(label.to_string())
+                        })
+                        .collect();
+
+                    let status_chart = BarChart::default()
+                        .block(
+                            Block::default()
+                                .title(" Status ")
+                                .borders(Borders::ALL)
+                                .border_style(Style::default().fg(Color::DarkGray)),
+                        )
+                        .data(BarGroup::default().bars(&status_bars))
+                        .bar_width(7)
+                        .bar_gap(1)
+                        .value_style(
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
+                        );
+
+                    f.render_widget(status_chart, chart_chunks[0]);
+
+                    // Priority bar chart
+                    let priority_data = [
+                        ("P0", breakdown.priority_p0 as u64, Color::Red),
+                        ("P1", breakdown.priority_p1 as u64, Color::LightRed),
+                        ("P2", breakdown.priority_p2 as u64, Color::Yellow),
+                        ("P3", breakdown.priority_p3 as u64, Color::Gray),
+                        ("P4", breakdown.priority_p4 as u64, Color::DarkGray),
+                    ];
+
+                    let priority_bars: Vec<Bar> = priority_data
+                        .iter()
+                        .map(|(label, value, color)| {
+                            Bar::default()
+                                .value(*value)
+                                .label(Line::from(value.to_string()))
+                                .style(Style::default().fg(*color))
+                                .text_value(label.to_string())
+                        })
+                        .collect();
+
+                    let priority_chart = BarChart::default()
+                        .block(
+                            Block::default()
+                                .title(" Priority ")
+                                .borders(Borders::ALL)
+                                .border_style(Style::default().fg(Color::DarkGray)),
+                        )
+                        .data(BarGroup::default().bars(&priority_bars))
+                        .bar_width(5)
+                        .bar_gap(1)
+                        .value_style(
+                            Style::default()
+                                .fg(Color::White)
+                                .add_modifier(Modifier::BOLD),
+                        );
+
+                    f.render_widget(priority_chart, chart_chunks[1]);
+                } else {
+                    // No breakdown data - show placeholder
+                    let no_data = Paragraph::new(
+                        "No bead data available (repository not synced or no beads)",
+                    )
+                    .style(Style::default().fg(Color::DarkGray))
+                    .block(
+                        Block::default()
+                            .title(" Bead Statistics ")
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::DarkGray)),
+                    );
+                    f.render_widget(no_data, chunks[1]);
+                }
+            }
+        }
+    }
 }
