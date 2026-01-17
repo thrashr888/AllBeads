@@ -4185,8 +4185,8 @@ async fn handle_login_command(host: &str, with_token: Option<&str>) -> allbeads:
         println!("  Validating token...");
         auth::token_login(host, token).await?
     } else {
-        // Use GitHub device code flow
-        println!("  Starting GitHub device code flow...");
+        // Use AllBeads device code flow
+        println!("  Connecting to {}...", host);
         auth::device_code_flow(host).await?
     };
 

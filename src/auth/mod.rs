@@ -347,13 +347,18 @@ mod tests {
     #[test]
     fn test_web_auth_config_host() {
         let config = WebAuthConfig::default();
+        // Debug builds default to localhost, release builds to allbeads.co
+        #[cfg(debug_assertions)]
+        assert_eq!(config.host(), "http://localhost:3000");
+        #[cfg(not(debug_assertions))]
         assert_eq!(config.host(), "https://allbeads.co");
 
+        // Explicit host always wins
         let config = WebAuthConfig {
-            host: Some("http://localhost:3000".to_string()),
+            host: Some("https://custom.example.com".to_string()),
             ..Default::default()
         };
-        assert_eq!(config.host(), "http://localhost:3000");
+        assert_eq!(config.host(), "https://custom.example.com");
     }
 
     #[test]

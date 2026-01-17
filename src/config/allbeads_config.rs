@@ -106,9 +106,23 @@ impl WebAuthConfig {
         self.github_token.is_some()
     }
 
-    /// Get the host URL (defaults to https://allbeads.co)
+    /// Get the host URL
+    /// - Debug builds default to http://localhost:3000
+    /// - Release builds default to https://allbeads.co
     pub fn host(&self) -> &str {
-        self.host.as_deref().unwrap_or("https://allbeads.co")
+        self.host.as_deref().unwrap_or(Self::default_host())
+    }
+
+    /// Get the default host based on build type
+    #[cfg(debug_assertions)]
+    pub const fn default_host() -> &'static str {
+        "http://localhost:3000"
+    }
+
+    /// Get the default host based on build type
+    #[cfg(not(debug_assertions))]
+    pub const fn default_host() -> &'static str {
+        "https://allbeads.co"
     }
 
     /// Clear authentication
