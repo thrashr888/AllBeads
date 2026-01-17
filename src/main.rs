@@ -1595,49 +1595,50 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                 println!("Press Ctrl+C to stop");
                 println!();
 
-                // Subscribe to events and print them
-                let mut events = sheriff.subscribe();
-                let event_handle = tokio::spawn(async move {
-                    while let Ok(event) = events.recv().await {
-                        match event {
-                            allbeads::sheriff::SheriffEvent::Started => {
-                                println!("[Sheriff] Daemon started");
-                            }
-                            allbeads::sheriff::SheriffEvent::Stopped => {
-                                println!("[Sheriff] Daemon stopped");
-                            }
-                            allbeads::sheriff::SheriffEvent::PollStarted => {
-                                println!("[Sheriff] Poll cycle started");
-                            }
-                            allbeads::sheriff::SheriffEvent::PollCompleted {
-                                rigs_polled,
-                                changes,
-                            } => {
-                                println!(
-                                    "[Sheriff] Poll completed: {} rigs, {} changes",
-                                    rigs_polled, changes
-                                );
-                            }
-                            allbeads::sheriff::SheriffEvent::RigSynced { rig_id, result } => {
-                                println!(
-                                    "[Sheriff] Rig {} synced: {} created, {} updated, {} deleted",
-                                    rig_id.as_str(),
-                                    result.created.len(),
-                                    result.updated.len(),
-                                    result.deleted.len()
-                                );
-                            }
-                            allbeads::sheriff::SheriffEvent::Error { message } => {
-                                eprintln!("[Sheriff] Error: {}", message);
-                            }
-                            _ => {}
-                        }
-                    }
-                });
-
-                // Run the daemon
+                // Create runtime first, then spawn inside it
                 let rt = tokio::runtime::Runtime::new()?;
                 rt.block_on(async {
+                    // Subscribe to events and print them
+                    let mut events = sheriff.subscribe();
+                    let event_handle = tokio::spawn(async move {
+                        while let Ok(event) = events.recv().await {
+                            match event {
+                                allbeads::sheriff::SheriffEvent::Started => {
+                                    println!("[Sheriff] Daemon started");
+                                }
+                                allbeads::sheriff::SheriffEvent::Stopped => {
+                                    println!("[Sheriff] Daemon stopped");
+                                }
+                                allbeads::sheriff::SheriffEvent::PollStarted => {
+                                    println!("[Sheriff] Poll cycle started");
+                                }
+                                allbeads::sheriff::SheriffEvent::PollCompleted {
+                                    rigs_polled,
+                                    changes,
+                                } => {
+                                    println!(
+                                        "[Sheriff] Poll completed: {} rigs, {} changes",
+                                        rigs_polled, changes
+                                    );
+                                }
+                                allbeads::sheriff::SheriffEvent::RigSynced { rig_id, result } => {
+                                    println!(
+                                        "[Sheriff] Rig {} synced: {} created, {} updated, {} deleted",
+                                        rig_id.as_str(),
+                                        result.created.len(),
+                                        result.updated.len(),
+                                        result.deleted.len()
+                                    );
+                                }
+                                allbeads::sheriff::SheriffEvent::Error { message } => {
+                                    eprintln!("[Sheriff] Error: {}", message);
+                                }
+                                _ => {}
+                            }
+                        }
+                    });
+
+                    // Run the daemon
                     sheriff.run().await?;
                     event_handle.abort();
                     Ok::<(), allbeads::AllBeadsError>(())
