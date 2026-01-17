@@ -235,16 +235,33 @@ pub async fn device_code_flow(host: &str) -> Result<AuthResult> {
         .as_ref()
         .unwrap_or(&device_code.verification_uri);
 
+    // Copy code to clipboard
+    let clipboard_result = cli_clipboard::set_contents(device_code.user_code.clone());
+    let clipboard_msg = if clipboard_result.is_ok() {
+        " (copied to clipboard)"
+    } else {
+        ""
+    };
+
     println!();
     println!("  Please visit: \x1b[36m{}\x1b[0m", verification_url);
-    println!("  And enter code: \x1b[1m{}\x1b[0m", device_code.user_code);
+    println!(
+        "  And enter code: \x1b[1m{}\x1b[0m{}",
+        device_code.user_code, clipboard_msg
+    );
     println!();
-    println!("  Waiting for authorization...");
 
     // Try to open browser automatically
-    if let Err(e) = open::that(verification_url) {
-        tracing::debug!("Failed to open browser: {}", e);
+    match open::that(verification_url) {
+        Ok(_) => println!("  \x1b[32m✓\x1b[0m Opening browser..."),
+        Err(e) => {
+            tracing::debug!("Failed to open browser: {}", e);
+            println!("  Please open the link above in your browser.");
+        }
     }
+
+    println!();
+    println!("  Waiting for authorization...");
 
     // Step 3: Poll for token
     let token_response =
