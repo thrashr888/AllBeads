@@ -507,7 +507,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
     } = command
     {
         let rt = tokio::runtime::Runtime::new()?;
-        return rt.block_on(handle_login_command(host, with_token.as_deref()));
+        return rt.block_on(handle_login_command(host.as_deref(), with_token.as_deref()));
     }
 
     if let Commands::Logout = command {
@@ -4144,8 +4144,12 @@ fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<(
 // ============================================================================
 
 /// Handle login command - authenticate with AllBeads web app
-async fn handle_login_command(host: &str, with_token: Option<&str>) -> allbeads::Result<()> {
+async fn handle_login_command(
+    host: Option<&str>,
+    with_token: Option<&str>,
+) -> allbeads::Result<()> {
     use allbeads::auth;
+    use allbeads::config::WebAuthConfig;
 
     println!();
     println!("{}", style::header("AllBeads Web Login"));
@@ -4164,6 +4168,9 @@ async fn handle_login_command(host: &str, with_token: Option<&str>) -> allbeads:
             config
         }
     };
+
+    // Use provided host or default based on build type
+    let host = host.unwrap_or(WebAuthConfig::default_host());
 
     // Check if already authenticated
     if config.web_auth.is_authenticated() {

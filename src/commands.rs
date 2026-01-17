@@ -881,9 +881,9 @@ pub enum Commands {
     // =========================================================================
     /// Login to AllBeads web app
     Login {
-        /// Web app host URL (default: https://allbeads.co)
-        #[arg(long, default_value = "https://allbeads.co")]
-        host: String,
+        /// Web app host URL (debug: localhost:3000, release: allbeads.co)
+        #[arg(long)]
+        host: Option<String>,
 
         /// Use GitHub device code flow (default)
         #[arg(long)]
