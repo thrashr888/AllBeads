@@ -76,6 +76,51 @@ impl Default for VisualizationConfig {
     }
 }
 
+/// Web app authentication configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WebAuthConfig {
+    /// Web app host URL (e.g., https://allbeads.co)
+    #[serde(default)]
+    pub host: Option<String>,
+
+    /// GitHub access token for API calls
+    #[serde(default)]
+    pub github_token: Option<String>,
+
+    /// GitHub username
+    #[serde(default)]
+    pub github_username: Option<String>,
+
+    /// When the token was obtained
+    #[serde(default)]
+    pub authenticated_at: Option<String>,
+
+    /// Token scopes
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+impl WebAuthConfig {
+    /// Check if authenticated
+    pub fn is_authenticated(&self) -> bool {
+        self.github_token.is_some()
+    }
+
+    /// Get the host URL (defaults to https://allbeads.co)
+    pub fn host(&self) -> &str {
+        self.host.as_deref().unwrap_or("https://allbeads.co")
+    }
+
+    /// Clear authentication
+    pub fn clear(&mut self) {
+        self.host = None;
+        self.github_token = None;
+        self.github_username = None;
+        self.authenticated_at = None;
+        self.scopes.clear();
+    }
+}
+
 /// Onboarding configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OnboardingConfig {
@@ -133,6 +178,10 @@ pub struct AllBeadsConfig {
     #[serde(default)]
     pub onboarding: OnboardingConfig,
 
+    /// Web app authentication
+    #[serde(default)]
+    pub web_auth: WebAuthConfig,
+
     /// Default workspace directory for cloning repositories
     /// Defaults to ~/Workspace if not specified
     #[serde(default = "default_workspace_dir")]
@@ -153,6 +202,7 @@ impl AllBeadsConfig {
             agent_mail: AgentMailConfig::default(),
             visualization: VisualizationConfig::default(),
             onboarding: OnboardingConfig::default(),
+            web_auth: WebAuthConfig::default(),
             workspace_directory: default_workspace_dir(),
         }
     }

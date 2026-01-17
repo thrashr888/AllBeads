@@ -113,6 +113,11 @@ Usage:
 {cyan}Configuration:{reset}
   config             Manage distributed configuration sync
 
+{cyan}Web App:{reset}
+  login              Login to AllBeads web app (GitHub OAuth)
+  logout             Logout from AllBeads web app
+  auth               Show authentication status
+
 {cyan}Additional Commands:{reset}
   help               Help about any command
 
@@ -870,6 +875,35 @@ pub enum Commands {
     /// Manage distributed configuration sync
     #[command(subcommand)]
     Config(ConfigCommands),
+
+    // =========================================================================
+    // WEB APP COMMANDS - AllBeads web platform integration
+    // =========================================================================
+    /// Login to AllBeads web app
+    Login {
+        /// Web app host URL (default: https://allbeads.co)
+        #[arg(long, default_value = "https://allbeads.co")]
+        host: String,
+
+        /// Use GitHub device code flow (default)
+        #[arg(long)]
+        with_github: bool,
+
+        /// Use a personal access token instead of OAuth
+        #[arg(long)]
+        with_token: Option<String>,
+    },
+
+    /// Logout from AllBeads web app
+    Logout,
+
+    /// Show authentication status
+    #[command(name = "auth")]
+    Auth {
+        /// Show full token (for debugging)
+        #[arg(long)]
+        show_token: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1736,6 +1770,21 @@ pub enum ContextCommands {
         /// Skip confirmation prompt
         #[arg(short, long)]
         force: bool,
+    },
+
+    /// Sync contexts with AllBeads web app
+    Sync {
+        /// Push local contexts to web (default: bidirectional)
+        #[arg(long)]
+        push: bool,
+
+        /// Pull contexts from web (default: bidirectional)
+        #[arg(long)]
+        pull: bool,
+
+        /// Only show what would be synced (dry run)
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 

@@ -18,6 +18,7 @@
 
 // Core modules
 pub mod aggregator;
+pub mod auth;
 pub mod cache;
 pub mod coding_agent;
 pub mod config;

@@ -92,4 +92,8 @@ pub enum AllBeadsError {
     /// Other errors
     #[error("{0}")]
     Other(String),
+
+    /// Anyhow errors (for more context)
+    #[error("{0}")]
+    Anyhow(#[from] anyhow::Error),
 }

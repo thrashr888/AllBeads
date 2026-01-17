@@ -499,6 +499,25 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_rename_prefix_command(new_prefix, from.as_deref(), path, &cli.config);
     }
 
+    // Handle web app authentication commands (don't need graph)
+    if let Commands::Login {
+        ref host,
+        with_github: _,
+        ref with_token,
+    } = command
+    {
+        let rt = tokio::runtime::Runtime::new()?;
+        return rt.block_on(handle_login_command(host, with_token.as_deref()));
+    }
+
+    if let Commands::Logout = command {
+        return handle_logout_command();
+    }
+
+    if let Commands::Auth { show_token } = command {
+        return handle_auth_command(show_token);
+    }
+
     // Load configuration
     let config = if let Some(config_path) = cli.config.clone() {
         AllBeadsConfig::load(config_path)?
@@ -2440,9 +2459,12 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Aiki(_)
         | Commands::Agents(_)
         | Commands::Governance(_)
-        | Commands::Scan(_) => {
+        | Commands::Scan(_)
+        | Commands::Login { .. }
+        | Commands::Logout
+        | Commands::Auth { .. } => {
             // Handled earlier in the function
-            unreachable!("Context, Init, OnboardRepo, Mail, Jira, GitHub, Swarm, Config, Plugin, Handoff, Sync, Quickstart, Setup, Human, Check, Hooks, Aiki, Agents, Governance, and Scan commands should be handled before aggregation")
+            unreachable!("These commands should be handled before aggregation")
         }
     }
 
@@ -4113,6 +4135,170 @@ fn handle_config_clone(source: &str, target: Option<&str>) -> allbeads::Result<(
     println!();
     println!("  Your configuration is now synced from the remote.");
     println!("  Use 'ab config pull' to get updates.");
+
+    Ok(())
+}
+
+// ============================================================================
+// Web App Authentication Commands
+// ============================================================================
+
+/// Handle login command - authenticate with AllBeads web app
+async fn handle_login_command(host: &str, with_token: Option<&str>) -> allbeads::Result<()> {
+    use allbeads::auth;
+
+    println!();
+    println!("{}", style::header("AllBeads Web Login"));
+    println!();
+
+    // Load or create config
+    let mut config = match AllBeadsConfig::load_default() {
+        Ok(config) => config,
+        Err(_) => {
+            println!("  {} No configuration found, creating one...", style::dim("○"));
+            let config = AllBeadsConfig::new();
+            config.save_default()?;
+            config
+        }
+    };
+
+    // Check if already authenticated
+    if config.web_auth.is_authenticated() {
+        if let Some(username) = &config.web_auth.github_username {
+            println!(
+                "  {} Already logged in as {}",
+                style::warning("!"),
+                style::success(username)
+            );
+            println!();
+            println!("  Use 'ab logout' first to log in with a different account.");
+            return Ok(());
+        }
+    }
+
+    // Authenticate
+    let auth_result = if let Some(token) = with_token {
+        // Use provided token
+        println!("  Validating token...");
+        auth::token_login(host, token).await?
+    } else {
+        // Use GitHub device code flow
+        println!("  Starting GitHub device code flow...");
+        auth::device_code_flow(host).await?
+    };
+
+    // Save authentication
+    auth::save_auth(&mut config, &auth_result)?;
+
+    println!();
+    println!(
+        "  {} Logged in as {}",
+        style::success("✓"),
+        style::success(&auth_result.username)
+    );
+    println!("  Host: {}", style::path(&auth_result.host));
+    println!("  Scopes: {}", auth_result.scopes.join(", "));
+    println!();
+    println!("  You can now use:");
+    println!("    {} - Sync your contexts to the web", style::info("ab context sync"));
+    println!("    {} - Show authentication status", style::info("ab auth"));
+
+    Ok(())
+}
+
+/// Handle logout command - clear authentication
+fn handle_logout_command() -> allbeads::Result<()> {
+    use allbeads::auth;
+
+    println!();
+    println!("{}", style::header("AllBeads Web Logout"));
+    println!();
+
+    let mut config = match AllBeadsConfig::load_default() {
+        Ok(config) => config,
+        Err(_) => {
+            println!("  {} Not logged in.", style::dim("○"));
+            return Ok(());
+        }
+    };
+
+    if !config.web_auth.is_authenticated() {
+        println!("  {} Not logged in.", style::dim("○"));
+        return Ok(());
+    }
+
+    let username = config
+        .web_auth
+        .github_username
+        .clone()
+        .unwrap_or_default();
+
+    auth::clear_auth(&mut config)?;
+
+    println!(
+        "  {} Logged out from {} (was: {})",
+        style::success("✓"),
+        config.web_auth.host(),
+        style::dim(&username)
+    );
+
+    Ok(())
+}
+
+/// Handle auth command - show authentication status
+fn handle_auth_command(show_token: bool) -> allbeads::Result<()> {
+    println!();
+    println!("{}", style::header("Authentication Status"));
+    println!();
+
+    let config = match AllBeadsConfig::load_default() {
+        Ok(config) => config,
+        Err(_) => {
+            println!("  Status: {}", style::error("Not logged in"));
+            println!();
+            println!("  Run 'ab login' to authenticate with the AllBeads web app.");
+            return Ok(());
+        }
+    };
+
+    if !config.web_auth.is_authenticated() {
+        println!("  Status: {}", style::error("Not logged in"));
+        println!();
+        println!("  Run 'ab login' to authenticate with the AllBeads web app.");
+        return Ok(());
+    }
+
+    println!("  Status: {}", style::success("Logged in"));
+
+    if let Some(username) = &config.web_auth.github_username {
+        println!("  GitHub User: {}", style::success(username));
+    }
+
+    if let Some(host) = &config.web_auth.host {
+        println!("  Host: {}", style::path(host));
+    } else {
+        println!("  Host: {}", style::path("https://allbeads.co"));
+    }
+
+    if let Some(authenticated_at) = &config.web_auth.authenticated_at {
+        println!("  Authenticated: {}", style::dim(authenticated_at));
+    }
+
+    if !config.web_auth.scopes.is_empty() {
+        println!("  Scopes: {}", config.web_auth.scopes.join(", "));
+    }
+
+    if show_token {
+        if let Some(token) = &config.web_auth.github_token {
+            // Show partial token for security
+            let masked = if token.len() > 8 {
+                format!("{}...{}", &token[..4], &token[token.len() - 4..])
+            } else {
+                "****".to_string()
+            };
+            println!("  Token: {}", style::warning(&masked));
+        }
+    }
 
     Ok(())
 }
@@ -7020,7 +7206,186 @@ fn handle_context_command(
                 println!("  Agents: {}", result.agents_configured.join(", "));
             }
         }
+
+        ContextCommands::Sync {
+            push,
+            pull,
+            dry_run,
+        } => {
+            // Use tokio runtime for async operations
+            let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                allbeads::AllBeadsError::Other(format!("Failed to create runtime: {}", e))
+            })?;
+            rt.block_on(handle_context_sync(&config, &config_file, *push, *pull, *dry_run))?;
+        }
     }
+
+    Ok(())
+}
+
+/// Handle context sync with web app
+async fn handle_context_sync(
+    config: &AllBeadsConfig,
+    _config_file: &std::path::Path,
+    push_only: bool,
+    pull_only: bool,
+    dry_run: bool,
+) -> allbeads::Result<()> {
+    use reqwest::Client;
+    use serde::{Deserialize, Serialize};
+
+    println!();
+    println!("{}", style::header("Context Sync"));
+    println!();
+
+    // Check authentication
+    if !config.web_auth.is_authenticated() {
+        return Err(allbeads::AllBeadsError::Auth(
+            "Not logged in. Run 'ab login' first.".to_string(),
+        ));
+    }
+
+    let token = config.web_auth.github_token.as_ref().ok_or_else(|| {
+        allbeads::AllBeadsError::Auth("No authentication token found".to_string())
+    })?;
+
+    let host = config.web_auth.host();
+    let api_url = format!("{}/api/cli/contexts", host);
+
+    let client = Client::new();
+
+    // Determine sync direction (default: bidirectional)
+    // If neither flag is set, do both. If one is set, do only that one.
+    let do_push = push_only || !pull_only;
+    let do_pull = pull_only || !push_only;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    struct CLIContext {
+        name: String,
+        url: String,
+        path: Option<String>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct PullResponse {
+        contexts: Vec<CLIContext>,
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct PushResponse {
+        synced: Vec<CLIContext>,
+        created: Vec<String>,
+        updated: Vec<String>,
+    }
+
+    // Pull from web
+    if do_pull {
+        println!("  Pulling contexts from {}...", host);
+
+        let response = client
+            .get(&api_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| allbeads::AllBeadsError::Network(format!("Failed to pull: {}", e)))?;
+
+        if response.status().is_success() {
+            let pull_data: PullResponse = response.json().await.map_err(|e| {
+                allbeads::AllBeadsError::Parse(format!("Failed to parse response: {}", e))
+            })?;
+
+            println!(
+                "    {} Found {} contexts on web",
+                style::dim("○"),
+                pull_data.contexts.len()
+            );
+
+            if dry_run {
+                println!("    (dry run - not applying changes)");
+                for ctx in &pull_data.contexts {
+                    println!("      - {} ({})", ctx.name, ctx.url);
+                }
+            } else {
+                // TODO: Merge web contexts into local config
+                // For now, just report
+                println!("    Pull complete (merge not yet implemented)");
+            }
+        } else {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            println!("    {} Pull failed: {} - {}", style::error("✗"), status, body);
+        }
+    }
+
+    // Push to web
+    if do_push {
+        println!("  Pushing contexts to {}...", host);
+
+        // Build context list from local config
+        let local_contexts: Vec<CLIContext> = config
+            .contexts
+            .iter()
+            .map(|c| CLIContext {
+                name: c.name.clone(),
+                url: c.url.clone(),
+                path: c.path.as_ref().map(|p| p.display().to_string()),
+            })
+            .collect();
+
+        println!(
+            "    {} {} local contexts",
+            style::dim("○"),
+            local_contexts.len()
+        );
+
+        if dry_run {
+            println!("    (dry run - not pushing)");
+            for ctx in &local_contexts {
+                println!("      - {} ({})", ctx.name, ctx.url);
+            }
+        } else {
+            let response = client
+                .post(&api_url)
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&serde_json::json!({ "contexts": local_contexts }))
+                .send()
+                .await
+                .map_err(|e| allbeads::AllBeadsError::Network(format!("Failed to push: {}", e)))?;
+
+            if response.status().is_success() {
+                let push_data: PushResponse = response.json().await.map_err(|e| {
+                    allbeads::AllBeadsError::Parse(format!("Failed to parse response: {}", e))
+                })?;
+
+                if !push_data.created.is_empty() {
+                    println!(
+                        "    {} Created: {}",
+                        style::success("✓"),
+                        push_data.created.join(", ")
+                    );
+                }
+                if !push_data.updated.is_empty() {
+                    println!(
+                        "    {} Updated: {}",
+                        style::info("↺"),
+                        push_data.updated.join(", ")
+                    );
+                }
+                println!(
+                    "    {} {} contexts synced",
+                    style::success("✓"),
+                    push_data.synced.len()
+                );
+            } else {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                println!("    {} Push failed: {} - {}", style::error("✗"), status, body);
+            }
+        }
+    }
+
+    println!();
+    println!("  View your contexts at: {}/dashboard", host);
 
     Ok(())
 }
