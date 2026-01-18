@@ -938,6 +938,32 @@ pub enum MailCommands {
 
     /// Show unread message count
     Unread,
+
+    /// Mark message(s) as read
+    Read {
+        /// Message ID to mark as read (omit for --all)
+        id: Option<String>,
+
+        /// Mark all messages as read
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Archive message(s)
+    Archive {
+        /// Message ID to archive (omit for --all)
+        id: Option<String>,
+
+        /// Archive all read messages
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Delete a message
+    Delete {
+        /// Message ID to delete
+        id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]

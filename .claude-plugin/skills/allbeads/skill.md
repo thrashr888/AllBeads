@@ -210,12 +210,30 @@ View mail in multiple ways:
 | **LOCK/UNLOCK** | File coordination |
 | **HEARTBEAT** | Agent liveness signals |
 
+### Managing Your Inbox
+
+```bash
+# Mark messages as read
+ab mail read <message-id>    # Mark specific message
+ab mail read --all           # Mark all as read
+
+# Archive old messages
+ab mail archive <message-id> # Archive specific message
+ab mail archive --all        # Archive all read messages
+
+# Delete messages
+ab mail delete <message-id>  # Permanently delete
+```
+
+**Workflow**: Check inbox → Process messages → Mark read → Archive when done.
+
 ### Mail Best Practices
 
 1. **Reference bead IDs** in messages for context
 2. **Check inbox** when starting work sessions
 3. **Send completion notices** after finishing handed-off work
 4. **Use mail for urgency**, beads for tracking
+5. **Clean up regularly** with `ab mail read --all && ab mail archive --all`
 
 ## Common Workflows
 

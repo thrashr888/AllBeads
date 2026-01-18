@@ -250,6 +250,101 @@ impl RemoteMailClient {
         Ok(list.unread_count)
     }
 
+    /// Mark a message as read
+    /// Note: Currently uses global isRead flag. Per-agent tracking coming in abw-2c8.
+    pub async fn mark_read(&self, id: &str) -> Result<()> {
+        let url = format!("{}/api/mail/{}", self.host, id);
+
+        let response = self
+            .client
+            .patch(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "isRead": true }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+            return Err(
+                anyhow::anyhow!("Failed to mark as read ({}): {}", status, error.error).into(),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Mark all messages as read
+    pub async fn mark_all_read(&self) -> Result<usize> {
+        let inbox = self.inbox().await?;
+        let mut count = 0;
+        for msg in inbox.mail.iter().filter(|m| !m.is_read) {
+            self.mark_read(&msg.id).await?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// Archive a message
+    pub async fn archive(&self, id: &str) -> Result<()> {
+        let url = format!("{}/api/mail/{}", self.host, id);
+
+        let response = self
+            .client
+            .patch(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({ "isArchived": true }))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+            return Err(anyhow::anyhow!("Failed to archive ({}): {}", status, error.error).into());
+        }
+
+        Ok(())
+    }
+
+    /// Archive all read messages
+    pub async fn archive_all_read(&self) -> Result<usize> {
+        let inbox = self.inbox().await?;
+        let mut count = 0;
+        for msg in inbox.mail.iter().filter(|m| m.is_read && !m.is_archived) {
+            self.archive(&msg.id).await?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// Delete a message
+    pub async fn delete(&self, id: &str) -> Result<()> {
+        let url = format!("{}/api/mail/{}", self.host, id);
+
+        let response = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+            return Err(anyhow::anyhow!("Failed to delete ({}): {}", status, error.error).into());
+        }
+
+        Ok(())
+    }
+
     /// Get user's organizations
     async fn get_orgs(&self) -> Result<Vec<OrgInfo>> {
         let url = format!("{}/api/orgs", self.host);

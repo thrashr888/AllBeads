@@ -38,6 +38,17 @@ ab mail unread
 
 # Send test messages (for verification)
 ab mail test "Your message here"
+
+# Mark messages as read
+ab mail read <message-id>    # Mark one as read
+ab mail read --all           # Mark all as read
+
+# Archive messages
+ab mail archive <message-id> # Archive one message
+ab mail archive --all        # Archive all read messages
+
+# Delete messages
+ab mail delete <message-id>  # Permanently delete
 ```
 
 ## Agent Handoff Workflow
@@ -79,6 +90,21 @@ When logged in (`ab login`), mail syncs to the web dashboard:
 | LOCK/UNLOCK | File coordination | "Locking src/auth.rs for refactor" |
 | HEARTBEAT | Agent status | "Status: working on ab-123" |
 
+## Managing Your Inbox
+
+Keep your inbox clean with this workflow:
+
+```bash
+# 1. Check inbox at session start
+ab mail inbox
+
+# 2. Process messages, then mark as read
+ab mail read --all
+
+# 3. Archive when done
+ab mail archive --all
+```
+
 ## Best Practices
 
 1. **Always create a bead** for trackable work - mail is ephemeral
@@ -86,6 +112,7 @@ When logged in (`ab login`), mail syncs to the web dashboard:
 3. **Use mail for urgency** - immediate attention needed
 4. **Check inbox regularly** when starting work sessions
 5. **Send completion notifications** when finishing handed-off work
+6. **Clean up regularly** - archive processed messages to reduce noise
 
 ## Integration with TUI
 

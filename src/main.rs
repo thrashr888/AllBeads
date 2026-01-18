@@ -9594,6 +9594,57 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
                 }
             }
         }
+        MailCommands::Read { id, all } => {
+            if let Some(ref client) = remote_client {
+                let rt = tokio::runtime::Runtime::new()?;
+                if *all {
+                    match rt.block_on(client.mark_all_read()) {
+                        Ok(count) => println!("Marked {} message(s) as read.", count),
+                        Err(e) => eprintln!("Failed to mark all as read: {}", e),
+                    }
+                } else if let Some(msg_id) = id {
+                    match rt.block_on(client.mark_read(msg_id)) {
+                        Ok(()) => println!("Marked {} as read.", msg_id),
+                        Err(e) => eprintln!("Failed to mark as read: {}", e),
+                    }
+                } else {
+                    eprintln!("Specify a message ID or use --all");
+                }
+            } else {
+                eprintln!("Remote not available. Run 'ab login' first.");
+            }
+        }
+        MailCommands::Archive { id, all } => {
+            if let Some(ref client) = remote_client {
+                let rt = tokio::runtime::Runtime::new()?;
+                if *all {
+                    match rt.block_on(client.archive_all_read()) {
+                        Ok(count) => println!("Archived {} read message(s).", count),
+                        Err(e) => eprintln!("Failed to archive: {}", e),
+                    }
+                } else if let Some(msg_id) = id {
+                    match rt.block_on(client.archive(msg_id)) {
+                        Ok(()) => println!("Archived {}.", msg_id),
+                        Err(e) => eprintln!("Failed to archive: {}", e),
+                    }
+                } else {
+                    eprintln!("Specify a message ID or use --all");
+                }
+            } else {
+                eprintln!("Remote not available. Run 'ab login' first.");
+            }
+        }
+        MailCommands::Delete { id } => {
+            if let Some(ref client) = remote_client {
+                let rt = tokio::runtime::Runtime::new()?;
+                match rt.block_on(client.delete(id)) {
+                    Ok(()) => println!("Deleted {}.", id),
+                    Err(e) => eprintln!("Failed to delete: {}", e),
+                }
+            } else {
+                eprintln!("Remote not available. Run 'ab login' first.");
+            }
+        }
     }
 
     Ok(())
