@@ -908,6 +908,24 @@ pub enum Commands {
 
 #[derive(Subcommand, Debug)]
 pub enum MailCommands {
+    /// Send a message to a context or actor
+    Send {
+        /// Recipient: context name (e.g., AllBeadsWeb) or full address (e.g., agent@AllBeadsWeb)
+        #[arg(short, long)]
+        to: String,
+
+        /// Message content
+        message: String,
+
+        /// Message type: notify, request, broadcast (default: notify)
+        #[arg(short = 'T', long, default_value = "notify")]
+        message_type: String,
+
+        /// Sender name (default: current context or "cli")
+        #[arg(short, long)]
+        from: Option<String>,
+    },
+
     /// Send a test notification message
     Test {
         /// Message to send

@@ -147,7 +147,7 @@ AllBeads enables seamless task handoff between repositories using **beads** (per
 ab create --context=AllBeadsWeb --title="Add /api/beads/import endpoint" --type=feature
 
 # 2. Send real-time notification (mail)
-ab mail test "New task: Add /api/beads/import endpoint for CLI sync. See AllBeadsWeb ready queue."
+ab mail send --to AllBeadsWeb "New task: Add /api/beads/import endpoint. See bd ready."
 
 # 3. Target agent picks up
 # In AllBeadsWeb:
@@ -179,13 +179,17 @@ bd ready         # Finds task
 Agent Mail enables real-time communication between agents across repositories.
 
 ```bash
+# Send a message to another context/agent
+ab mail send --to AllBeadsWeb "Feature ready for review"
+ab mail send --to AllBeadsWeb --message-type request "Approve deployment?"
+
 # Check your inbox
 ab mail inbox
 
 # Check unread count
 ab mail unread
 
-# Send notification
+# Send test messages
 ab mail test "Build completed for ab-123. Ready for review."
 ```
 
@@ -364,12 +368,12 @@ ab close <id>                 # Complete
 
 # Cross-Repo Handoff
 ab create --context=AllBeadsWeb --title="..." --type=feature
-ab mail test "New task available in AllBeadsWeb"
+ab mail send --to AllBeadsWeb "New task: see bd ready"
 
 # Mail
+ab mail send --to <context> "message"  # Send to context/agent
 ab mail inbox                 # Check messages
 ab mail unread                # Unread count
-ab mail test "message"        # Send notification
 
 # Sync
 ab sync --all                 # Sync everything

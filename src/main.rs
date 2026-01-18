@@ -9362,6 +9362,67 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
     let mut postmaster = Postmaster::with_project_id(mail_db_path, &project_id)?;
 
     match cmd {
+        MailCommands::Send {
+            to,
+            message,
+            message_type,
+            from,
+        } => {
+            // Parse recipient - could be just context name or full address
+            let to_address: Address = if to.contains('@') {
+                to.parse()?
+            } else {
+                // Just a context name, create address for "all" agents in that context
+                Address::new("all", to)?
+            };
+
+            // Get sender address
+            let from_address = match from {
+                Some(ref name) => Address::new(name.as_str(), &project_id)?,
+                None => Address::new("cli", &project_id)?,
+            };
+
+            // Create message based on type
+            let msg_type = match message_type.to_lowercase().as_str() {
+                "request" => MessageType::Request(RequestPayload::new(message)),
+                "broadcast" => {
+                    MessageType::Broadcast(allbeads::mail::BroadcastPayload::new(message))
+                }
+                _ => MessageType::Notify(NotifyPayload::new(message).with_severity(Severity::Info)),
+            };
+
+            let mail_message = Message::new(from_address.clone(), to_address.clone(), msg_type);
+
+            // Send to remote if authenticated, otherwise local
+            if let Some(ref client) = remote_client {
+                let rt = tokio::runtime::Runtime::new()?;
+                match rt.block_on(client.send(&mail_message)) {
+                    Ok(_) => {
+                        println!(
+                            "Sent [{}] to {}: {}",
+                            message_type.to_uppercase(),
+                            to_address,
+                            message
+                        );
+                        println!(
+                            "View at: {}/dashboard/mail",
+                            config.as_ref().map(|c| c.web_auth.host()).unwrap_or("")
+                        );
+                    }
+                    Err(e) => eprintln!("Failed to send: {}", e),
+                }
+            } else {
+                postmaster.send(mail_message)?;
+                println!(
+                    "Sent [{}] to {}: {}",
+                    message_type.to_uppercase(),
+                    to_address,
+                    message
+                );
+                println!("(local only - run 'ab login' to send to remote)");
+            }
+        }
+
         MailCommands::Test { message } => {
             // Send a variety of test messages
             let human = Address::human();

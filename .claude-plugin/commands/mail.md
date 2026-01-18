@@ -18,6 +18,18 @@ Agent Mail provides real-time messaging between agents. Use it alongside beads f
 ## Commands
 
 ```bash
+# Send a message to a context or actor
+ab mail send --to AllBeadsWeb "New feature ready for review"
+ab mail send --to agent@AllBeadsWeb "Task completed"
+
+# Send different message types
+ab mail send --to AllBeadsWeb --message-type notify "Build completed"
+ab mail send --to AllBeadsWeb --message-type request "Please approve deployment"
+ab mail send --to AllBeadsWeb --message-type broadcast "System maintenance at 5pm"
+
+# Specify sender
+ab mail send --to AllBeadsWeb --from "build-bot" "CI passed"
+
 # Check inbox
 ab mail inbox
 
