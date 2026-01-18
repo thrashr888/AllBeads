@@ -16,6 +16,10 @@ ab handoff <bead-id> --agent <agent>
 # Hand off in an isolated worktree
 ab handoff <bead-id> --worktree
 
+# Queue work for a running agent via Agent Mail (instead of spawning new)
+ab handoff <bead-id> --queue
+ab handoff <bead-id> --queue --agent claude
+
 # Show beads that have been handed off
 ab handoff --list
 
@@ -105,6 +109,36 @@ git commit -m "feat(<bead-id>): <description>"
 bd sync
 git push -u origin bead/<bead-id>
 ```
+
+## Queue Mode (--queue)
+
+Use `--queue` to send work to a **running agent** via Agent Mail instead of spawning a new process:
+
+```bash
+ab handoff ab-xyz --queue
+ab handoff ab-xyz --queue --agent claude
+```
+
+This is ideal when:
+- An agent is already running (e.g., in another terminal)
+- You want to batch multiple tasks to the same agent
+- The agent supports runtime task intake via mail
+
+**What happens:**
+1. Bead context is loaded
+2. A NOTIFY message is sent via Agent Mail to `{agent}@{context}`
+3. Bead status is updated to `in_progress`
+4. `queued` label is added to the bead
+5. A comment records the queue action
+
+The running agent checks its mail (either manually via `ab mail inbox` or automatically if running with `--mail-poll`) and picks up the task.
+
+**Difference from normal handoff:**
+| Normal | Queue Mode |
+|--------|------------|
+| Spawns new agent process | Sends mail to existing agent |
+| Agent starts immediately | Agent picks up when ready |
+| One agent per bead | Batched to running agent |
 
 ## Worktrees
 

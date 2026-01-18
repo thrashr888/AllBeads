@@ -293,12 +293,16 @@ ab show <bead-id>        # Review task details
 
 ### 3. Hand Off to Agent
 ```bash
-# Hand off to your preferred agent
+# Hand off to your preferred agent (spawns new process)
 ab handoff <bead-id>
 
 # Or specify agent explicitly
 ab handoff <bead-id> --agent codex
 ab handoff <bead-id> --agent gemini
+
+# Queue to a running agent via Agent Mail (no new process)
+ab handoff <bead-id> --queue
+ab handoff <bead-id> --queue --agent claude
 ```
 
 ### 4. Agent Completes Work
@@ -333,6 +337,7 @@ ab handoff <bead-id>     # Hand off
 - **Sandboxed agents**: Codex can't write to `.git/` - branch pre-created
 - **Codex command**: Uses `codex exec --full-auto` for non-interactive mode
 - **After sandboxed agent**: User commits and pushes the work
+- **Queue mode (`--queue`)**: Sends work via Agent Mail to a running agent instead of spawning new process
 
 ## Agents
 

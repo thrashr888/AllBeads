@@ -522,6 +522,101 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_auth_command(show_token);
     }
 
+    // Handle Show command locally if .beads/ exists (avoid loading full graph)
+    if let Commands::Show {
+        ref id,
+        provenance,
+        tasks,
+    } = command
+    {
+        // Check if we're in a directory with beads
+        let beads_path = std::path::Path::new(".beads");
+        if beads_path.exists() {
+            use allbeads::storage::issue_to_bead;
+            use beads::Beads;
+
+            match Beads::new() {
+                Ok(bd) => match bd.show(id) {
+                    Ok(issue) => {
+                        match issue_to_bead(issue) {
+                            Ok(bead) => {
+                                print_bead_detailed(&bead);
+
+                                // Show handoff info if bead has been handed off
+                                if bead.labels.iter().any(|l| l == "handed-off") {
+                                    show_handoff_info(id, &bead)?;
+                                }
+
+                                // Show provenance information if requested
+                                if provenance {
+                                    match query_aiki_provenance(id, None) {
+                                        Ok(prov) => {
+                                            println!(
+                                                "\n  {}",
+                                                style::header("Provenance Summary (from Aiki):")
+                                            );
+                                            println!("    Total changes: {}", prov.total_changes);
+                                            if !prov.agents.is_empty() {
+                                                print!("    Agents: ");
+                                                let agents_str: Vec<String> = prov
+                                                    .agents
+                                                    .iter()
+                                                    .map(|(agent, count)| {
+                                                        format!("{} ({})", agent, count)
+                                                    })
+                                                    .collect();
+                                                println!("{}", agents_str.join(", "));
+                                            }
+                                            if let Some(reviews) = prov.reviews {
+                                                println!(
+                                                    "    Reviews: {} passed, {} required iteration",
+                                                    reviews.passed, reviews.iterated
+                                                );
+                                            }
+                                            if let Some(time) = prov.time_in_review {
+                                                println!("    Time in review loop: {}", time);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "\n  {} Unable to fetch provenance: {}",
+                                                style::error("✗"),
+                                                e
+                                            );
+                                        }
+                                    }
+                                }
+
+                                // Show linked Aiki tasks if requested
+                                if tasks {
+                                    show_aiki_tasks_for_bead(&bead)?;
+                                }
+
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                // Fall through to full graph loading if conversion fails
+                                tracing::debug!("Failed to convert issue: {}", e);
+                            }
+                        }
+                    }
+                    Err(beads::Error::IssueNotFound(_)) => {
+                        // Bead not found locally - fall through to check other contexts
+                        tracing::debug!("Bead {} not found locally, checking other contexts", id);
+                    }
+                    Err(e) => {
+                        // Other error - fall through
+                        tracing::debug!("Failed to load bead locally: {}", e);
+                    }
+                },
+                Err(e) => {
+                    tracing::debug!("Failed to initialize beads: {}", e);
+                }
+            }
+        }
+        // If .beads/ doesn't exist or bead not found, fall through to load full graph
+    }
+
     // Load configuration
     let config = if let Some(config_path) = cli.config.clone() {
         AllBeadsConfig::load(config_path)?
