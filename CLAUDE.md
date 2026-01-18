@@ -527,6 +527,24 @@ ab context new myproject --private  # Create new GitHub repo
 ab onboard /path/to/repo            # Onboard existing repo
 ```
 
+### Cross-Repo Task Handoff
+
+To hand off tasks to other AllBeads-related apps, create beads in their context:
+
+```bash
+# Create task for the web app (allbeads.co)
+ab create --context=AllBeadsWeb --title="Add new API endpoint" --type=feature
+
+# Create task for the macOS app
+ab create --context=AllBeadsApp --title="Fix menu bar icon" --type=bug
+
+# View tasks in other repos
+ab list -C AllBeadsWeb
+ab list -C AllBeadsApp
+```
+
+This allows agents working in different repos to pick up tasks created here.
+
 ### Agent Types
 
 #### Task Agent
