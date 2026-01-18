@@ -410,6 +410,9 @@ allbeads handoff --ready
 
 # Dry run (see what would happen)
 allbeads handoff <bead-id> --dry-run
+
+# Queue work for a running agent via Agent Mail (instead of spawning new)
+allbeads handoff <bead-id> --queue
 ```
 
 **Supported Agents:**
@@ -436,6 +439,22 @@ Some agents run in sandboxes that prevent git operations. AllBeads handles this 
 # After Codex completes:
 git add -A && git commit -m "feat(<bead-id>): ..."
 bd sync && git push -u origin bead/<bead-id>
+```
+
+**Queue Mode (--queue):**
+
+Instead of spawning a new agent process, the `--queue` flag sends work via Agent Mail:
+- Mail is sent to `<agent>@<context>` (e.g., `claude@AllBeads`)
+- Running agents pick up work on their next mail check
+- Useful when you have an agent session already running
+- Bead is marked with `queued` label for tracking
+
+```bash
+# Queue work for a running Claude session
+allbeads handoff ab-123 --queue --agent claude
+
+# Check queued mail
+allbeads mail unread
 ```
 
 #### Governance

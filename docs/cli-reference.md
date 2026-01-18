@@ -581,6 +581,9 @@ ab handoff ab-123 --worktree
 
 # Preview
 ab handoff ab-123 --dry-run
+
+# Queue for running agent via Agent Mail (instead of spawning new)
+ab handoff ab-123 --queue --agent claude
 ```
 
 **Utility options:**
@@ -596,6 +599,7 @@ ab handoff --ready     # Show ready beads for handoff
 | `--agent <name>` | Specific agent to use |
 | `--worktree` | Use isolated git worktree |
 | `--dry-run` | Show what would happen |
+| `--queue` | Send via Agent Mail instead of spawning (for running agents) |
 | `--agents` | List available agents |
 | `--list` | Show handed-off beads |
 | `--ready` | Show ready beads |

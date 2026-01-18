@@ -401,6 +401,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         agents,
         dry_run,
         worktree,
+        queue,
     } = command
     {
         return handle_handoff_command(
@@ -411,6 +412,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             agents,
             dry_run,
             worktree,
+            queue,
         );
     }
 
@@ -5708,6 +5710,7 @@ fn handle_handoff_command(
     agents: bool,
     dry_run: bool,
     worktree: bool,
+    queue: bool,
 ) -> allbeads::Result<()> {
     use allbeads::config::AllBeadsConfig;
     use allbeads::handoff::AgentType;
@@ -5911,6 +5914,131 @@ fn handle_handoff_command(
                 );
             }
         }
+
+        // Show queue info
+        if queue {
+            let context_name = context_path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("default");
+            println!(
+                "  {} Would queue via Agent Mail to {}@{}",
+                style::dim("→"),
+                agent_type.command(),
+                context_name
+            );
+        }
+
+        return Ok(());
+    }
+
+    // Queue mode: send work via Agent Mail instead of spawning new agent
+    if queue {
+        use allbeads::config::AllBeadsConfig;
+        use allbeads::mail::{Address, Message, MessageType, NotifyPayload, Severity};
+
+        println!(
+            "  {} Queueing work via Agent Mail...",
+            style::dim("→")
+        );
+
+        // Load config for mail client
+        let ab_config = AllBeadsConfig::load_default().map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to load config: {}", e))
+        })?;
+
+        // Create remote mail client
+        let mail_client =
+            allbeads::mail::RemoteMailClient::from_config(&ab_config).ok_or_else(|| {
+                allbeads::AllBeadsError::Config(
+                    "Not authenticated with AllBeads Web. Run 'ab login' first.".to_string(),
+                )
+            })?;
+
+        // Determine agent address (agent@context)
+        let context_name = context_path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("default");
+        let to_address = Address::new(agent_type.command(), context_name).map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Invalid address: {}", e))
+        })?;
+
+        // Build mail message with the handoff prompt
+        let notify = NotifyPayload::new(&prompt)
+            .with_severity(Severity::Info)
+            .with_bead(bead_id);
+
+        let message = Message::new(
+            Address::human(),
+            to_address.clone(),
+            MessageType::Notify(notify),
+        );
+
+        // Send the mail
+        let rt = tokio::runtime::Runtime::new().map_err(|e| {
+            allbeads::AllBeadsError::Config(format!("Failed to create runtime: {}", e))
+        })?;
+
+        rt.block_on(async {
+            mail_client.send(&message).await.map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to send mail: {}", e))
+            })
+        })?;
+
+        println!(
+            "  {} Mail sent to {}",
+            style::success("✓"),
+            style::highlight(&to_address.to_string())
+        );
+
+        // Update bead status
+        println!(
+            "  {} Updating bead status to in_progress...",
+            style::dim("→")
+        );
+        beads
+            .update(bead_id, Some("in_progress"), None, None, None)
+            .map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to update bead '{}': {}", bead_id, e))
+            })?;
+
+        // Add queued comment
+        let queued_comment = format!(
+            "[QUEUED] Agent: {}, Recipient: {}, Time: {}",
+            agent_type.display_name(),
+            to_address,
+            chrono::Utc::now().to_rfc3339()
+        );
+        if let Err(e) = beads.comment_add(bead_id, &queued_comment) {
+            eprintln!(
+                "  {} Failed to add queue comment: {}",
+                style::warning("⚠"),
+                e
+            );
+        }
+
+        // Add queued label
+        if let Err(e) = beads.label_add(bead_id, "queued") {
+            eprintln!(
+                "  {} Failed to add queued label: {}",
+                style::warning("⚠"),
+                e
+            );
+        }
+
+        println!();
+        println!(
+            "  {} Work queued for {}. The running agent will pick it up on next mail check.",
+            style::success("✓"),
+            agent_type.display_name()
+        );
+        println!(
+            "  {} Tip: Run 'ab mail unread' to see pending messages.",
+            style::dim("→")
+        );
 
         return Ok(());
     }

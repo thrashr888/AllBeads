@@ -798,6 +798,10 @@ pub enum Commands {
         /// Create a git worktree for isolated development
         #[arg(long)]
         worktree: bool,
+
+        /// Queue work for a running agent via Agent Mail instead of spawning new
+        #[arg(long)]
+        queue: bool,
     },
 
     // =========================================================================
