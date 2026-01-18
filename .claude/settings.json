@@ -26,6 +26,11 @@
             "command": "allbeads sync --status 2>/dev/null || true",
             "statusMessage": "Checking AllBeads sync status",
             "type": "command"
+          },
+          {
+            "command": "echo '📬 Mail:' && allbeads mail unread 2>/dev/null || true",
+            "statusMessage": "Checking agent mail",
+            "type": "command"
           }
         ]
       }
