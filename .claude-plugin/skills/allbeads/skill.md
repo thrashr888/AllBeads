@@ -126,26 +126,33 @@ AllBeads maintains a unified dependency graph across all contexts, allowing you 
 
 ## Cross-Repo Task Handoff
 
-AllBeads enables seamless task handoff between repositories. Create beads in other contexts to delegate work:
+AllBeads enables seamless task handoff between repositories using **beads** (persistent tasks) and **mail** (real-time notifications).
+
+### Beads + Mail: The Complete Handoff
 
 ```bash
-# Create task for the web app (allbeads.co)
-ab create --context=AllBeadsWeb --title="Add new API endpoint" --type=feature
+# 1. Create the persistent task (bead)
+ab create --context=AllBeadsWeb --title="Add /api/beads/import endpoint" --type=feature
 
-# Create task for the macOS app
-ab create --context=AllBeadsApp --title="Fix menu bar icon" --type=bug
+# 2. Send real-time notification (mail)
+ab mail test "New task: Add /api/beads/import endpoint for CLI sync. See AllBeadsWeb ready queue."
 
-# View tasks in other repos
-ab list -C AllBeadsWeb
-ab list -C AllBeadsApp
+# 3. Target agent picks up
+# In AllBeadsWeb:
+ab mail inbox    # Sees notification
+bd ready         # Finds task
 ```
 
-### How Task Handoff Works
+### When to Use Each
 
-1. **Discover work for another repo** - While implementing, find something that belongs elsewhere
-2. **Create bead in target context** - `ab create --context=<target> --title="..." --type=feature`
-3. **Target repo's agent picks it up** - They run `bd ready` and see the task
-4. **Work flows naturally** - Each repo handles its own domain
+| Use Beads | Use Mail |
+|-----------|----------|
+| Trackable tasks | Real-time alerts |
+| Work spanning sessions | Immediate attention needed |
+| Dependencies | Status updates |
+| Persistent record | Coordination messages |
+
+**Best practice**: Create a bead AND send mail for important handoffs.
 
 ### Common Handoff Targets
 
@@ -154,6 +161,45 @@ ab list -C AllBeadsApp
 | `AllBeadsWeb` | Web UI, API endpoints, dashboard |
 | `AllBeadsApp` | macOS native app, menu bar |
 | `AllBeads` | CLI, core Rust library |
+
+## Agent Mail
+
+Agent Mail enables real-time communication between agents across repositories.
+
+```bash
+# Check your inbox
+ab mail inbox
+
+# Check unread count
+ab mail unread
+
+# Send notification
+ab mail test "Build completed for ab-123. Ready for review."
+```
+
+### Mail in the Dashboard
+
+View mail in multiple ways:
+- **CLI**: `ab mail inbox`
+- **TUI**: `ab tui` then Tab to Mail view
+- **Web**: https://allbeads.co/dashboard/mail (when logged in)
+
+### Message Types
+
+| Type | Use For |
+|------|---------|
+| **NOTIFY** | Status updates, completions, FYIs |
+| **REQUEST** | Approval needed, input required |
+| **BROADCAST** | Announcements to all agents |
+| **LOCK/UNLOCK** | File coordination |
+| **HEARTBEAT** | Agent liveness signals |
+
+### Mail Best Practices
+
+1. **Reference bead IDs** in messages for context
+2. **Check inbox** when starting work sessions
+3. **Send completion notices** after finishing handed-off work
+4. **Use mail for urgency**, beads for tracking
 
 ## Common Workflows
 
@@ -270,6 +316,7 @@ AllBeads provides specialized agents:
 | Command | Purpose |
 |---------|---------|
 | `/create` | Create bead in any context (cross-repo handoff) |
+| `/mail` | Agent mail for real-time coordination |
 | `/ready` | Show unblocked work |
 | `/list` | List all beads |
 | `/show` | Show bead details |
@@ -302,6 +349,15 @@ ab context new <name>         # Create new
 ab ready                      # Find work
 ab update <id> --status=...   # Update status
 ab close <id>                 # Complete
+
+# Cross-Repo Handoff
+ab create --context=AllBeadsWeb --title="..." --type=feature
+ab mail test "New task available in AllBeadsWeb"
+
+# Mail
+ab mail inbox                 # Check messages
+ab mail unread                # Unread count
+ab mail test "message"        # Send notification
 
 # Sync
 ab sync --all                 # Sync everything
