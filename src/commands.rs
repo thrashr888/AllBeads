@@ -437,7 +437,11 @@ pub enum Commands {
     },
 
     /// Show aggregated statistics
-    Stats,
+    Stats {
+        /// Fetch stats from remote web API instead of local
+        #[arg(long)]
+        remote: bool,
+    },
 
     // =========================================================================
     // WRAPPER COMMANDS - Delegate to bd in the correct context
@@ -1639,6 +1643,10 @@ pub enum CommentCommands {
     List {
         /// Issue ID
         issue: String,
+
+        /// Fetch from remote web API instead of local bd
+        #[arg(long)]
+        remote: bool,
     },
 
     /// Add a comment to an issue
@@ -1648,6 +1656,10 @@ pub enum CommentCommands {
 
         /// Comment content
         content: String,
+
+        /// Post to remote web API instead of local bd
+        #[arg(long)]
+        remote: bool,
     },
 }
 

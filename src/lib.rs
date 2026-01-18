@@ -42,6 +42,7 @@ pub mod manifest;
 pub mod onboarding;
 pub mod plugin;
 pub mod sheriff;
+pub mod web;
 
 // Re-exports
 pub use error::{AllBeadsError, Result};

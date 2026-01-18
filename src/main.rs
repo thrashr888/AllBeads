@@ -1242,7 +1242,68 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
-        Commands::Stats => {
+        Commands::Stats { remote } => {
+            if remote {
+                // Fetch from web API
+                let ab_config = AllBeadsConfig::load_default()
+                    .map_err(|_| anyhow::anyhow!("Not logged in. Run 'ab login' first."))?;
+                let web_client = allbeads::web::WebClient::from_config(&ab_config)
+                    .ok_or_else(|| anyhow::anyhow!("Not authenticated. Run 'ab login' first."))?;
+
+                let rt = tokio::runtime::Runtime::new()?;
+                let stats = rt.block_on(web_client.get_stats())?;
+
+                println!();
+                println!("{}", style::header("Remote Beads Statistics"));
+                println!();
+                println!("{}", style::subheader("Summary"));
+                println!(
+                    "  Total Beads:          {}",
+                    style::count_normal(stats.total)
+                );
+
+                // Status breakdown
+                for (status, count) in &stats.by_status {
+                    let styled = match status.to_lowercase().as_str() {
+                        "open" => style::count_ready(*count),
+                        "in_progress" => style::count_in_progress(*count),
+                        "blocked" => style::count_blocked(*count),
+                        _ => style::dim(&count.to_string()),
+                    };
+                    println!("  {:18} {}", format!("{}:", status), styled);
+                }
+
+                // Top repos
+                if !stats.top_repos.is_empty() {
+                    println!();
+                    println!("{}", style::subheader("Top Repositories"));
+                    for repo in &stats.top_repos {
+                        println!(
+                            "  {:<20} {} beads",
+                            style::path(&repo.name),
+                            repo.bead_count
+                        );
+                    }
+                }
+
+                // Top authors
+                if !stats.top_authors.is_empty() {
+                    println!();
+                    println!("{}", style::subheader("Top Contributors"));
+                    for author in &stats.top_authors {
+                        println!(
+                            "  {:<20} {} beads",
+                            style::dim(&author.name),
+                            author.bead_count
+                        );
+                    }
+                }
+
+                println!();
+                return Ok(());
+            }
+
+            // Local stats (existing implementation)
             let stats = graph.stats();
             let ready_count = graph.ready_beads().len();
 
@@ -2125,71 +2186,121 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         }
 
         Commands::Comments(comment_cmd) => match comment_cmd {
-            CommentCommands::List { issue } => {
-                let bead_id = allbeads::graph::BeadId::from(issue.as_str());
-                if let Some(bead) = graph.beads.get(&bead_id) {
-                    if let Some(ctx_name) = bead
-                        .labels
-                        .iter()
-                        .find(|l| l.starts_with('@'))
-                        .map(|l| l.trim_start_matches('@'))
-                    {
-                        if let Some(ctx) = config_for_commands
-                            .contexts
+            CommentCommands::List { issue, remote } => {
+                if remote {
+                    // Fetch from web API
+                    let ab_config = AllBeadsConfig::load_default()
+                        .map_err(|_| anyhow::anyhow!("Not logged in. Run 'ab login' first."))?;
+                    let web_client =
+                        allbeads::web::WebClient::from_config(&ab_config).ok_or_else(|| {
+                            anyhow::anyhow!("Not authenticated. Run 'ab login' first.")
+                        })?;
+
+                    let rt = tokio::runtime::Runtime::new()?;
+                    let comments = rt.block_on(web_client.get_comments(issue.as_str()))?;
+
+                    if comments.is_empty() {
+                        println!("No comments on {}", issue);
+                    } else {
+                        for comment in comments {
+                            let author_name = comment
+                                .author
+                                .as_ref()
+                                .and_then(|a| a.name.clone().or(a.login.clone()))
+                                .unwrap_or_else(|| "Unknown".to_string());
+                            println!("--- {} ({}) ---", author_name, comment.created_at);
+                            println!("{}\n", comment.content);
+                        }
+                    }
+                } else {
+                    // Local bd comments
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
                             .iter()
-                            .find(|c| c.name == ctx_name)
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx_path) = &ctx.path {
-                                let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
-                                match bd.comments(&issue) {
-                                    Ok(comments) => {
-                                        if comments.is_empty() {
-                                            println!("No comments on {}", issue);
-                                        } else {
-                                            for comment in comments {
-                                                println!(
-                                                    "--- {} ({}) ---",
-                                                    comment.author,
-                                                    comment.created_at.unwrap_or_default()
-                                                );
-                                                println!("{}\n", comment.content);
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    match bd.comments(&issue) {
+                                        Ok(comments) => {
+                                            if comments.is_empty() {
+                                                println!("No comments on {}", issue);
+                                            } else {
+                                                for comment in comments {
+                                                    println!(
+                                                        "--- {} ({}) ---",
+                                                        comment.author,
+                                                        comment.created_at.unwrap_or_default()
+                                                    );
+                                                    println!("{}\n", comment.content);
+                                                }
                                             }
                                         }
+                                        Err(e) => eprintln!("Error: {}", e),
                                     }
-                                    Err(e) => eprintln!("Error: {}", e),
                                 }
                             }
                         }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
                     }
-                } else {
-                    eprintln!("Bead {} not found", issue);
                 }
             }
-            CommentCommands::Add { issue, content } => {
-                let bead_id = allbeads::graph::BeadId::from(issue.as_str());
-                if let Some(bead) = graph.beads.get(&bead_id) {
-                    if let Some(ctx_name) = bead
-                        .labels
-                        .iter()
-                        .find(|l| l.starts_with('@'))
-                        .map(|l| l.trim_start_matches('@'))
-                    {
-                        if let Some(ctx) = config_for_commands
-                            .contexts
+            CommentCommands::Add {
+                issue,
+                content,
+                remote,
+            } => {
+                if remote {
+                    // Post to web API
+                    let ab_config = AllBeadsConfig::load_default()
+                        .map_err(|_| anyhow::anyhow!("Not logged in. Run 'ab login' first."))?;
+                    let web_client =
+                        allbeads::web::WebClient::from_config(&ab_config).ok_or_else(|| {
+                            anyhow::anyhow!("Not authenticated. Run 'ab login' first.")
+                        })?;
+
+                    let rt = tokio::runtime::Runtime::new()?;
+                    let comment =
+                        rt.block_on(web_client.add_comment(issue.as_str(), content.as_str()))?;
+                    println!("Comment added (id: {})", comment.id);
+                } else {
+                    // Local bd comment add
+                    let bead_id = allbeads::graph::BeadId::from(issue.as_str());
+                    if let Some(bead) = graph.beads.get(&bead_id) {
+                        if let Some(ctx_name) = bead
+                            .labels
                             .iter()
-                            .find(|c| c.name == ctx_name)
+                            .find(|l| l.starts_with('@'))
+                            .map(|l| l.trim_start_matches('@'))
                         {
-                            if let Some(ctx_path) = &ctx.path {
-                                let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
-                                match bd.comment_add(&issue, &content) {
-                                    Ok(output) => println!("{}", output.stdout),
-                                    Err(e) => eprintln!("Error: {}", e),
+                            if let Some(ctx) = config_for_commands
+                                .contexts
+                                .iter()
+                                .find(|c| c.name == ctx_name)
+                            {
+                                if let Some(ctx_path) = &ctx.path {
+                                    let bd =
+                                        Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                                    match bd.comment_add(&issue, &content) {
+                                        Ok(output) => println!("{}", output.stdout),
+                                        Err(e) => eprintln!("Error: {}", e),
+                                    }
                                 }
                             }
                         }
+                    } else {
+                        eprintln!("Bead {} not found", issue);
                     }
-                } else {
-                    eprintln!("Bead {} not found", issue);
                 }
             }
         },
