@@ -124,6 +124,37 @@ When working with cross-repo Epics, AllBeads creates "Shadow Beads" in the Boss 
 ### Federated Graph
 AllBeads maintains a unified dependency graph across all contexts, allowing you to see how work in one repository blocks or enables work in another.
 
+## Cross-Repo Task Handoff
+
+AllBeads enables seamless task handoff between repositories. Create beads in other contexts to delegate work:
+
+```bash
+# Create task for the web app (allbeads.co)
+ab create --context=AllBeadsWeb --title="Add new API endpoint" --type=feature
+
+# Create task for the macOS app
+ab create --context=AllBeadsApp --title="Fix menu bar icon" --type=bug
+
+# View tasks in other repos
+ab list -C AllBeadsWeb
+ab list -C AllBeadsApp
+```
+
+### How Task Handoff Works
+
+1. **Discover work for another repo** - While implementing, find something that belongs elsewhere
+2. **Create bead in target context** - `ab create --context=<target> --title="..." --type=feature`
+3. **Target repo's agent picks it up** - They run `bd ready` and see the task
+4. **Work flows naturally** - Each repo handles its own domain
+
+### Common Handoff Targets
+
+| Context | Purpose |
+|---------|---------|
+| `AllBeadsWeb` | Web UI, API endpoints, dashboard |
+| `AllBeadsApp` | macOS native app, menu bar |
+| `AllBeads` | CLI, core Rust library |
+
 ## Common Workflows
 
 **Starting cross-repo work:**
@@ -238,6 +269,7 @@ AllBeads provides specialized agents:
 
 | Command | Purpose |
 |---------|---------|
+| `/create` | Create bead in any context (cross-repo handoff) |
 | `/ready` | Show unblocked work |
 | `/list` | List all beads |
 | `/show` | Show bead details |
