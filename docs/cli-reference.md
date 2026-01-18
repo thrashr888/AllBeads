@@ -328,13 +328,19 @@ ab sheriff -f -p 10
 
 # With specific manifest
 ab sheriff --manifest manifests/work.xml -f
+
+# With mail polling (checks inbox for agent messages)
+ab sheriff -f --mail-poll
+ab sheriff -f --mail-poll --mail-interval 30
 ```
 
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--foreground` | `-f` | Run in foreground (show events) |
-| `--poll-interval <secs>` | `-p` | Poll interval in seconds |
+| `--poll-interval <secs>` | `-p` | Poll interval in seconds (default: 5) |
 | `--manifest <path>` | `-m` | Use specific manifest file |
+| `--mail-poll` | | Enable mail polling (check inbox, process messages) |
+| `--mail-interval <secs>` | | Mail poll interval in seconds (default: 60) |
 
 ## Agent Mail
 

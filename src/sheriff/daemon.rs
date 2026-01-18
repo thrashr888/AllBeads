@@ -42,7 +42,16 @@ pub struct SheriffConfig {
 
     /// Project ID for mail routing
     pub project_id: String,
+
+    /// Enable mail polling (check inbox and process messages)
+    pub mail_poll: bool,
+
+    /// Mail poll interval
+    pub mail_poll_interval: Duration,
 }
+
+/// Default mail poll interval (60 seconds)
+pub const DEFAULT_MAIL_POLL_INTERVAL: Duration = Duration::from_secs(60);
 
 impl Default for SheriffConfig {
     fn default() -> Self {
@@ -53,6 +62,8 @@ impl Default for SheriffConfig {
             verbose: false,
             db_path: PathBuf::from(".beads/mail.db"),
             project_id: "boss".to_string(),
+            mail_poll: false,
+            mail_poll_interval: DEFAULT_MAIL_POLL_INTERVAL,
         }
     }
 }
@@ -93,6 +104,18 @@ impl SheriffConfig {
     /// Set the project ID
     pub fn with_project_id(mut self, id: impl Into<String>) -> Self {
         self.project_id = id.into();
+        self
+    }
+
+    /// Enable mail polling
+    pub fn with_mail_poll(mut self, enabled: bool) -> Self {
+        self.mail_poll = enabled;
+        self
+    }
+
+    /// Set the mail poll interval
+    pub fn with_mail_poll_interval(mut self, interval: Duration) -> Self {
+        self.mail_poll_interval = interval;
         self
     }
 }
@@ -146,6 +169,15 @@ pub enum SheriffEvent {
         summary: CheckSummary,
         /// Individual check results
         results: Vec<CheckResult>,
+    },
+
+    /// Mail poll started
+    MailPollStarted,
+
+    /// Mail poll completed
+    MailPollCompleted {
+        /// Number of messages processed
+        messages_processed: usize,
     },
 }
 
@@ -349,6 +381,9 @@ impl Sheriff {
         let _ = self.event_tx.send(SheriffEvent::Started);
 
         let mut interval = tokio::time::interval(self.config.poll_interval);
+        let mut mail_interval = tokio::time::interval(self.config.mail_poll_interval);
+        let mail_poll_enabled = self.config.mail_poll;
+
         let mut command_rx = self
             .command_rx
             .take()
@@ -359,6 +394,11 @@ impl Sheriff {
                 _ = interval.tick() => {
                     if self.running {
                         self.poll_cycle().await;
+                    }
+                }
+                _ = mail_interval.tick(), if mail_poll_enabled => {
+                    if self.running {
+                        self.poll_mail().await;
                     }
                 }
                 Some(cmd) = command_rx.recv() => {
@@ -441,6 +481,80 @@ impl Sheriff {
 
         // Run policy checks
         self.run_policy_checks();
+    }
+
+    /// Poll mail inbox and process messages
+    async fn poll_mail(&mut self) {
+        use crate::mail::Address;
+
+        let _ = self.event_tx.send(SheriffEvent::MailPollStarted);
+
+        let postmaster = match &self.postmaster {
+            Some(pm) => pm.clone(),
+            None => {
+                let _ = self.event_tx.send(SheriffEvent::Error {
+                    message: "Postmaster not initialized for mail polling".to_string(),
+                });
+                return;
+            }
+        };
+
+        // Create Sheriff address for this project
+        let sheriff_address = match Address::new("sheriff", &self.config.project_id) {
+            Ok(addr) => addr,
+            Err(e) => {
+                let _ = self.event_tx.send(SheriffEvent::Error {
+                    message: format!("Invalid sheriff address: {}", e),
+                });
+                return;
+            }
+        };
+
+        // Get unread messages
+        let messages = {
+            let pm = postmaster.lock().await;
+            match pm.unread(&sheriff_address) {
+                Ok(msgs) => msgs,
+                Err(e) => {
+                    let _ = self.event_tx.send(SheriffEvent::Error {
+                        message: format!("Failed to fetch mail: {}", e),
+                    });
+                    return;
+                }
+            }
+        };
+
+        let mut processed_count = 0;
+
+        for message in messages {
+            // Process the message based on type
+            // For now, we just acknowledge it by marking as read
+            // Future: Handle specific message types (Notify, Request, etc.)
+
+            if self.config.verbose {
+                tracing::info!(
+                    "Processing mail from {}: {:?}",
+                    message.message.from,
+                    message.message.message_type
+                );
+            }
+
+            // Mark message as read
+            {
+                let pm = postmaster.lock().await;
+                if let Err(e) = pm.mark_read(&message.message.id) {
+                    let _ = self.event_tx.send(SheriffEvent::Error {
+                        message: format!("Failed to mark mail as read: {}", e),
+                    });
+                }
+            }
+
+            processed_count += 1;
+        }
+
+        let _ = self.event_tx.send(SheriffEvent::MailPollCompleted {
+            messages_processed: processed_count,
+        });
     }
 
     /// Run policy checks against the current state

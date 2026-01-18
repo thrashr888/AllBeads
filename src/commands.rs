@@ -741,6 +741,14 @@ pub enum Commands {
         /// Run in foreground (print events to stdout)
         #[arg(short, long)]
         foreground: bool,
+
+        /// Enable mail polling (check inbox and process messages)
+        #[arg(long)]
+        mail_poll: bool,
+
+        /// Mail poll interval in seconds (default: 60)
+        #[arg(long, default_value = "60")]
+        mail_interval: u64,
     },
 
     /// Agent Mail commands

@@ -1656,6 +1656,8 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             manifest,
             poll_interval,
             foreground,
+            mail_poll,
+            mail_interval,
         } => {
             use allbeads::sheriff::{Sheriff, SheriffConfig};
             use std::time::Duration;
@@ -1664,7 +1666,9 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             let mut sheriff_config = SheriffConfig::new(".")
                 .with_poll_interval(Duration::from_secs(poll_interval))
                 .with_verbose(foreground)
-                .with_project_id(&tui_project_id);
+                .with_project_id(&tui_project_id)
+                .with_mail_poll(mail_poll)
+                .with_mail_poll_interval(Duration::from_secs(mail_interval));
 
             if let Some(manifest_path) = manifest {
                 sheriff_config = sheriff_config.with_manifest(manifest_path);
@@ -1716,6 +1720,19 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                                 }
                                 allbeads::sheriff::SheriffEvent::Error { message } => {
                                     eprintln!("[Sheriff] Error: {}", message);
+                                }
+                                allbeads::sheriff::SheriffEvent::MailPollStarted => {
+                                    println!("[Sheriff] Mail poll started");
+                                }
+                                allbeads::sheriff::SheriffEvent::MailPollCompleted {
+                                    messages_processed,
+                                } => {
+                                    if messages_processed > 0 {
+                                        println!(
+                                            "[Sheriff] Mail poll completed: {} messages processed",
+                                            messages_processed
+                                        );
+                                    }
                                 }
                                 _ => {}
                             }
@@ -5702,6 +5719,7 @@ fn handle_agent_detect(path: &str) -> allbeads::Result<()> {
 // Handoff Command
 // ============================================================================
 
+#[allow(clippy::too_many_arguments)]
 fn handle_handoff_command(
     id: Option<&str>,
     agent: Option<&str>,
@@ -5938,10 +5956,7 @@ fn handle_handoff_command(
         use allbeads::config::AllBeadsConfig;
         use allbeads::mail::{Address, Message, MessageType, NotifyPayload, Severity};
 
-        println!(
-            "  {} Queueing work via Agent Mail...",
-            style::dim("→")
-        );
+        println!("  {} Queueing work via Agent Mail...", style::dim("→"));
 
         // Load config for mail client
         let ab_config = AllBeadsConfig::load_default().map_err(|e| {
@@ -5962,9 +5977,8 @@ fn handle_handoff_command(
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())
             .unwrap_or("default");
-        let to_address = Address::new(agent_type.command(), context_name).map_err(|e| {
-            allbeads::AllBeadsError::Config(format!("Invalid address: {}", e))
-        })?;
+        let to_address = Address::new(agent_type.command(), context_name)
+            .map_err(|e| allbeads::AllBeadsError::Config(format!("Invalid address: {}", e)))?;
 
         // Build mail message with the handoff prompt
         let notify = NotifyPayload::new(&prompt)
@@ -5983,9 +5997,10 @@ fn handle_handoff_command(
         })?;
 
         rt.block_on(async {
-            mail_client.send(&message).await.map_err(|e| {
-                allbeads::AllBeadsError::Config(format!("Failed to send mail: {}", e))
-            })
+            mail_client
+                .send(&message)
+                .await
+                .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to send mail: {}", e)))
         })?;
 
         println!(
@@ -6002,7 +6017,10 @@ fn handle_handoff_command(
         beads
             .update(bead_id, Some("in_progress"), None, None, None)
             .map_err(|e| {
-                allbeads::AllBeadsError::Config(format!("Failed to update bead '{}': {}", bead_id, e))
+                allbeads::AllBeadsError::Config(format!(
+                    "Failed to update bead '{}': {}",
+                    bead_id, e
+                ))
             })?;
 
         // Add queued comment

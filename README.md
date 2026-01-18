@@ -281,6 +281,12 @@ allbeads sheriff --foreground --poll-interval 10
 
 # Run with specific manifest
 allbeads sheriff --manifest manifests/work.xml --foreground
+
+# Enable mail polling (checks inbox for agent messages)
+allbeads sheriff --foreground --mail-poll
+
+# Custom mail poll interval (seconds, default: 60)
+allbeads sheriff --foreground --mail-poll --mail-interval 30
 ```
 
 #### Agent Mail
