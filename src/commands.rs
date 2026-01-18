@@ -722,6 +722,10 @@ pub enum Commands {
         /// Show status only, don't sync
         #[arg(long)]
         status: bool,
+
+        /// Also sync beads to web platform (allbeads.co)
+        #[arg(long)]
+        web: bool,
     },
 
     /// Run the Sheriff daemon (background sync)

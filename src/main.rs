@@ -465,6 +465,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         ref context,
         ref message,
         status,
+        web,
     } = command
     {
         return handle_sync_command(
@@ -472,6 +473,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             context.as_deref(),
             message.as_deref(),
             status,
+            web,
             &cli.config,
         );
     }
@@ -6562,6 +6564,7 @@ fn handle_sync_command(
     context: Option<&str>,
     message: Option<&str>,
     status: bool,
+    web: bool,
     config_path: &Option<String>,
 ) -> allbeads::Result<()> {
     println!();
@@ -6817,6 +6820,43 @@ fn handle_sync_command(
                 }
             }
         }
+    }
+
+    // Sync to web platform if requested
+    if web {
+        println!();
+        println!("  Syncing to web platform...");
+
+        // Load web client
+        let _web_client = match allbeads::web::WebClient::from_config(&config) {
+            Some(client) => client,
+            None => {
+                println!(
+                    "    {} Not authenticated. Run 'ab login' first.",
+                    style::warning("!")
+                );
+                println!();
+                return Ok(());
+            }
+        };
+
+        // TODO: Implement when AllBeadsWeb adds repository lookup API
+        // 1. For each context, find/create repo by contextName or remoteUrl
+        // 2. Load beads from context
+        // 3. Call web_client.import_beads(repo_id, beads, false)
+        //
+        // Blocked by: AllBeadsWeb needs CLI auth + repo lookup endpoints
+        println!(
+            "    {} Web sync coming soon (waiting on API support)",
+            style::dim("○")
+        );
+        println!();
+        println!("    Manual workaround:");
+        println!("    1. Run 'bd export > beads.jsonl' in your context");
+        println!(
+            "    2. Import at: {}/dashboard/repos",
+            config.web_auth.host()
+        );
     }
 
     println!();
