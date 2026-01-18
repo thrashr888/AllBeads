@@ -47,6 +47,18 @@ allbeads --version  # Requires v0.2.0+
 - **bd CLI** installed for underlying beads operations
 - **Contexts configured**: `allbeads context add .`
 
+## Session Start Checklist
+
+When starting a work session, check for handoffs from other agents:
+
+```bash
+ab mail inbox        # Check for messages from other agents
+ab ready             # See what work is available
+bd ready             # Local repo ready tasks
+```
+
+**Why check mail?** Other agents may have completed work and handed off follow-up tasks. The mail often contains context about what was done and what's expected next.
+
 ## Core Commands
 
 ### Viewing Aggregated Work
