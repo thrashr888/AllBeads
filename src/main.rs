@@ -41,8 +41,13 @@ fn load_graph_parallel(
         match event {
             RefreshProgress::FetchingRepo { name, .. } => {
                 let done = completed_clone.load(Ordering::SeqCst);
-                // Use carriage return to update line in place
-                eprint!("\r  [{}/{}] Fetching {}...", done + 1, total_repos, name);
+                // Use carriage return + clear to end of line to update in place
+                eprint!(
+                    "\r\x1b[K  [{}/{}] Fetching {}...",
+                    done + 1,
+                    total_repos,
+                    name
+                );
                 let _ = io::stderr().flush();
             }
             RefreshProgress::FetchedRepo { .. } => {
@@ -64,7 +69,7 @@ fn load_graph_parallel(
                 succeeded, failed, ..
             } => {
                 // Clear the progress line
-                eprint!("\r{}\r", " ".repeat(60));
+                eprint!("\r\x1b[K");
                 if failed > 0 {
                     eprintln!(
                         "  {} {} repos synced, {} skipped",
