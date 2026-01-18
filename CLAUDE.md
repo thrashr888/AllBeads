@@ -658,7 +658,15 @@ Enforces policies across repositories:
 
 ## Related Repositories
 
-- **Web Platform**: https://github.com/thrashr888/AllBeadsWeb - Next.js web app for allbeads.co (CLI auth, dashboard, GitHub sync)
+AllBeads is typically developed alongside its sister repositories:
+
+| Repo | Path | Description |
+|------|------|-------------|
+| **AllBeads** (this repo) | `.` | Rust CLI and core library |
+| **AllBeadsWeb** | `../AllBeadsWeb` | Next.js web app (allbeads.co) |
+| **AllBeadsApp** | `../AllBeadsApp` | macOS native app (private) |
+
+All three repos use beads for issue tracking. Use `ab create --context=<name>` to hand off tasks between them.
 
 ## Project-Specific Notes
 
