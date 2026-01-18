@@ -9338,27 +9338,27 @@ fn detect_folder_status(path: &Path) -> allbeads::context::FolderStatus {
 
 fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
     use allbeads::mail::{
-        Address, Message, MessageType, NotifyPayload, Postmaster, RequestPayload, Severity,
+        Address, Message, MessageType, NotifyPayload, Postmaster, RemoteMailClient, RequestPayload,
+        Severity,
     };
 
-    // Get mail database path
+    // Check if authenticated for remote mail
+    let config = AllBeadsConfig::load_default().ok();
+    let remote_client = config.as_ref().and_then(RemoteMailClient::from_config);
+
+    // Get project ID from config
+    let project_id = config
+        .as_ref()
+        .and_then(|c| c.contexts.first().map(|ctx| ctx.name.clone()))
+        .unwrap_or_else(|| "default".to_string());
+
+    // For local operations, set up postmaster
     let mail_db_path = AllBeadsConfig::default_path()
         .parent()
         .map(|p| p.join("mail.db"))
         .ok_or_else(|| {
             allbeads::AllBeadsError::Config("Could not determine mail database path".to_string())
         })?;
-
-    // Get project ID from config
-    let project_id = match AllBeadsConfig::load_default() {
-        Ok(config) => config
-            .contexts
-            .first()
-            .map(|c| c.name.clone())
-            .unwrap_or_else(|| "default".to_string()),
-        Err(_) => "default".to_string(),
-    };
-
     let mut postmaster = Postmaster::with_project_id(mail_db_path, &project_id)?;
 
     match cmd {
@@ -9366,112 +9366,227 @@ fn handle_mail_command(cmd: &MailCommands) -> allbeads::Result<()> {
             // Send a variety of test messages
             let human = Address::human();
 
-            // 1. Simple notification
-            let msg1 = Message::new(
-                Address::new("worker", &project_id)?,
-                human.clone(),
-                MessageType::Notify(NotifyPayload::new(message).with_severity(Severity::Info)),
-            );
-            postmaster.send(msg1)?;
-            println!("Sent: [NOTIFY] {}", message);
-
-            // 2. Request for approval
-            let msg2 = Message::new(
-                Address::new("build-bot", &project_id)?,
-                human.clone(),
-                MessageType::Request(
-                    RequestPayload::new("Approve deployment to production?").with_options(vec![
-                        "Approve".to_string(),
-                        "Deny".to_string(),
-                        "Defer".to_string(),
-                    ]),
+            // Create messages
+            let messages = vec![
+                (
+                    Message::new(
+                        Address::new("worker", &project_id)?,
+                        human.clone(),
+                        MessageType::Notify(
+                            NotifyPayload::new(message).with_severity(Severity::Info),
+                        ),
+                    ),
+                    format!("[NOTIFY] {}", message),
                 ),
-            );
-            postmaster.send(msg2)?;
-            println!("Sent: [REQUEST] Approve deployment to production?");
-
-            // 3. Warning notification
-            let msg3 = Message::new(
-                Address::new("monitor", &project_id)?,
-                human.clone(),
-                MessageType::Notify(
-                    NotifyPayload::new("API rate limit at 80%").with_severity(Severity::Warning),
+                (
+                    Message::new(
+                        Address::new("build-bot", &project_id)?,
+                        human.clone(),
+                        MessageType::Request(
+                            RequestPayload::new("Approve deployment to production?").with_options(
+                                vec![
+                                    "Approve".to_string(),
+                                    "Deny".to_string(),
+                                    "Defer".to_string(),
+                                ],
+                            ),
+                        ),
+                    ),
+                    "[REQUEST] Approve deployment to production?".to_string(),
                 ),
-            );
-            postmaster.send(msg3)?;
-            println!("Sent: [NOTIFY] API rate limit at 80%");
-
-            // 4. Success notification
-            let msg4 = Message::new(
-                Address::new("ci", &project_id)?,
-                human,
-                MessageType::Notify(
-                    NotifyPayload::new("Build succeeded! All 42 tests passed.")
-                        .with_severity(Severity::Info),
+                (
+                    Message::new(
+                        Address::new("monitor", &project_id)?,
+                        human.clone(),
+                        MessageType::Notify(
+                            NotifyPayload::new("API rate limit at 80%")
+                                .with_severity(Severity::Warning),
+                        ),
+                    ),
+                    "[NOTIFY] API rate limit at 80%".to_string(),
                 ),
-            );
-            postmaster.send(msg4)?;
-            println!("Sent: [NOTIFY] Build succeeded! All 42 tests passed.");
+                (
+                    Message::new(
+                        Address::new("ci", &project_id)?,
+                        human,
+                        MessageType::Notify(
+                            NotifyPayload::new("Build succeeded! All 42 tests passed.")
+                                .with_severity(Severity::Info),
+                        ),
+                    ),
+                    "[NOTIFY] Build succeeded! All 42 tests passed.".to_string(),
+                ),
+            ];
 
-            println!();
-            println!("4 test messages sent to inbox. Run 'ab tui' to view them.");
+            // Send to remote if authenticated, otherwise local
+            if let Some(ref client) = remote_client {
+                println!(
+                    "Sending to remote: {}",
+                    config
+                        .as_ref()
+                        .map(|c| c.web_auth.host())
+                        .unwrap_or("unknown")
+                );
+                let rt = tokio::runtime::Runtime::new()?;
+                for (msg, desc) in &messages {
+                    match rt.block_on(client.send(msg)) {
+                        Ok(_) => println!("Sent: {}", desc),
+                        Err(e) => eprintln!("Failed to send: {} - {}", desc, e),
+                    }
+                }
+                println!();
+                println!("4 test messages sent to remote inbox.");
+                println!(
+                    "View at: {}/dashboard/mail",
+                    config.as_ref().map(|c| c.web_auth.host()).unwrap_or("")
+                );
+            } else {
+                for (msg, desc) in messages {
+                    postmaster.send(msg)?;
+                    println!("Sent: {}", desc);
+                }
+                println!();
+                println!("4 test messages sent to local inbox. Run 'ab tui' to view them.");
+                println!("Tip: Run 'ab login' to send messages to the remote web app.");
+            }
         }
 
         MailCommands::Inbox => {
-            let human = Address::human();
-            let messages = postmaster.inbox(&human)?;
-
-            if messages.is_empty() {
-                println!("Inbox is empty.");
-                println!("Run 'ab mail test' to send some test messages.");
-            } else {
-                println!("Inbox ({} messages):", messages.len());
-                println!();
-                for msg in messages {
-                    let is_unread = msg.status == allbeads::mail::DeliveryStatus::Delivered;
-                    let marker = if is_unread { "*" } else { " " };
-                    let type_str = match &msg.message.message_type {
-                        MessageType::Notify(_) => "[NOTIFY]",
-                        MessageType::Request(_) => "[REQUEST]",
-                        MessageType::Lock(_) => "[LOCK]",
-                        MessageType::Unlock(_) => "[UNLOCK]",
-                        MessageType::Broadcast(_) => "[BROADCAST]",
-                        MessageType::Heartbeat(_) => "[HEARTBEAT]",
-                        MessageType::Response(_) => "[RESPONSE]",
-                        MessageType::AikiEvent(_) => "[AIKI]",
-                    };
-                    let summary = match &msg.message.message_type {
-                        MessageType::Notify(n) => n.message.clone(),
-                        MessageType::Request(r) => r.message.clone(),
-                        MessageType::Lock(l) => format!("Lock: {}", l.path),
-                        MessageType::Unlock(u) => format!("Unlock: {}", u.path),
-                        MessageType::Broadcast(b) => b.message.clone(),
-                        MessageType::Heartbeat(h) => format!("Status: {:?}", h.status),
-                        MessageType::Response(r) => r
-                            .message
-                            .clone()
-                            .unwrap_or_else(|| format!("{:?}", r.status)),
-                        MessageType::AikiEvent(a) => {
-                            format!("Review {:?} for bead {}", a.event, a.bead_id)
+            // Use remote if authenticated
+            if let Some(ref client) = remote_client {
+                let rt = tokio::runtime::Runtime::new()?;
+                match rt.block_on(client.inbox()) {
+                    Ok(list) => {
+                        if list.mail.is_empty() {
+                            println!("Remote inbox is empty.");
+                            println!("Run 'ab mail test' to send some test messages.");
+                        } else {
+                            println!(
+                                "Remote inbox ({} messages, {} unread):",
+                                list.total, list.unread_count
+                            );
+                            println!();
+                            for msg in &list.mail {
+                                let marker = if msg.is_read { " " } else { "*" };
+                                let type_str = format!("[{}]", msg.message_type);
+                                println!(
+                                    "{} {} {} from {}: {}",
+                                    marker,
+                                    msg.created_at.chars().take(16).collect::<String>(),
+                                    type_str,
+                                    msg.from_address,
+                                    msg.subject
+                                );
+                            }
+                            println!();
+                            println!(
+                                "View at: {}/dashboard/mail",
+                                config.as_ref().map(|c| c.web_auth.host()).unwrap_or("")
+                            );
                         }
-                    };
-                    let time = msg.message.timestamp.format("%H:%M");
-                    println!(
-                        "{} {} {} from {}: {}",
-                        marker, time, type_str, msg.message.from, summary
-                    );
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to fetch remote inbox: {}", e);
+                        eprintln!("Falling back to local inbox...");
+                        show_local_inbox(&mut postmaster, &project_id)?;
+                    }
                 }
+            } else {
+                show_local_inbox(&mut postmaster, &project_id)?;
             }
         }
 
         MailCommands::Unread => {
-            let human = Address::human();
-            let count = postmaster.unread_count(&human)?;
-            if count == 0 {
-                println!("No unread messages.");
+            // Use remote if authenticated
+            if let Some(ref client) = remote_client {
+                let rt = tokio::runtime::Runtime::new()?;
+                match rt.block_on(client.unread_count()) {
+                    Ok(count) => {
+                        if count == 0 {
+                            println!("No unread messages (remote).");
+                        } else {
+                            println!("{} unread message(s) (remote).", count);
+                            println!(
+                                "View at: {}/dashboard/mail",
+                                config.as_ref().map(|c| c.web_auth.host()).unwrap_or("")
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to fetch remote unread count: {}", e);
+                        let human = Address::human();
+                        let count = postmaster.unread_count(&human)?;
+                        if count == 0 {
+                            println!("No unread messages (local).");
+                        } else {
+                            println!("{} unread message(s) (local).", count);
+                        }
+                    }
+                }
             } else {
-                println!("{} unread message(s).", count);
+                let human = Address::human();
+                let count = postmaster.unread_count(&human)?;
+                if count == 0 {
+                    println!("No unread messages.");
+                } else {
+                    println!("{} unread message(s).", count);
+                }
             }
+        }
+    }
+
+    Ok(())
+}
+
+/// Show local inbox (helper to avoid code duplication)
+fn show_local_inbox(
+    postmaster: &mut allbeads::mail::Postmaster,
+    _project_id: &str,
+) -> allbeads::Result<()> {
+    use allbeads::mail::{Address, MessageType};
+
+    let human = Address::human();
+    let messages = postmaster.inbox(&human)?;
+
+    if messages.is_empty() {
+        println!("Inbox is empty.");
+        println!("Run 'ab mail test' to send some test messages.");
+    } else {
+        println!("Inbox ({} messages):", messages.len());
+        println!();
+        for msg in messages {
+            let is_unread = msg.status == allbeads::mail::DeliveryStatus::Delivered;
+            let marker = if is_unread { "*" } else { " " };
+            let type_str = match &msg.message.message_type {
+                MessageType::Notify(_) => "[NOTIFY]",
+                MessageType::Request(_) => "[REQUEST]",
+                MessageType::Lock(_) => "[LOCK]",
+                MessageType::Unlock(_) => "[UNLOCK]",
+                MessageType::Broadcast(_) => "[BROADCAST]",
+                MessageType::Heartbeat(_) => "[HEARTBEAT]",
+                MessageType::Response(_) => "[RESPONSE]",
+                MessageType::AikiEvent(_) => "[AIKI]",
+            };
+            let summary = match &msg.message.message_type {
+                MessageType::Notify(n) => n.message.clone(),
+                MessageType::Request(r) => r.message.clone(),
+                MessageType::Lock(l) => format!("Lock: {}", l.path),
+                MessageType::Unlock(u) => format!("Unlock: {}", u.path),
+                MessageType::Broadcast(b) => b.message.clone(),
+                MessageType::Heartbeat(h) => format!("Status: {:?}", h.status),
+                MessageType::Response(r) => r
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| format!("{:?}", r.status)),
+                MessageType::AikiEvent(a) => {
+                    format!("Review {:?} for bead {}", a.event, a.bead_id)
+                }
+            };
+            let time = msg.message.timestamp.format("%H:%M");
+            println!(
+                "{} {} {} from {}: {}",
+                marker, time, type_str, msg.message.from, summary
+            );
         }
     }
 

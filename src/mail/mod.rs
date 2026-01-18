@@ -54,6 +54,7 @@ mod filesystem;
 mod locks;
 mod message;
 mod postmaster;
+mod remote;
 mod server;
 mod transport;
 
@@ -66,5 +67,6 @@ pub use message::{
     Severity, UnlockRequest,
 };
 pub use postmaster::{DeliveryStatus, Postmaster, PostmasterError, SendResult, StoredMessage};
+pub use remote::{MailListResponse, MailResponse, RemoteMailClient, RemoteStoredMessage};
 pub use server::{MailServer, ServerError};
 pub use transport::{MailTransport, TransportError};
