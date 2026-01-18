@@ -638,6 +638,10 @@ Enforces policies across repositories:
 - **Rust Book**: https://doc.rust-lang.org/book/
 - **Tokio Docs**: https://tokio.rs/
 
+## Related Repositories
+
+- **Web Platform**: https://github.com/thrashr888/AllBeadsWeb - Next.js web app for allbeads.co (CLI auth, dashboard, GitHub sync)
+
 ## Project-Specific Notes
 
 - The PRD references Go and bubbletea, but we use Rust and ratatui
