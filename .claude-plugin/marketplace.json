@@ -10,7 +10,7 @@
       "name": "allbeads",
       "source": "./",
       "description": "Multi-repo orchestration for AI agent workflows. Aggregate beads across repositories, manage contexts, and coordinate distributed work.",
-      "version": "0.2.0"
+      "version": "0.2.1"
     }
   ]
 }
