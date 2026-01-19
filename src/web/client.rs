@@ -336,10 +336,12 @@ impl WebClient {
             let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
                 error: "Unknown error".to_string(),
             });
-            return Err(
-                anyhow::anyhow!("Failed to list repositories ({}): {}", status, error.error)
-                    .into(),
-            );
+            return Err(anyhow::anyhow!(
+                "Failed to list repositories ({}): {}",
+                status,
+                error.error
+            )
+            .into());
         }
 
         let repos: Vec<Repository> = response.json().await?;
@@ -393,10 +395,7 @@ fn normalize_git_url(url: &str) -> String {
             .to_lowercase()
     } else if url.starts_with("https://") || url.starts_with("http://") {
         // https://github.com/owner/repo -> github.com/owner/repo
-        url.split("://")
-            .nth(1)
-            .unwrap_or(url)
-            .to_lowercase()
+        url.split("://").nth(1).unwrap_or(url).to_lowercase()
     } else {
         url.to_lowercase()
     }

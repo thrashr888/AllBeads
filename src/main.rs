@@ -1934,7 +1934,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                                 .as_ref()
                                 .and_then(|p| p.trim_start_matches('P').parse::<u8>().ok());
 
-                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                             match bd.update(
                                 &id,
                                 status.as_deref(),
@@ -2044,7 +2044,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             ctx_name
                         );
 
-                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                         let result = if let Some(r) = &reason {
                             // Use run() for close with reason (close_multiple doesn't support reason)
                             let mut args: Vec<&str> = vec!["close"];
@@ -2102,7 +2102,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // Parse priority string to u8
                     let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
 
-                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                     match bd.create(&title, &issue_type, priority_u8, None) {
                         Ok(output) => {
                             if output.success {
@@ -2153,7 +2153,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             ctx_name
                         );
 
-                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                         let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
                         match bd.reopen_multiple(&id_refs) {
                             Ok(output) => {
@@ -2294,7 +2294,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // List labels from all contexts
                     for ctx in &config_for_commands.contexts {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                             println!("Labels in @{}:", ctx.name);
                             match bd.label_list() {
                                 Ok(output) => println!("{}", output.stdout),
@@ -2453,7 +2453,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         .as_ref()
                         .and_then(|p| p.trim_start_matches('P').parse::<u8>().ok());
 
-                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                    let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                     match bd.quick_create_full(&title, issue_type.as_deref(), priority_u8) {
                         Ok(id) => println!("{}", id),
                         Err(e) => eprintln!("Error: {}", e),
@@ -2472,7 +2472,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     // List epics from all contexts
                     for ctx in &config_for_commands.contexts {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                             let result: beads::Result<Vec<beads::Issue>> = if open {
                                 bd.epic_list_open()
                             } else {
@@ -2519,7 +2519,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                     {
                         if let Some(ctx_path) = &ctx.path {
                             let priority_u8 = priority.trim_start_matches('P').parse::<u8>().ok();
-                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                             match bd.create_epic(&title, priority_u8) {
                                 Ok(output) => println!("{}", output.stdout),
                                 Err(e) => eprintln!("Error: {}", e),
@@ -2564,6 +2564,10 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             }
         }
 
+        Commands::Milestones(milestone_cmd) => {
+            handle_milestones_command(&milestone_cmd, &graph, &config_for_commands, &bd_flags)?;
+        }
+
         Commands::Edit { id, field } => {
             let bead_id = allbeads::graph::BeadId::from(id.as_str());
             if let Some(bead) = graph.beads.get(&bead_id) {
@@ -2579,7 +2583,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         .find(|c| c.name == ctx_name)
                     {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                             match bd.edit(&id, field.as_deref()) {
                                 Ok(output) => println!("{}", output.stdout),
                                 Err(e) => eprintln!("Error: {}", e),
@@ -2624,7 +2628,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                             ctx_name
                         );
 
-                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                        let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                         let id_refs: Vec<&str> = bead_ids.iter().map(|s| s.as_str()).collect();
                         match bd.delete_multiple(&id_refs) {
                             Ok(output) => {
@@ -2656,7 +2660,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
                         .find(|c| c.name == ctx_name)
                     {
                         if let Some(ctx_path) = &ctx.path {
-                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.clone());
+                            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
                             match bd.duplicate(&id, &of) {
                                 Ok(output) => println!("{}", output.stdout),
                                 Err(e) => eprintln!("Error: {}", e),
@@ -7109,10 +7113,7 @@ fn handle_sync_command(
             .collect();
 
         if local_contexts.is_empty() {
-            println!(
-                "    {} No local contexts with beads found",
-                style::dim("○")
-            );
+            println!("    {} No local contexts with beads found", style::dim("○"));
         } else {
             let mut synced = 0;
             let mut skipped = 0;
@@ -7149,17 +7150,15 @@ fn handle_sync_command(
 
                 // Find repository in web by context name or URL
                 let repo = rt.block_on(async {
-                    web_client
-                        .find_repository(Some(name), url.as_deref())
-                        .await
+                    web_client.find_repository(Some(name), url.as_deref()).await
                 });
 
                 match repo {
                     Ok(Some(repo)) => {
                         // Import beads to web
-                        match rt
-                            .block_on(async { web_client.import_beads(&repo.id, &beads, false).await })
-                        {
+                        match rt.block_on(async {
+                            web_client.import_beads(&repo.id, &beads, false).await
+                        }) {
                             Ok(result) => {
                                 let stats = &result.stats;
                                 println!(
@@ -7199,12 +7198,7 @@ fn handle_sync_command(
                         skipped += 1;
                     }
                     Err(e) => {
-                        println!(
-                            "    {} {} - lookup failed: {}",
-                            style::error("✗"),
-                            name,
-                            e
-                        );
+                        println!("    {} {} - lookup failed: {}", style::error("✗"), name, e);
                         errors += 1;
                     }
                 }
@@ -7924,6 +7918,654 @@ async fn handle_context_sync(
 
     println!();
     println!("  View your contexts at: {}/dashboard", host);
+
+    Ok(())
+}
+
+// === Milestone Commands (Machine Tags for Release Tracking) ===
+
+/// Milestone info extracted from bead labels
+struct MilestoneInfo {
+    id: String,
+    title: String,
+    context: String,
+    target_date: Option<String>,
+    start_date: Option<String>,
+    version: Option<String>,
+    status: String,
+}
+
+impl MilestoneInfo {
+    fn from_bead(bead: &allbeads::graph::Bead) -> Option<Self> {
+        // Check if bead has "milestone" label
+        if !bead.labels.iter().any(|l| l == "milestone") {
+            return None;
+        }
+
+        let target_date = bead
+            .labels
+            .iter()
+            .find(|l| l.starts_with("target:"))
+            .map(|l| l.strip_prefix("target:").unwrap_or(l).to_string());
+
+        let start_date = bead
+            .labels
+            .iter()
+            .find(|l| l.starts_with("start:"))
+            .map(|l| l.strip_prefix("start:").unwrap_or(l).to_string());
+
+        let version = bead
+            .labels
+            .iter()
+            .find(|l| l.starts_with("version:"))
+            .map(|l| l.strip_prefix("version:").unwrap_or(l).to_string());
+
+        let context = bead
+            .labels
+            .iter()
+            .find(|l| l.starts_with('@'))
+            .map(|l| l.trim_start_matches('@').to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+
+        Some(Self {
+            id: bead.id.as_str().to_string(),
+            title: bead.title.clone(),
+            context,
+            target_date,
+            start_date,
+            version,
+            status: format!("{:?}", bead.status).to_lowercase(),
+        })
+    }
+
+    fn days_remaining(&self) -> Option<i64> {
+        use chrono::{NaiveDate, Utc};
+        self.target_date.as_ref().and_then(|d| {
+            NaiveDate::parse_from_str(d, "%Y-%m-%d").ok().map(|target| {
+                let today = Utc::now().date_naive();
+                (target - today).num_days()
+            })
+        })
+    }
+}
+
+/// Calculate milestone progress from all beads with the milestone label
+fn calculate_milestone_progress(
+    graph: &allbeads::graph::FederatedGraph,
+    milestone_id: &str,
+    version: Option<&str>,
+) -> (usize, usize, usize, usize) {
+    // Match beads with milestone:<id> or milestone:<version> label
+    let milestone_labels: Vec<String> = vec![
+        format!("milestone:{}", milestone_id),
+        version
+            .map(|v| format!("milestone:{}", v))
+            .unwrap_or_default(),
+    ];
+
+    let mut total = 0;
+    let mut closed = 0;
+    let mut in_progress = 0;
+    let mut blocked = 0;
+
+    for bead in graph.beads.values() {
+        let has_label = bead
+            .labels
+            .iter()
+            .any(|l| milestone_labels.iter().any(|ml| !ml.is_empty() && l == ml));
+
+        if has_label {
+            total += 1;
+            match bead.status {
+                allbeads::graph::Status::Closed => closed += 1,
+                allbeads::graph::Status::InProgress => in_progress += 1,
+                allbeads::graph::Status::Blocked => blocked += 1,
+                _ => {}
+            }
+        }
+    }
+
+    (total, closed, in_progress, blocked)
+}
+
+fn handle_milestones_command(
+    cmd: &commands::MilestoneCommands,
+    graph: &allbeads::graph::FederatedGraph,
+    config: &AllBeadsConfig,
+    bd_flags: &[String],
+) -> allbeads::Result<()> {
+    use commands::MilestoneCommands;
+
+    match cmd {
+        MilestoneCommands::List { context, all, sort } => {
+            // Find all milestones (beads with "milestone" label)
+            let mut milestones: Vec<MilestoneInfo> = graph
+                .beads
+                .values()
+                .filter_map(MilestoneInfo::from_bead)
+                .filter(|m| {
+                    // Filter by context if specified
+                    if let Some(ctx) = context {
+                        m.context == *ctx
+                    } else {
+                        true
+                    }
+                })
+                .filter(|m| {
+                    // Filter closed unless --all
+                    *all || m.status != "closed"
+                })
+                .collect();
+
+            // Sort milestones
+            match sort.as_str() {
+                "progress" => {
+                    milestones.sort_by(|a, b| {
+                        let (total_a, closed_a, _, _) =
+                            calculate_milestone_progress(graph, &a.id, a.version.as_deref());
+                        let (total_b, closed_b, _, _) =
+                            calculate_milestone_progress(graph, &b.id, b.version.as_deref());
+                        let pct_a = if total_a > 0 {
+                            closed_a * 100 / total_a
+                        } else {
+                            0
+                        };
+                        let pct_b = if total_b > 0 {
+                            closed_b * 100 / total_b
+                        } else {
+                            0
+                        };
+                        pct_b.cmp(&pct_a)
+                    });
+                }
+                "name" => milestones.sort_by(|a, b| a.title.cmp(&b.title)),
+                _ => {
+                    // Default: sort by target date
+                    milestones.sort_by(|a, b| a.target_date.cmp(&b.target_date));
+                }
+            }
+
+            if milestones.is_empty() {
+                println!("No milestones found.");
+                println!();
+                println!("Create one with:");
+                println!("  ab milestones create --title=\"v1.0\" --target=2026-03-31");
+                return Ok(());
+            }
+
+            println!("{}", style::header("Milestones"));
+            println!();
+
+            for ms in milestones {
+                let (total, closed, in_progress, blocked) =
+                    calculate_milestone_progress(graph, &ms.id, ms.version.as_deref());
+                let pct = if total > 0 { closed * 100 / total } else { 0 };
+
+                // Progress bar
+                let bar_width = 16;
+                let filled = (pct * bar_width) / 100;
+                let bar: String =
+                    format!("{}{}", "█".repeat(filled), "░".repeat(bar_width - filled));
+
+                // Status indicator
+                let status_icon = if ms.status == "closed" {
+                    style::success("✓")
+                } else if blocked > 0 {
+                    style::error("●")
+                } else if in_progress > 0 {
+                    style::warning("◐")
+                } else {
+                    style::dim("○")
+                };
+
+                // Days remaining
+                let days_str = ms
+                    .days_remaining()
+                    .map(|d| {
+                        if d < 0 {
+                            format!("{} days overdue", -d)
+                        } else if d == 0 {
+                            "due today".to_string()
+                        } else {
+                            format!("{} days", d)
+                        }
+                    })
+                    .unwrap_or_else(|| "no target".to_string());
+
+                println!(
+                    "  {} {} @{}: {}",
+                    status_icon,
+                    ms.version.as_deref().unwrap_or(&ms.id),
+                    ms.context,
+                    ms.title
+                );
+                println!(
+                    "    {} {}%  {} ({} total, {} closed, {} in progress)",
+                    bar, pct, days_str, total, closed, in_progress
+                );
+                println!();
+            }
+        }
+
+        MilestoneCommands::Show { id, burndown } => {
+            // Find milestone by ID or version
+            let milestone = graph
+                .beads
+                .values()
+                .filter_map(MilestoneInfo::from_bead)
+                .find(|m| m.id == *id || m.version.as_deref() == Some(id));
+
+            match milestone {
+                Some(ms) => {
+                    let (total, closed, in_progress, blocked) =
+                        calculate_milestone_progress(graph, &ms.id, ms.version.as_deref());
+                    let pct = if total > 0 { closed * 100 / total } else { 0 };
+
+                    println!("{}", style::header(&ms.title));
+                    println!();
+                    println!("  ID: {}", ms.id);
+                    if let Some(v) = &ms.version {
+                        println!("  Version: {}", v);
+                    }
+                    println!("  Context: @{}", ms.context);
+                    println!("  Status: {}", ms.status);
+                    if let Some(target) = &ms.target_date {
+                        let days_str = ms
+                            .days_remaining()
+                            .map(|d| {
+                                if d < 0 {
+                                    format!(" ({} days overdue)", -d)
+                                } else if d == 0 {
+                                    " (due today)".to_string()
+                                } else {
+                                    format!(" ({} days remaining)", d)
+                                }
+                            })
+                            .unwrap_or_default();
+                        println!("  Target: {}{}", target, days_str);
+                    }
+                    if let Some(start) = &ms.start_date {
+                        println!("  Start: {}", start);
+                    }
+                    println!();
+
+                    // Progress bar
+                    let bar_width = 30;
+                    let filled = (pct * bar_width) / 100;
+                    let bar: String =
+                        format!("{}{}", "█".repeat(filled), "░".repeat(bar_width - filled));
+                    println!("  Progress: {} {}%", bar, pct);
+                    println!(
+                        "  Beads: {} total, {} closed, {} in progress, {} blocked",
+                        total, closed, in_progress, blocked
+                    );
+                    println!();
+
+                    // List beads assigned to this milestone
+                    let milestone_labels: Vec<String> = vec![
+                        format!("milestone:{}", ms.id),
+                        ms.version
+                            .as_ref()
+                            .map(|v| format!("milestone:{}", v))
+                            .unwrap_or_default(),
+                    ];
+
+                    let mut assigned_beads: Vec<_> = graph
+                        .beads
+                        .values()
+                        .filter(|b| {
+                            b.labels.iter().any(|l| {
+                                milestone_labels.iter().any(|ml| !ml.is_empty() && l == ml)
+                            })
+                        })
+                        .collect();
+
+                    // Sort by status then priority
+                    assigned_beads.sort_by(|a, b| {
+                        let status_order = |s: &allbeads::graph::Status| match s {
+                            allbeads::graph::Status::InProgress => 0,
+                            allbeads::graph::Status::Blocked => 1,
+                            allbeads::graph::Status::Open => 2,
+                            allbeads::graph::Status::Closed => 3,
+                            _ => 4,
+                        };
+                        status_order(&a.status)
+                            .cmp(&status_order(&b.status))
+                            .then_with(|| a.priority.cmp(&b.priority))
+                    });
+
+                    if !assigned_beads.is_empty() {
+                        println!("{}", style::subheader("Assigned Beads"));
+                        for bead in assigned_beads {
+                            let status_icon = match bead.status {
+                                allbeads::graph::Status::Closed => style::success("✓"),
+                                allbeads::graph::Status::InProgress => style::warning("→"),
+                                allbeads::graph::Status::Blocked => style::error("✗"),
+                                _ => style::dim("○"),
+                            };
+                            println!(
+                                "  {} {} [P{}] {}",
+                                status_icon,
+                                bead.id.as_str(),
+                                u8::from(bead.priority),
+                                bead.title
+                            );
+                        }
+                    }
+
+                    if *burndown {
+                        println!();
+                        println!("{}", style::subheader("Burndown Chart"));
+                        println!("  (Historical data not yet available - track via web dashboard)");
+                    }
+                }
+                None => {
+                    eprintln!("Milestone '{}' not found.", id);
+                    eprintln!();
+                    eprintln!("List milestones with: ab milestones list");
+                }
+            }
+        }
+
+        MilestoneCommands::Create {
+            title,
+            target,
+            version,
+            start,
+            description,
+            context,
+        } => {
+            // Find the target context
+            let ctx_name = context.clone().unwrap_or_else(|| {
+                let cwd = std::env::current_dir().unwrap_or_default();
+                config
+                    .contexts
+                    .iter()
+                    .find(|c| c.path.as_ref().is_some_and(|p| cwd.starts_with(p)))
+                    .map(|c| c.name.clone())
+                    .unwrap_or_else(|| "default".to_string())
+            });
+
+            let ctx = config
+                .contexts
+                .iter()
+                .find(|c| c.name == ctx_name)
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Context '{}' not found", ctx_name))
+                })?;
+
+            let ctx_path = ctx.path.as_ref().ok_or_else(|| {
+                allbeads::AllBeadsError::Config(format!("Context '{}' has no local path", ctx_name))
+            })?;
+
+            // Build labels
+            let mut labels = vec!["milestone".to_string(), format!("target:{}", target)];
+            if let Some(v) = version {
+                labels.push(format!("version:{}", v));
+            }
+            if let Some(s) = start {
+                labels.push(format!("start:{}", s));
+            }
+
+            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
+            match bd.create_epic(title, Some(2)) {
+                Ok(output) => {
+                    // Extract the created ID from output
+                    let id = output
+                        .stdout
+                        .lines()
+                        .find(|l| l.contains("Created issue:"))
+                        .and_then(|l| l.split(':').nth(1))
+                        .map(|s| s.trim())
+                        .unwrap_or("unknown");
+
+                    // Add milestone labels
+                    for label in &labels {
+                        let _ = bd.label_add(id, label);
+                    }
+
+                    // Add description if provided (using comments since update doesn't support description)
+                    if let Some(desc) = description {
+                        let _ = bd.comment_add(id, desc);
+                    }
+
+                    println!("{} Created milestone: {}", style::success("✓"), id);
+                    println!("  Title: {}", title);
+                    println!("  Target: {}", target);
+                    if let Some(v) = version {
+                        println!("  Version: {}", v);
+                    }
+                    println!("  Context: @{}", ctx_name);
+                    println!();
+                    println!("Assign beads with:");
+                    println!("  ab milestones assign <bead-id> {}", id);
+                }
+                Err(e) => eprintln!("{} Failed to create milestone: {}", style::error("✗"), e),
+            }
+        }
+
+        MilestoneCommands::Assign { bead, milestone } => {
+            // Find the bead to assign
+            let bead_id = allbeads::graph::BeadId::from(bead.as_str());
+            let target_bead = graph.beads.get(&bead_id).ok_or_else(|| {
+                allbeads::AllBeadsError::IssueNotFound(format!("Bead '{}' not found", bead))
+            })?;
+
+            // Get context from bead
+            let ctx_name = target_bead
+                .labels
+                .iter()
+                .find(|l| l.starts_with('@'))
+                .map(|l| l.trim_start_matches('@').to_string())
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config("Bead has no context label".to_string())
+                })?;
+
+            let ctx = config
+                .contexts
+                .iter()
+                .find(|c| c.name == ctx_name)
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Context '{}' not found", ctx_name))
+                })?;
+
+            let ctx_path = ctx.path.as_ref().ok_or_else(|| {
+                allbeads::AllBeadsError::Config(format!("Context '{}' has no local path", ctx_name))
+            })?;
+
+            let label = format!("milestone:{}", milestone);
+            let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
+            match bd.label_add(bead, &label) {
+                Ok(_) => {
+                    println!(
+                        "{} Assigned {} to milestone {}",
+                        style::success("✓"),
+                        bead,
+                        milestone
+                    );
+                }
+                Err(e) => eprintln!("{} Failed to assign: {}", style::error("✗"), e),
+            }
+        }
+
+        MilestoneCommands::Unassign { bead } => {
+            // Find the bead
+            let bead_id = allbeads::graph::BeadId::from(bead.as_str());
+            let target_bead = graph.beads.get(&bead_id).ok_or_else(|| {
+                allbeads::AllBeadsError::IssueNotFound(format!("Bead '{}' not found", bead))
+            })?;
+
+            // Get context from bead
+            let ctx_name = target_bead
+                .labels
+                .iter()
+                .find(|l| l.starts_with('@'))
+                .map(|l| l.trim_start_matches('@').to_string())
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config("Bead has no context label".to_string())
+                })?;
+
+            let ctx = config
+                .contexts
+                .iter()
+                .find(|c| c.name == ctx_name)
+                .ok_or_else(|| {
+                    allbeads::AllBeadsError::Config(format!("Context '{}' not found", ctx_name))
+                })?;
+
+            let ctx_path = ctx.path.as_ref().ok_or_else(|| {
+                allbeads::AllBeadsError::Config(format!("Context '{}' has no local path", ctx_name))
+            })?;
+
+            // Find and remove milestone label
+            let milestone_label = target_bead
+                .labels
+                .iter()
+                .find(|l| l.starts_with("milestone:"))
+                .cloned();
+
+            if let Some(label) = milestone_label {
+                let bd = Beads::with_workdir_and_flags(ctx_path, bd_flags.to_vec());
+                match bd.label_remove(bead, &label) {
+                    Ok(_) => {
+                        println!("{} Removed {} from milestone", style::success("✓"), bead);
+                    }
+                    Err(e) => eprintln!("{} Failed to unassign: {}", style::error("✗"), e),
+                }
+            } else {
+                println!(
+                    "{} {} is not assigned to any milestone",
+                    style::dim("○"),
+                    bead
+                );
+            }
+        }
+
+        MilestoneCommands::Notes { id, format } => {
+            // Find milestone
+            let milestone = graph
+                .beads
+                .values()
+                .filter_map(MilestoneInfo::from_bead)
+                .find(|m| m.id == *id || m.version.as_deref() == Some(id));
+
+            match milestone {
+                Some(ms) => {
+                    // Get assigned beads
+                    let milestone_labels: Vec<String> = vec![
+                        format!("milestone:{}", ms.id),
+                        ms.version
+                            .as_ref()
+                            .map(|v| format!("milestone:{}", v))
+                            .unwrap_or_default(),
+                    ];
+
+                    let mut beads_by_type: std::collections::HashMap<
+                        String,
+                        Vec<&allbeads::graph::Bead>,
+                    > = std::collections::HashMap::new();
+
+                    for bead in graph.beads.values() {
+                        if bead
+                            .labels
+                            .iter()
+                            .any(|l| milestone_labels.iter().any(|ml| !ml.is_empty() && l == ml))
+                        {
+                            let issue_type = format!("{:?}", bead.issue_type).to_lowercase();
+                            beads_by_type.entry(issue_type).or_default().push(bead);
+                        }
+                    }
+
+                    match format.as_str() {
+                        "changelog" => {
+                            // CHANGELOG format
+                            println!(
+                                "## [{}] - {}",
+                                ms.version.as_deref().unwrap_or(&ms.id),
+                                ms.target_date.as_deref().unwrap_or("TBD")
+                            );
+                            println!();
+
+                            for (type_name, beads) in &beads_by_type {
+                                let section = match type_name.as_str() {
+                                    "feature" => "Added",
+                                    "bug" => "Fixed",
+                                    "chore" => "Changed",
+                                    _ => "Other",
+                                };
+                                println!("### {}", section);
+                                for bead in beads {
+                                    println!("- {} ({})", bead.title, bead.id.as_str());
+                                }
+                                println!();
+                            }
+                        }
+                        "plain" => {
+                            println!("{}", ms.title);
+                            println!("Version: {}", ms.version.as_deref().unwrap_or(&ms.id));
+                            println!("Target: {}", ms.target_date.as_deref().unwrap_or("TBD"));
+                            println!();
+                            for beads in beads_by_type.values() {
+                                for bead in beads {
+                                    println!("- {}", bead.title);
+                                }
+                            }
+                        }
+                        _ => {
+                            // Default: markdown
+                            println!("# {}", ms.title);
+                            println!();
+                            if let Some(v) = &ms.version {
+                                println!("**Version:** {}", v);
+                            }
+                            if let Some(target) = &ms.target_date {
+                                println!("**Target Date:** {}", target);
+                            }
+                            println!();
+
+                            if let Some(features) = beads_by_type.get("feature") {
+                                println!("## Features");
+                                for bead in features {
+                                    println!("- {} (`{}`)", bead.title, bead.id.as_str());
+                                }
+                                println!();
+                            }
+
+                            if let Some(bugs) = beads_by_type.get("bug") {
+                                println!("## Bug Fixes");
+                                for bead in bugs {
+                                    println!("- {} (`{}`)", bead.title, bead.id.as_str());
+                                }
+                                println!();
+                            }
+
+                            let other_types: Vec<_> = beads_by_type
+                                .iter()
+                                .filter(|(t, _)| *t != "feature" && *t != "bug")
+                                .collect();
+
+                            if !other_types.is_empty() {
+                                println!("## Other Changes");
+                                for (type_name, beads) in other_types {
+                                    for bead in beads {
+                                        println!(
+                                            "- [{}] {} (`{}`)",
+                                            type_name,
+                                            bead.title,
+                                            bead.id.as_str()
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("Milestone '{}' not found.", id);
+                }
+            }
+        }
+    }
 
     Ok(())
 }

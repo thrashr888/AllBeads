@@ -533,6 +533,10 @@ pub enum Commands {
     #[command(subcommand)]
     Epic(EpicCommands),
 
+    /// Milestone tracking commands (machine tags on epics)
+    #[command(subcommand)]
+    Milestones(MilestoneCommands),
+
     /// Edit a bead field in $EDITOR
     Edit {
         /// Bead ID to edit
@@ -1707,6 +1711,88 @@ pub enum EpicCommands {
     Show {
         /// Epic ID
         id: String,
+    },
+}
+
+/// Milestone commands - machine tags for release tracking
+/// Milestones are epics with special labels: milestone, target:DATE, version:X.Y.Z
+#[derive(Subcommand, Debug)]
+pub enum MilestoneCommands {
+    /// List all milestones across contexts
+    List {
+        /// Filter by context
+        #[arg(long)]
+        context: Option<String>,
+
+        /// Show all milestones including closed
+        #[arg(long, short)]
+        all: bool,
+
+        /// Sort by: target, progress, name (default: target)
+        #[arg(long, default_value = "target")]
+        sort: String,
+    },
+
+    /// Show milestone details with progress
+    Show {
+        /// Milestone ID or version (e.g., ab-ms-v1 or v1.0)
+        id: String,
+
+        /// Show burndown chart (ASCII)
+        #[arg(long)]
+        burndown: bool,
+    },
+
+    /// Create a new milestone (epic with milestone labels)
+    Create {
+        /// Milestone title (e.g., "v2.0 Release")
+        #[arg(short, long)]
+        title: String,
+
+        /// Target date (YYYY-MM-DD)
+        #[arg(long)]
+        target: String,
+
+        /// Version number (e.g., 2.0.0)
+        #[arg(long)]
+        version: Option<String>,
+
+        /// Start date (YYYY-MM-DD)
+        #[arg(long)]
+        start: Option<String>,
+
+        /// Description
+        #[arg(short, long)]
+        description: Option<String>,
+
+        /// Context to create in (defaults to current directory)
+        #[arg(long)]
+        context: Option<String>,
+    },
+
+    /// Assign a bead to a milestone
+    Assign {
+        /// Bead ID to assign
+        bead: String,
+
+        /// Milestone ID or version to assign to
+        milestone: String,
+    },
+
+    /// Remove a bead from a milestone
+    Unassign {
+        /// Bead ID to unassign
+        bead: String,
+    },
+
+    /// Generate release notes for a milestone
+    Notes {
+        /// Milestone ID or version
+        id: String,
+
+        /// Output format: markdown, changelog, plain (default: markdown)
+        #[arg(long, default_value = "markdown")]
+        format: String,
     },
 }
 
