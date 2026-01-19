@@ -212,6 +212,8 @@ impl MailServer {
 
         Router::new()
             .route("/health", get(health))
+            .route("/ready", get(ready))
+            .route("/metrics", get(metrics))
             .route("/send", post(send_message))
             .route("/inbox/{address}", get(get_inbox))
             .route("/unread/{address}", get(get_unread))
@@ -462,6 +464,34 @@ pub struct LockPathRequest {
 
 async fn health() -> impl IntoResponse {
     Json(serde_json::json!({ "status": "ok" }))
+}
+
+async fn ready(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    // Check if postmaster is accessible
+    let postmaster_ok = state.postmaster.try_lock().is_ok();
+
+    if postmaster_ok {
+        (
+            StatusCode::OK,
+            Json(serde_json::json!({ "status": "ready", "postmaster": "ok" })),
+        )
+    } else {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({ "status": "not_ready", "postmaster": "busy" })),
+        )
+    }
+}
+
+async fn metrics() -> impl IntoResponse {
+    use crate::sheriff::metrics::encode_metrics;
+
+    let body = encode_metrics();
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4; charset=utf-8")],
+        body,
+    )
 }
 
 async fn send_message(

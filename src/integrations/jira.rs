@@ -10,6 +10,13 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
+/// Per-request timeout for search/query operations (large result sets)
+const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
+/// Per-request timeout for single issue fetches
+const GET_TIMEOUT: Duration = Duration::from_secs(10);
+/// Per-request timeout for create/update operations
+const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// JIRA API client for bi-directional sync
 pub struct JiraAdapter {
     client: Client,
@@ -245,7 +252,7 @@ impl JiraAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(SEARCH_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -296,7 +303,7 @@ impl JiraAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(GET_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::OK => Ok(response.json().await?),
@@ -326,7 +333,7 @@ impl JiraAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(GET_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -360,7 +367,7 @@ impl JiraAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::NO_CONTENT | StatusCode::OK => Ok(()),
@@ -389,7 +396,7 @@ impl JiraAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::CREATED | StatusCode::OK => Ok(response.json().await?),

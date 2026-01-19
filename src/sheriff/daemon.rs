@@ -3,6 +3,7 @@
 //! Background synchronization daemon that federates beads across repositories.
 //! Runs as a tokio async event loop with configurable poll intervals.
 
+use super::metrics;
 use crate::governance::checker::CheckSummary;
 use crate::governance::config::load_policies_for_context;
 use crate::governance::rules::CheckResult;
@@ -48,10 +49,16 @@ pub struct SheriffConfig {
 
     /// Mail poll interval
     pub mail_poll_interval: Duration,
+
+    /// Event broadcast channel capacity (default 1000)
+    pub event_channel_capacity: usize,
 }
 
 /// Default mail poll interval (60 seconds)
 pub const DEFAULT_MAIL_POLL_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Default event channel capacity (1000 events)
+pub const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 1000;
 
 impl Default for SheriffConfig {
     fn default() -> Self {
@@ -64,6 +71,7 @@ impl Default for SheriffConfig {
             project_id: "boss".to_string(),
             mail_poll: false,
             mail_poll_interval: DEFAULT_MAIL_POLL_INTERVAL,
+            event_channel_capacity: DEFAULT_EVENT_CHANNEL_CAPACITY,
         }
     }
 }
@@ -270,7 +278,7 @@ pub struct Sheriff {
 impl Sheriff {
     /// Create a new Sheriff daemon
     pub fn new(config: SheriffConfig) -> Result<Self> {
-        let (event_tx, _) = broadcast::channel(100);
+        let (event_tx, _) = broadcast::channel(config.event_channel_capacity);
         let (command_tx, command_rx) = mpsc::channel(10);
 
         // Load policies from config file, or use defaults
@@ -318,6 +326,35 @@ impl Sheriff {
     /// Get a command sender
     pub fn command_sender(&self) -> mpsc::Sender<SheriffCommand> {
         self.command_tx.clone()
+    }
+
+    /// Send an event, logging if dropped due to no receivers or channel full
+    fn send_event(&self, event: SheriffEvent) {
+        match self.event_tx.send(event) {
+            Ok(receiver_count) => {
+                // Warn if getting close to capacity (80% threshold)
+                let capacity = self.config.event_channel_capacity;
+                let len = self.event_tx.len();
+                if len > capacity * 80 / 100 {
+                    tracing::warn!(
+                        current = len,
+                        capacity = capacity,
+                        threshold_pct = 80,
+                        "Event channel nearing capacity"
+                    );
+                }
+                // Debug log when no receivers
+                if receiver_count == 0 {
+                    tracing::debug!("Event sent but no receivers subscribed");
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "Event dropped - channel may be full or no receivers"
+                );
+            }
+        }
     }
 
     /// Initialize the daemon
@@ -386,7 +423,8 @@ impl Sheriff {
     /// Run the daemon event loop with graceful shutdown on SIGTERM/SIGINT
     pub async fn run(&mut self) -> Result<()> {
         self.running = true;
-        let _ = self.event_tx.send(SheriffEvent::Started);
+        metrics::set_health_status(true);
+        self.send_event(SheriffEvent::Started);
 
         let mut interval = tokio::time::interval(self.config.poll_interval);
         let mut mail_interval = tokio::time::interval(self.config.mail_poll_interval);
@@ -424,7 +462,8 @@ impl Sheriff {
         tracing::info!("Performing shutdown cleanup");
         self.cleanup().await;
 
-        let _ = self.event_tx.send(SheriffEvent::Stopped);
+        metrics::set_health_status(false);
+        self.send_event(SheriffEvent::Stopped);
         Ok(())
     }
 
@@ -528,7 +567,7 @@ impl Sheriff {
             }
             SheriffCommand::ReloadManifest => {
                 if let Err(e) = self.reload_manifest() {
-                    let _ = self.event_tx.send(SheriffEvent::Error {
+                    self.send_event(SheriffEvent::Error {
                         message: format!("Failed to reload manifest: {}", e),
                     });
                 }
@@ -569,7 +608,7 @@ impl Sheriff {
 
     /// Execute a single poll cycle
     async fn poll_cycle(&mut self) {
-        let _ = self.event_tx.send(SheriffEvent::PollStarted);
+        self.send_event(SheriffEvent::PollStarted);
 
         let mut total_changes = 0;
         let rigs_count = self.rigs.len();
@@ -578,27 +617,41 @@ impl Sheriff {
         let rig_ids: Vec<String> = self.rigs.keys().cloned().collect();
 
         for rig_id in rig_ids {
+            let start = std::time::Instant::now();
             match self.sync_rig(&rig_id) {
                 Ok(result) => {
+                    // Record sync duration metric
+                    let duration = start.elapsed().as_secs_f64();
+                    metrics::record_sync_duration(&rig_id, duration);
+
                     total_changes += result.change_count();
 
                     // Get rig_id_typed from the state
                     if let Some(state) = self.rigs.get(&rig_id) {
-                        let _ = self.event_tx.send(SheriffEvent::RigSynced {
+                        // Record shadow count metric
+                        metrics::set_shadows_count(&rig_id, state.shadows.len() as i64);
+
+                        self.send_event(SheriffEvent::RigSynced {
                             rig_id: state.id.clone(),
                             result,
                         });
                     }
                 }
                 Err(e) => {
-                    let _ = self.event_tx.send(SheriffEvent::Error {
+                    // Record error metric
+                    metrics::record_api_error("sync_error", &rig_id);
+
+                    self.send_event(SheriffEvent::Error {
                         message: format!("Failed to sync rig {}: {}", rig_id, e),
                     });
                 }
             }
         }
 
-        let _ = self.event_tx.send(SheriffEvent::PollCompleted {
+        // Record sync cycle completion
+        metrics::record_sync_cycle("success");
+
+        self.send_event(SheriffEvent::PollCompleted {
             rigs_polled: rigs_count,
             changes: total_changes,
         });
@@ -618,12 +671,12 @@ impl Sheriff {
     async fn poll_mail(&mut self) {
         use crate::mail::Address;
 
-        let _ = self.event_tx.send(SheriffEvent::MailPollStarted);
+        self.send_event(SheriffEvent::MailPollStarted);
 
         let postmaster = match &self.postmaster {
             Some(pm) => pm.clone(),
             None => {
-                let _ = self.event_tx.send(SheriffEvent::Error {
+                self.send_event(SheriffEvent::Error {
                     message: "Postmaster not initialized for mail polling".to_string(),
                 });
                 return;
@@ -634,7 +687,7 @@ impl Sheriff {
         let sheriff_address = match Address::new("sheriff", &self.config.project_id) {
             Ok(addr) => addr,
             Err(e) => {
-                let _ = self.event_tx.send(SheriffEvent::Error {
+                self.send_event(SheriffEvent::Error {
                     message: format!("Invalid sheriff address: {}", e),
                 });
                 return;
@@ -647,7 +700,7 @@ impl Sheriff {
             match pm.unread(&sheriff_address) {
                 Ok(msgs) => msgs,
                 Err(e) => {
-                    let _ = self.event_tx.send(SheriffEvent::Error {
+                    self.send_event(SheriffEvent::Error {
                         message: format!("Failed to fetch mail: {}", e),
                     });
                     return;
@@ -674,7 +727,7 @@ impl Sheriff {
             {
                 let pm = postmaster.lock().await;
                 if let Err(e) = pm.mark_read(&message.message.id) {
-                    let _ = self.event_tx.send(SheriffEvent::Error {
+                    self.send_event(SheriffEvent::Error {
                         message: format!("Failed to mark mail as read: {}", e),
                     });
                 }
@@ -683,7 +736,7 @@ impl Sheriff {
             processed_count += 1;
         }
 
-        let _ = self.event_tx.send(SheriffEvent::MailPollCompleted {
+        self.send_event(SheriffEvent::MailPollCompleted {
             messages_processed: processed_count,
         });
     }
@@ -762,9 +815,10 @@ impl Sheriff {
 
     /// Sync a single rig
     fn sync_rig(&mut self, rig_id: &str) -> Result<SyncResult> {
+        // Get mutable access to take shadows and read path/context
         let state = self
             .rigs
-            .get(rig_id)
+            .get_mut(rig_id)
             .ok_or_else(|| crate::AllBeadsError::Config(format!("Rig not found: {}", rig_id)))?;
 
         // Check if rig path exists
@@ -775,25 +829,25 @@ impl Sheriff {
             )));
         }
 
-        // Get existing shadows for this rig
-        let existing_shadows = state.shadows.clone();
+        // Take ownership of existing shadows instead of cloning (saves one full Vec clone)
+        let existing_shadows = std::mem::take(&mut state.shadows);
+        // Copy path and context for use after releasing borrow
+        let rig_path = state.path.clone();
+        let context = state.context.clone();
 
-        // Sync rig to shadows
+        // Sync rig to shadows (borrow of self.rigs released)
         let (result, new_shadows) =
-            sync_rig_to_shadows(&state.path, rig_id, &state.context, existing_shadows)?;
+            sync_rig_to_shadows(&rig_path, rig_id, &context, existing_shadows)?;
 
-        // Update state
+        // Update state - clone shadows for rig state, move into global list
+        let shadows_for_rig = new_shadows.clone();
         if let Some(state) = self.rigs.get_mut(rig_id) {
-            state.shadows = new_shadows.clone();
-            state.last_sync = Some(SyncResult {
-                created: result.created.clone(),
-                updated: result.updated.clone(),
-                deleted: result.deleted.clone(),
-                errors: result.errors.clone(),
-            });
+            state.shadows = shadows_for_rig;
+            // Clone result for storing (original returned to caller)
+            state.last_sync = Some(result.clone());
         }
 
-        // Update global shadows list
+        // Update global shadows list (takes ownership of new_shadows)
         self.update_shadows(rig_id, new_shadows);
 
         Ok(result)
@@ -801,9 +855,12 @@ impl Sheriff {
 
     /// Update global shadows list after a rig sync
     fn update_shadows(&mut self, rig_id: &str, new_shadows: Vec<ShadowBead>) {
+        // Pre-compute prefix once instead of allocating for each shadow (O(1) vs O(n) allocations)
+        let prefix = format!("bead://{}/", rig_id);
+
         // Remove old shadows for this rig
         self.shadows
-            .retain(|s| !s.pointer.as_str().contains(&format!("bead://{}/", rig_id)));
+            .retain(|s| !s.pointer.as_str().contains(&prefix));
 
         // Add new shadows
         self.shadows.extend(new_shadows);

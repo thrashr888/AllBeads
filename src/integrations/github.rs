@@ -10,6 +10,13 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
+/// Per-request timeout for GraphQL queries (can return large result sets)
+const GRAPHQL_TIMEOUT: Duration = Duration::from_secs(30);
+/// Per-request timeout for single issue fetches
+const GET_TIMEOUT: Duration = Duration::from_secs(10);
+/// Per-request timeout for create/update operations
+const WRITE_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// GitHub API client for bi-directional sync
 pub struct GitHubAdapter {
     client: Client,
@@ -324,7 +331,7 @@ impl GitHubAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(GRAPHQL_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -429,7 +436,7 @@ impl GitHubAdapter {
             request = request.bearer_auth(token);
         }
 
-        let response = request.send().await?;
+        let response = request.timeout(GET_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::OK => Ok(response.json().await?),
@@ -468,7 +475,7 @@ impl GitHubAdapter {
             http_request = http_request.bearer_auth(token);
         }
 
-        let response = http_request.send().await?;
+        let response = http_request.timeout(WRITE_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::CREATED => {
@@ -508,7 +515,7 @@ impl GitHubAdapter {
             http_request = http_request.bearer_auth(token);
         }
 
-        let response = http_request.send().await?;
+        let response = http_request.timeout(WRITE_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::OK => Ok(response.json().await?),
@@ -544,7 +551,7 @@ impl GitHubAdapter {
             http_request = http_request.bearer_auth(token);
         }
 
-        let response = http_request.send().await?;
+        let response = http_request.timeout(WRITE_TIMEOUT).send().await?;
 
         match response.status() {
             StatusCode::CREATED => Ok(response.json().await?),

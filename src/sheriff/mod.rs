@@ -53,6 +53,7 @@
 
 mod daemon;
 mod external_sync;
+pub mod metrics;
 mod sync;
 
 pub use daemon::{
