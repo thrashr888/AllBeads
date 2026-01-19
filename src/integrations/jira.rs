@@ -126,6 +126,43 @@ pub struct JiraComment {
     pub updated: String,
 }
 
+/// JIRA project version (equivalent to GitHub milestone)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JiraVersion {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub archived: bool,
+    #[serde(default)]
+    pub released: bool,
+    #[serde(rename = "releaseDate", default)]
+    pub release_date: Option<String>,
+    #[serde(rename = "startDate", default)]
+    pub start_date: Option<String>,
+    #[serde(rename = "projectId", default)]
+    pub project_id: Option<i64>,
+}
+
+/// Request to create/update a JIRA version
+#[derive(Debug, Clone, Serialize)]
+pub struct JiraVersionRequest {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(rename = "releaseDate", skip_serializing_if = "Option::is_none")]
+    pub release_date: Option<String>,
+    #[serde(rename = "startDate", skip_serializing_if = "Option::is_none")]
+    pub start_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub released: Option<bool>,
+    #[serde(rename = "projectId")]
+    pub project_id: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct JiraCommentCreate {
     body: String,
@@ -558,6 +595,265 @@ impl JiraAdapter {
                     action: JiraSyncAction::Skipped,
                     error: Some(format!("No transition to: {}", target_status)),
                 })
+            }
+        }
+    }
+
+    // ============ Version/Milestone Operations ============
+
+    /// List all versions for the configured project
+    pub async fn list_versions(&self) -> Result<Vec<JiraVersion>> {
+        let url = format!("{}/project/{}/versions", self.base_url, self.project());
+
+        debug!(project = %self.project(), "Listing JIRA versions");
+
+        let mut request = self.client.get(&url);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(GET_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => {
+                let versions: Vec<JiraVersion> = response.json().await?;
+                info!(count = versions.len(), "Listed JIRA versions");
+                Ok(versions)
+            }
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error listing versions: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Get a specific version by ID
+    pub async fn get_version(&self, version_id: &str) -> Result<JiraVersion> {
+        let url = format!("{}/version/{}", self.base_url, version_id);
+
+        debug!(version_id = %version_id, "Fetching JIRA version");
+
+        let mut request = self.client.get(&url);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(GET_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "JIRA version not found: {}",
+                version_id
+            ))),
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error getting version {}: HTTP {}: {}",
+                    version_id, status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Create a new version in the project
+    pub async fn create_version(&self, request: &JiraVersionRequest) -> Result<JiraVersion> {
+        let url = format!("{}/version", self.base_url);
+
+        info!(name = %request.name, "Creating JIRA version");
+
+        let mut req = self.client.post(&url).json(request);
+        if let Some(ref token) = self.auth_token {
+            req = req.bearer_auth(token);
+        }
+
+        let response = req.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::CREATED | StatusCode::OK => {
+                let version: JiraVersion = response.json().await?;
+                info!(version_id = %version.id, name = %version.name, "Created JIRA version");
+                Ok(version)
+            }
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error creating version: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Update an existing version
+    pub async fn update_version(
+        &self,
+        version_id: &str,
+        request: &JiraVersionRequest,
+    ) -> Result<JiraVersion> {
+        let url = format!("{}/version/{}", self.base_url, version_id);
+
+        info!(version_id = %version_id, name = %request.name, "Updating JIRA version");
+
+        let mut req = self.client.put(&url).json(request);
+        if let Some(ref token) = self.auth_token {
+            req = req.bearer_auth(token);
+        }
+
+        let response = req.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => {
+                let version: JiraVersion = response.json().await?;
+                info!(version_id = %version.id, name = %version.name, "Updated JIRA version");
+                Ok(version)
+            }
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "JIRA version not found: {}",
+                version_id
+            ))),
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error updating version {}: HTTP {}: {}",
+                    version_id, status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Delete a version
+    pub async fn delete_version(&self, version_id: &str) -> Result<()> {
+        let url = format!("{}/version/{}", self.base_url, version_id);
+
+        info!(version_id = %version_id, "Deleting JIRA version");
+
+        let mut request = self.client.delete(&url);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT | StatusCode::OK => {
+                info!(version_id = %version_id, "Deleted JIRA version");
+                Ok(())
+            }
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "JIRA version not found: {}",
+                version_id
+            ))),
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error deleting version {}: HTTP {}: {}",
+                    version_id, status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Assign an issue to a version (fix version)
+    pub async fn assign_issue_to_version(&self, issue_key: &str, version_id: &str) -> Result<()> {
+        let url = format!("{}/issue/{}", self.base_url, issue_key);
+
+        let body = serde_json::json!({
+            "update": {
+                "fixVersions": [
+                    { "add": { "id": version_id } }
+                ]
+            }
+        });
+
+        info!(issue = %issue_key, version_id = %version_id, "Assigning issue to JIRA version");
+
+        let mut request = self.client.put(&url).json(&body);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT | StatusCode::OK => {
+                info!(issue = %issue_key, version_id = %version_id, "Assigned issue to JIRA version");
+                Ok(())
+            }
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "JIRA issue not found: {}",
+                issue_key
+            ))),
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error assigning issue {} to version {}: HTTP {}: {}",
+                    issue_key, version_id, status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Remove an issue from a version
+    pub async fn remove_issue_from_version(&self, issue_key: &str, version_id: &str) -> Result<()> {
+        let url = format!("{}/issue/{}", self.base_url, issue_key);
+
+        let body = serde_json::json!({
+            "update": {
+                "fixVersions": [
+                    { "remove": { "id": version_id } }
+                ]
+            }
+        });
+
+        info!(issue = %issue_key, version_id = %version_id, "Removing issue from JIRA version");
+
+        let mut request = self.client.put(&url).json(&body);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT | StatusCode::OK => {
+                info!(issue = %issue_key, version_id = %version_id, "Removed issue from JIRA version");
+                Ok(())
+            }
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "JIRA issue not found: {}",
+                issue_key
+            ))),
+            StatusCode::UNAUTHORIZED => Err(crate::AllBeadsError::Integration(
+                "JIRA authentication failed".to_string(),
+            )),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "JIRA API error removing issue {} from version {}: HTTP {}: {}",
+                    issue_key, version_id, status, error_body
+                )))
             }
         }
     }

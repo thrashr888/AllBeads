@@ -74,6 +74,38 @@ pub struct GitHubComment {
     pub updated_at: String,
 }
 
+/// GitHub milestone (REST API format)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubMilestone {
+    pub number: u64,
+    pub id: u64,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub state: String, // "open" or "closed"
+    #[serde(default)]
+    pub due_on: Option<String>,
+    pub html_url: String,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+    pub open_issues: u32,
+    pub closed_issues: u32,
+}
+
+/// Request to create/update a milestone
+#[derive(Debug, Clone, Serialize)]
+pub struct MilestoneRequest {
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_on: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+}
+
 /// GraphQL response wrapper
 #[derive(Debug, Clone, Deserialize)]
 struct GraphQLResponse<T> {
@@ -769,6 +801,243 @@ impl GitHubAdapter {
                 action: GitHubSyncAction::Error,
                 error: Some(e.to_string()),
             }),
+        }
+    }
+
+    // ========================================================================
+    // Milestone Operations
+    // ========================================================================
+
+    /// List all milestones for a repository
+    pub async fn list_milestones(
+        &self,
+        repo: &str,
+        state: Option<&str>,
+    ) -> Result<Vec<GitHubMilestone>> {
+        let url = format!(
+            "{}/repos/{}/{}/milestones",
+            self.rest_base_url, self.config.owner, repo
+        );
+
+        debug!(repo = %repo, state = ?state, "Listing GitHub milestones");
+
+        let mut request = self.client.get(&url);
+        if let Some(state) = state {
+            request = request.query(&[("state", state)]);
+        }
+        request = request.query(&[("sort", "due_on"), ("direction", "asc")]);
+
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(GET_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => {
+                let milestones: Vec<GitHubMilestone> = response.json().await?;
+                info!(count = milestones.len(), "Fetched GitHub milestones");
+                Ok(milestones)
+            }
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "Repository not found: {}/{}",
+                self.config.owner, repo
+            ))),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "GitHub milestones failed: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Get a single milestone by number
+    pub async fn get_milestone(&self, repo: &str, number: u64) -> Result<GitHubMilestone> {
+        let url = format!(
+            "{}/repos/{}/{}/milestones/{}",
+            self.rest_base_url, self.config.owner, repo, number
+        );
+
+        debug!(repo = %repo, number = %number, "Fetching GitHub milestone");
+
+        let mut request = self.client.get(&url);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(GET_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "Milestone not found: {}/{}#{}",
+                self.config.owner, repo, number
+            ))),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "GitHub milestone fetch failed: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Create a new milestone
+    pub async fn create_milestone(
+        &self,
+        repo: &str,
+        request: MilestoneRequest,
+    ) -> Result<GitHubMilestone> {
+        let url = format!(
+            "{}/repos/{}/{}/milestones",
+            self.rest_base_url, self.config.owner, repo
+        );
+
+        info!(repo = %repo, title = %request.title, "Creating GitHub milestone");
+
+        let mut http_request = self.client.post(&url).json(&request);
+        if let Some(ref token) = self.auth_token {
+            http_request = http_request.bearer_auth(token);
+        }
+
+        let response = http_request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::CREATED => {
+                let milestone: GitHubMilestone = response.json().await?;
+                info!(number = milestone.number, "GitHub milestone created");
+                Ok(milestone)
+            }
+            StatusCode::UNPROCESSABLE_ENTITY => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "Invalid milestone data: {}",
+                    error_body
+                )))
+            }
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "GitHub milestone creation failed: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Update an existing milestone
+    pub async fn update_milestone(
+        &self,
+        repo: &str,
+        number: u64,
+        request: MilestoneRequest,
+    ) -> Result<GitHubMilestone> {
+        let url = format!(
+            "{}/repos/{}/{}/milestones/{}",
+            self.rest_base_url, self.config.owner, repo, number
+        );
+
+        info!(repo = %repo, number = %number, "Updating GitHub milestone");
+
+        let mut http_request = self.client.patch(&url).json(&request);
+        if let Some(ref token) = self.auth_token {
+            http_request = http_request.bearer_auth(token);
+        }
+
+        let response = http_request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "Milestone not found: {}/{}#{}",
+                self.config.owner, repo, number
+            ))),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "GitHub milestone update failed: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Delete a milestone
+    pub async fn delete_milestone(&self, repo: &str, number: u64) -> Result<()> {
+        let url = format!(
+            "{}/repos/{}/{}/milestones/{}",
+            self.rest_base_url, self.config.owner, repo, number
+        );
+
+        info!(repo = %repo, number = %number, "Deleting GitHub milestone");
+
+        let mut request = self.client.delete(&url);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::NO_CONTENT => Ok(()),
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "Milestone not found: {}/{}#{}",
+                self.config.owner, repo, number
+            ))),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "GitHub milestone deletion failed: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
+        }
+    }
+
+    /// Assign an issue to a milestone
+    pub async fn assign_issue_to_milestone(
+        &self,
+        repo: &str,
+        issue_number: u64,
+        milestone_number: u64,
+    ) -> Result<GitHubIssue> {
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}",
+            self.rest_base_url, self.config.owner, repo, issue_number
+        );
+
+        info!(
+            repo = %repo,
+            issue = %issue_number,
+            milestone = %milestone_number,
+            "Assigning issue to milestone"
+        );
+
+        let body = serde_json::json!({ "milestone": milestone_number });
+
+        let mut request = self.client.patch(&url).json(&body);
+        if let Some(ref token) = self.auth_token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.timeout(WRITE_TIMEOUT).send().await?;
+
+        match response.status() {
+            StatusCode::OK => Ok(response.json().await?),
+            StatusCode::NOT_FOUND => Err(crate::AllBeadsError::Integration(format!(
+                "Issue or milestone not found: {}/{}#{}",
+                self.config.owner, repo, issue_number
+            ))),
+            status => {
+                let error_body = response.text().await.unwrap_or_default();
+                Err(crate::AllBeadsError::Integration(format!(
+                    "GitHub issue update failed: HTTP {}: {}",
+                    status, error_body
+                )))
+            }
         }
     }
 }
