@@ -8,9 +8,9 @@
   "plugins": [
     {
       "name": "allbeads",
-      "source": "./",
+      "source": "./claude-plugin",
       "description": "Multi-repo orchestration for AI agent workflows. Aggregate beads across repositories, manage contexts, and coordinate distributed work.",
-      "version": "0.2.1"
+      "version": "0.2.2"
     }
   ]
 }
