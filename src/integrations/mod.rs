@@ -24,6 +24,10 @@
 pub mod github;
 pub mod jira;
 pub mod plugin;
+pub mod retry;
+
+// Retry exports
+pub use retry::{RetryConfig, RetryDecision, RetryableError};
 
 // JIRA exports
 pub use jira::{

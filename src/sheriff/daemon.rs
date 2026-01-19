@@ -203,6 +203,14 @@ pub enum SheriffCommand {
     CheckPolicies,
 }
 
+/// Result of handling a command
+enum CommandResult {
+    /// Continue running the daemon
+    Continue,
+    /// Stop the daemon
+    Stop,
+}
+
 /// Rig state tracked by the daemon
 struct RigState {
     /// Rig identifier
@@ -375,7 +383,7 @@ impl Sheriff {
         self.rigs.insert(id, state);
     }
 
-    /// Run the daemon event loop
+    /// Run the daemon event loop with graceful shutdown on SIGTERM/SIGINT
     pub async fn run(&mut self) -> Result<()> {
         self.running = true;
         let _ = self.event_tx.send(SheriffEvent::Started);
@@ -388,6 +396,55 @@ impl Sheriff {
             .command_rx
             .take()
             .ok_or_else(|| crate::AllBeadsError::Config("Daemon already running".to_string()))?;
+
+        // Use platform-specific event loop
+        #[cfg(unix)]
+        {
+            self.run_with_signals(
+                &mut interval,
+                &mut mail_interval,
+                mail_poll_enabled,
+                &mut command_rx,
+            )
+            .await?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            self.run_without_signals(
+                &mut interval,
+                &mut mail_interval,
+                mail_poll_enabled,
+                &mut command_rx,
+            )
+            .await?;
+        }
+
+        // Cleanup before exit
+        tracing::info!("Performing shutdown cleanup");
+        self.cleanup().await;
+
+        let _ = self.event_tx.send(SheriffEvent::Stopped);
+        Ok(())
+    }
+
+    /// Run event loop with Unix signal handling (SIGTERM/SIGINT)
+    #[cfg(unix)]
+    async fn run_with_signals(
+        &mut self,
+        interval: &mut tokio::time::Interval,
+        mail_interval: &mut tokio::time::Interval,
+        mail_poll_enabled: bool,
+        command_rx: &mut mpsc::Receiver<SheriffCommand>,
+    ) -> Result<()> {
+        use tokio::signal::unix::{signal, SignalKind};
+
+        let mut sigterm = signal(SignalKind::terminate()).map_err(|e| {
+            crate::AllBeadsError::Other(format!("Failed to set up SIGTERM handler: {}", e))
+        })?;
+        let mut sigint = signal(SignalKind::interrupt()).map_err(|e| {
+            crate::AllBeadsError::Other(format!("Failed to set up SIGINT handler: {}", e))
+        })?;
 
         loop {
             tokio::select! {
@@ -402,38 +459,112 @@ impl Sheriff {
                     }
                 }
                 Some(cmd) = command_rx.recv() => {
-                    match cmd {
-                        SheriffCommand::SyncNow => {
-                            self.poll_cycle().await;
-                        }
-                        SheriffCommand::Shutdown => {
-                            self.running = false;
-                            break;
-                        }
-                        SheriffCommand::ReloadManifest => {
-                            if let Err(e) = self.reload_manifest() {
-                                let _ = self.event_tx.send(SheriffEvent::Error {
-                                    message: format!("Failed to reload manifest: {}", e),
-                                });
-                            }
-                        }
-                        SheriffCommand::SetPollInterval(duration) => {
-                            interval = tokio::time::interval(duration);
-                            self.config.poll_interval = duration;
-                        }
-                        SheriffCommand::ReloadPolicies => {
-                            self.reload_policies();
-                        }
-                        SheriffCommand::CheckPolicies => {
-                            self.run_policy_checks();
-                        }
+                    match self.handle_command_async(cmd, interval).await {
+                        CommandResult::Continue => {}
+                        CommandResult::Stop => break,
+                    }
+                }
+                _ = sigterm.recv() => {
+                    tracing::info!("Received SIGTERM, initiating graceful shutdown");
+                    self.running = false;
+                    break;
+                }
+                _ = sigint.recv() => {
+                    tracing::info!("Received SIGINT, initiating graceful shutdown");
+                    self.running = false;
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Run event loop without signal handling (non-Unix platforms)
+    #[cfg(not(unix))]
+    async fn run_without_signals(
+        &mut self,
+        interval: &mut tokio::time::Interval,
+        mail_interval: &mut tokio::time::Interval,
+        mail_poll_enabled: bool,
+        command_rx: &mut mpsc::Receiver<SheriffCommand>,
+    ) -> Result<()> {
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    if self.running {
+                        self.poll_cycle().await;
+                    }
+                }
+                _ = mail_interval.tick(), if mail_poll_enabled => {
+                    if self.running {
+                        self.poll_mail().await;
+                    }
+                }
+                Some(cmd) = command_rx.recv() => {
+                    match self.handle_command_async(cmd, interval).await {
+                        CommandResult::Continue => {}
+                        CommandResult::Stop => break,
                     }
                 }
             }
         }
-
-        let _ = self.event_tx.send(SheriffEvent::Stopped);
         Ok(())
+    }
+
+    /// Handle a command asynchronously
+    async fn handle_command_async(
+        &mut self,
+        cmd: SheriffCommand,
+        interval: &mut tokio::time::Interval,
+    ) -> CommandResult {
+        match cmd {
+            SheriffCommand::SyncNow => {
+                self.poll_cycle().await;
+            }
+            SheriffCommand::Shutdown => {
+                tracing::info!("Received shutdown command");
+                self.running = false;
+                return CommandResult::Stop;
+            }
+            SheriffCommand::ReloadManifest => {
+                if let Err(e) = self.reload_manifest() {
+                    let _ = self.event_tx.send(SheriffEvent::Error {
+                        message: format!("Failed to reload manifest: {}", e),
+                    });
+                }
+            }
+            SheriffCommand::SetPollInterval(duration) => {
+                *interval = tokio::time::interval(duration);
+                self.config.poll_interval = duration;
+            }
+            SheriffCommand::ReloadPolicies => {
+                self.reload_policies();
+            }
+            SheriffCommand::CheckPolicies => {
+                self.run_policy_checks();
+            }
+        }
+        CommandResult::Continue
+    }
+
+    /// Perform cleanup before shutdown
+    async fn cleanup(&mut self) {
+        // Flush any pending mail operations
+        if let Some(ref postmaster) = self.postmaster {
+            if let Ok(mut pm) = postmaster.try_lock() {
+                pm.cleanup_expired_locks();
+                tracing::debug!("Cleaned up expired locks");
+            }
+        }
+
+        // Log final stats
+        let total_shadows = self.shadows.len();
+        let total_rigs = self.rigs.len();
+        tracing::info!(
+            shadows = total_shadows,
+            rigs = total_rigs,
+            "Sheriff daemon shutdown complete"
+        );
     }
 
     /// Execute a single poll cycle

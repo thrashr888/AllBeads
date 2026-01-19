@@ -3,6 +3,7 @@
 use crate::graph::{Bead, BeadId, FederatedGraph, Priority, Rig, Status};
 use crate::Result;
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -255,6 +256,11 @@ impl Cache {
     }
 
     /// Load a FederatedGraph from the cache
+    ///
+    /// Uses batch loading to avoid N+1 query problems:
+    /// - 1 query for all beads
+    /// - 1 query for all dependencies
+    /// - 1 query for all blocks
     pub fn load_graph(&self) -> Result<Option<FederatedGraph>> {
         // Check if cache is expired
         if self.is_expired()? {
@@ -264,9 +270,9 @@ impl Cache {
 
         tracing::debug!("Loading graph from cache");
 
-        let mut graph = FederatedGraph::new();
+        // Step 1: Load all beads in one query
+        let mut beads_map: HashMap<String, Bead> = HashMap::new();
 
-        // Load all beads
         let mut stmt = self.conn.prepare(
             r#"
             SELECT id, title, description, status, priority, issue_type,
@@ -298,35 +304,49 @@ impl Cache {
                 assignee: row.get(9)?,
                 labels,
                 notes: row.get(11)?,
-                dependencies: Vec::new(), // Will load separately
-                blocks: Vec::new(),       // Will load separately
-                aiki_tasks: Vec::new(),   // Will load from JSONL
+                dependencies: Vec::new(),
+                blocks: Vec::new(),
+                aiki_tasks: Vec::new(),
                 handoff: None,
             })
         })?;
 
         for bead_result in beads {
-            let mut bead = bead_result?;
+            let bead = bead_result?;
+            beads_map.insert(bead.id.as_str().to_string(), bead);
+        }
 
-            // Load dependencies
-            let mut dep_stmt = self
-                .conn
-                .prepare("SELECT depends_on FROM dependencies WHERE bead_id = ?")?;
-            let deps = dep_stmt.query_map([bead.id.as_str()], |row| row.get::<_, String>(0))?;
-            for dep in deps {
-                bead.dependencies.push(BeadId::new(dep?));
+        // Step 2: Load all dependencies in one query (instead of N queries)
+        let mut dep_stmt = self
+            .conn
+            .prepare("SELECT bead_id, depends_on FROM dependencies")?;
+        let deps = dep_stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for dep_result in deps {
+            let (bead_id, depends_on) = dep_result?;
+            if let Some(bead) = beads_map.get_mut(&bead_id) {
+                bead.dependencies.push(BeadId::new(depends_on));
             }
+        }
 
-            // Load blocks
-            let mut blocks_stmt = self
-                .conn
-                .prepare("SELECT blocks_id FROM blocks WHERE bead_id = ?")?;
-            let blocks =
-                blocks_stmt.query_map([bead.id.as_str()], |row| row.get::<_, String>(0))?;
-            for block_id in blocks {
-                bead.blocks.push(BeadId::new(block_id?));
+        // Step 3: Load all blocks in one query (instead of N queries)
+        let mut blocks_stmt = self.conn.prepare("SELECT bead_id, blocks_id FROM blocks")?;
+        let blocks = blocks_stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        for block_result in blocks {
+            let (bead_id, blocks_id) = block_result?;
+            if let Some(bead) = beads_map.get_mut(&bead_id) {
+                bead.blocks.push(BeadId::new(blocks_id));
             }
+        }
 
+        // Step 4: Build the graph
+        let mut graph = FederatedGraph::new();
+        for bead in beads_map.into_values() {
             graph.add_bead(bead);
         }
 

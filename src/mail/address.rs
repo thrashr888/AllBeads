@@ -31,6 +31,12 @@ use std::fmt;
 use std::str::FromStr;
 use thiserror::Error;
 
+/// Maximum length for address name component
+pub const MAX_NAME_LENGTH: usize = 255;
+
+/// Maximum length for address domain component
+pub const MAX_DOMAIN_LENGTH: usize = 255;
+
 /// Error type for address parsing
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum AddressError {
@@ -48,6 +54,12 @@ pub enum AddressError {
 
     #[error("address domain contains invalid characters: '{0}'")]
     InvalidDomainCharacters(String),
+
+    #[error("address name too long: {0} chars (max {MAX_NAME_LENGTH})")]
+    NameTooLong(usize),
+
+    #[error("address domain too long: {0} chars (max {MAX_DOMAIN_LENGTH})")]
+    DomainTooLong(usize),
 }
 
 /// A validated agent mail address
@@ -142,6 +154,11 @@ impl Address {
             return Err(AddressError::EmptyName);
         }
 
+        // Check length limit to prevent DoS via memory allocation
+        if name.len() > MAX_NAME_LENGTH {
+            return Err(AddressError::NameTooLong(name.len()));
+        }
+
         // Allow alphanumeric, hyphen, underscore
         if !name
             .chars()
@@ -157,6 +174,11 @@ impl Address {
     fn validate_domain(domain: &str) -> Result<(), AddressError> {
         if domain.is_empty() {
             return Err(AddressError::EmptyDomain);
+        }
+
+        // Check length limit to prevent DoS via memory allocation
+        if domain.len() > MAX_DOMAIN_LENGTH {
+            return Err(AddressError::DomainTooLong(domain.len()));
         }
 
         // Allow alphanumeric, hyphen, underscore, dot
@@ -310,6 +332,25 @@ mod tests {
             result,
             Err(AddressError::InvalidDomainCharacters(_))
         ));
+    }
+
+    #[test]
+    fn test_length_limits() {
+        // Name too long
+        let long_name = "a".repeat(MAX_NAME_LENGTH + 1);
+        let result: Result<Address, _> = format!("{}@domain", long_name).parse();
+        assert!(matches!(result, Err(AddressError::NameTooLong(_))));
+
+        // Domain too long
+        let long_domain = "a".repeat(MAX_DOMAIN_LENGTH + 1);
+        let result: Result<Address, _> = format!("name@{}", long_domain).parse();
+        assert!(matches!(result, Err(AddressError::DomainTooLong(_))));
+
+        // At the limit should work
+        let max_name = "a".repeat(MAX_NAME_LENGTH);
+        let max_domain = "a".repeat(MAX_DOMAIN_LENGTH);
+        let result: Result<Address, _> = format!("{}@{}", max_name, max_domain).parse();
+        assert!(result.is_ok());
     }
 
     #[test]

@@ -39,15 +39,20 @@ use super::{
     SendResult, StoredMessage,
 };
 use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
+    body::Body,
+    extract::{ConnectInfo, Path, State},
+    http::{Request, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
@@ -68,9 +73,111 @@ pub enum ServerError {
     Bind(String),
 }
 
+/// Rate limiter configuration
+#[derive(Debug, Clone)]
+pub struct RateLimitConfig {
+    /// Maximum requests per window
+    pub max_requests: u32,
+    /// Window duration
+    pub window: Duration,
+    /// Request body size limit in bytes (default 10MB)
+    pub max_body_size: usize,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_requests: 100,
+            window: Duration::from_secs(60),
+            max_body_size: 10 * 1024 * 1024, // 10MB
+        }
+    }
+}
+
+/// Simple sliding window rate limiter
+#[derive(Debug)]
+pub struct RateLimiter {
+    config: RateLimitConfig,
+    /// Map of IP address to (request count, window start)
+    windows: Mutex<HashMap<String, (u32, Instant)>>,
+}
+
+impl RateLimiter {
+    /// Create a new rate limiter with default config
+    pub fn new() -> Self {
+        Self::with_config(RateLimitConfig::default())
+    }
+
+    /// Create a new rate limiter with custom config
+    pub fn with_config(config: RateLimitConfig) -> Self {
+        Self {
+            config,
+            windows: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Check if a request from the given IP should be allowed
+    pub async fn check(&self, ip: &str) -> Result<(), RateLimitError> {
+        let mut windows = self.windows.lock().await;
+        let now = Instant::now();
+
+        let entry = windows.entry(ip.to_string()).or_insert((0, now));
+
+        // Check if we're in a new window
+        if now.duration_since(entry.1) > self.config.window {
+            // Reset the window
+            entry.0 = 1;
+            entry.1 = now;
+            return Ok(());
+        }
+
+        // Check if we're over the limit
+        if entry.0 >= self.config.max_requests {
+            let remaining = self.config.window - now.duration_since(entry.1);
+            return Err(RateLimitError::Exceeded {
+                retry_after: remaining,
+            });
+        }
+
+        // Increment the counter
+        entry.0 += 1;
+        Ok(())
+    }
+
+    /// Clean up expired windows (call periodically)
+    /// Note: Not yet used - will be integrated when Sheriff manages rate limiter lifecycle
+    #[allow(dead_code)]
+    pub async fn cleanup(&self) {
+        let mut windows = self.windows.lock().await;
+        let now = Instant::now();
+        let window_duration = self.config.window;
+
+        windows.retain(|_, (_, start)| now.duration_since(*start) <= window_duration * 2);
+    }
+
+    /// Get the max body size limit
+    pub fn max_body_size(&self) -> usize {
+        self.config.max_body_size
+    }
+}
+
+impl Default for RateLimiter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Rate limit error
+#[derive(Debug, Error)]
+pub enum RateLimitError {
+    #[error("Rate limit exceeded, retry after {retry_after:?}")]
+    Exceeded { retry_after: Duration },
+}
+
 /// Shared server state
 struct AppState {
     postmaster: Mutex<Postmaster>,
+    rate_limiter: RateLimiter,
 }
 
 /// HTTP server for Agent Mail
@@ -79,18 +186,30 @@ pub struct MailServer {
 }
 
 impl MailServer {
-    /// Create a new mail server
+    /// Create a new mail server with default rate limiting
     pub fn new(db_path: PathBuf, project_id: impl Into<String>) -> Result<Self, ServerError> {
+        Self::with_rate_limit(db_path, project_id, RateLimitConfig::default())
+    }
+
+    /// Create a new mail server with custom rate limiting
+    pub fn with_rate_limit(
+        db_path: PathBuf,
+        project_id: impl Into<String>,
+        rate_limit_config: RateLimitConfig,
+    ) -> Result<Self, ServerError> {
         let postmaster = Postmaster::with_project_id(db_path, project_id)?;
         Ok(Self {
             state: Arc::new(AppState {
                 postmaster: Mutex::new(postmaster),
+                rate_limiter: RateLimiter::with_config(rate_limit_config),
             }),
         })
     }
 
-    /// Build the router
+    /// Build the router with rate limiting middleware
     fn router(state: Arc<AppState>) -> Router {
+        let max_body_size = state.rate_limiter.max_body_size();
+
         Router::new()
             .route("/health", get(health))
             .route("/send", post(send_message))
@@ -100,6 +219,11 @@ impl MailServer {
             .route("/locks", get(list_locks))
             .route("/lock/status", post(get_lock_status))
             .route("/lock/release", post(force_release_lock))
+            .layer(middleware::from_fn_with_state(
+                state.clone(),
+                rate_limit_middleware,
+            ))
+            .layer(axum::extract::DefaultBodyLimit::max(max_body_size))
             .with_state(state)
     }
 
@@ -109,7 +233,12 @@ impl MailServer {
             .await
             .map_err(|e| ServerError::Bind(e.to_string()))?;
 
-        tracing::info!("Mail server listening on {}", addr);
+        tracing::info!(
+            addr = addr,
+            max_requests_per_min = self.state.rate_limiter.config.max_requests,
+            max_body_size = self.state.rate_limiter.config.max_body_size,
+            "Mail server listening with rate limiting"
+        );
 
         axum::serve(listener, Self::router(self.state))
             .await
@@ -119,6 +248,42 @@ impl MailServer {
     /// Get a reference to the postmaster (for testing)
     pub fn postmaster(&self) -> &Mutex<Postmaster> {
         &self.state.postmaster
+    }
+}
+
+/// Rate limiting middleware
+async fn rate_limit_middleware(
+    State(state): State<Arc<AppState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    // Extract client IP from ConnectInfo extension if available (for production)
+    // Falls back to 127.0.0.1 for tests where there's no actual TCP connection
+    let ip = request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ConnectInfo(addr)| addr.ip().to_string())
+        .unwrap_or_else(|| "127.0.0.1".to_string());
+
+    match state.rate_limiter.check(&ip).await {
+        Ok(()) => next.run(request).await,
+        Err(RateLimitError::Exceeded { retry_after }) => {
+            let retry_secs = retry_after.as_secs();
+            tracing::warn!(
+                ip = ip,
+                retry_after_secs = retry_secs,
+                "Rate limit exceeded"
+            );
+
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                [("Retry-After", retry_secs.to_string())],
+                Json(ErrorResponse {
+                    error: format!("Rate limit exceeded. Retry after {} seconds.", retry_secs),
+                }),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -481,6 +646,7 @@ mod tests {
         let postmaster = Postmaster::with_project_id(db_path, "test").unwrap();
         let state = Arc::new(AppState {
             postmaster: Mutex::new(postmaster),
+            rate_limiter: RateLimiter::new(),
         });
         (state, temp_dir)
     }
@@ -581,5 +747,32 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter() {
+        use std::time::Duration;
+
+        let config = RateLimitConfig {
+            max_requests: 3,
+            window: Duration::from_secs(60),
+            max_body_size: 1024,
+        };
+        let limiter = RateLimiter::with_config(config);
+
+        // First 3 requests should succeed
+        assert!(limiter.check("test-ip").await.is_ok());
+        assert!(limiter.check("test-ip").await.is_ok());
+        assert!(limiter.check("test-ip").await.is_ok());
+
+        // 4th request should be rate limited
+        let result = limiter.check("test-ip").await;
+        assert!(result.is_err());
+        if let Err(RateLimitError::Exceeded { retry_after }) = result {
+            assert!(retry_after.as_secs() <= 60);
+        }
+
+        // Different IP should not be affected
+        assert!(limiter.check("other-ip").await.is_ok());
     }
 }
