@@ -7074,7 +7074,7 @@ fn handle_sync_command(
         println!("  Syncing to web platform...");
 
         // Load web client
-        let _web_client = match allbeads::web::WebClient::from_config(&config) {
+        let web_client = match allbeads::web::WebClient::from_config(&config) {
             Some(client) => client,
             None => {
                 println!(
@@ -7086,23 +7086,136 @@ fn handle_sync_command(
             }
         };
 
-        // TODO: Implement when AllBeadsWeb adds repository lookup API
-        // 1. For each context, find/create repo by contextName or remoteUrl
-        // 2. Load beads from context
-        // 3. Call web_client.import_beads(repo_id, beads, false)
-        //
-        // Blocked by: AllBeadsWeb needs CLI auth + repo lookup endpoints
-        println!(
-            "    {} Web sync coming soon (waiting on API support)",
-            style::dim("○")
-        );
-        println!();
-        println!("    Manual workaround:");
-        println!("    1. Run 'bd export > beads.jsonl' in your context");
-        println!(
-            "    2. Import at: {}/dashboard/repos",
-            config.web_auth.host()
-        );
+        // Create async runtime for web API calls
+        let rt = tokio::runtime::Runtime::new()
+            .map_err(|e| allbeads::AllBeadsError::Config(format!("Runtime error: {}", e)))?;
+
+        // Get contexts with local paths and beads
+        let local_contexts: Vec<(String, Option<String>, PathBuf)> = config
+            .contexts
+            .iter()
+            .filter_map(|ctx| {
+                ctx.path.as_ref().map(|p| {
+                    let path = PathBuf::from(p);
+                    let url = if ctx.url.is_empty() {
+                        None
+                    } else {
+                        Some(ctx.url.clone())
+                    };
+                    (ctx.name.clone(), url, path)
+                })
+            })
+            .filter(|(_, _, path)| path.join(".beads").exists())
+            .collect();
+
+        if local_contexts.is_empty() {
+            println!(
+                "    {} No local contexts with beads found",
+                style::dim("○")
+            );
+        } else {
+            let mut synced = 0;
+            let mut skipped = 0;
+            let mut errors = 0;
+
+            for (name, url, path) in &local_contexts {
+                // Load beads from this context
+                let bd = Beads::with_workdir(path);
+                let issues: Vec<beads::Issue> = match bd.list(None, None) {
+                    Ok(issues) => issues,
+                    Err(e) => {
+                        println!(
+                            "    {} {} - failed to load beads: {}",
+                            style::error("✗"),
+                            name,
+                            e
+                        );
+                        errors += 1;
+                        continue;
+                    }
+                };
+
+                if issues.is_empty() {
+                    println!("    {} {} - no beads to sync", style::dim("○"), name);
+                    skipped += 1;
+                    continue;
+                }
+
+                // Convert issues to Bead structs
+                let beads: Vec<allbeads::graph::Bead> = issues
+                    .into_iter()
+                    .filter_map(|issue| allbeads::storage::issue_to_bead(issue).ok())
+                    .collect();
+
+                // Find repository in web by context name or URL
+                let repo = rt.block_on(async {
+                    web_client
+                        .find_repository(Some(name), url.as_deref())
+                        .await
+                });
+
+                match repo {
+                    Ok(Some(repo)) => {
+                        // Import beads to web
+                        match rt
+                            .block_on(async { web_client.import_beads(&repo.id, &beads, false).await })
+                        {
+                            Ok(result) => {
+                                let stats = &result.stats;
+                                println!(
+                                    "    {} {} - {} beads ({} created, {} updated, {} unchanged)",
+                                    style::success("✓"),
+                                    name,
+                                    result.total,
+                                    stats.created,
+                                    stats.updated,
+                                    stats.unchanged
+                                );
+                                if !stats.errors.is_empty() {
+                                    for err in &stats.errors {
+                                        println!("      {} {}", style::warning("!"), err);
+                                    }
+                                }
+                                synced += 1;
+                            }
+                            Err(e) => {
+                                println!(
+                                    "    {} {} - import failed: {}",
+                                    style::error("✗"),
+                                    name,
+                                    e
+                                );
+                                errors += 1;
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        println!(
+                            "    {} {} - not found in web (add repo at {}/dashboard)",
+                            style::warning("!"),
+                            name,
+                            config.web_auth.host()
+                        );
+                        skipped += 1;
+                    }
+                    Err(e) => {
+                        println!(
+                            "    {} {} - lookup failed: {}",
+                            style::error("✗"),
+                            name,
+                            e
+                        );
+                        errors += 1;
+                    }
+                }
+            }
+
+            println!();
+            println!(
+                "  Web sync: {} synced, {} skipped, {} errors",
+                synced, skipped, errors
+            );
+        }
     }
 
     println!();

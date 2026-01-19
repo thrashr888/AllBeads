@@ -65,6 +65,28 @@ pub struct CommentAuthor {
     pub login: Option<String>,
 }
 
+/// Repository from web API
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Repository {
+    pub id: String,
+    pub name: String,
+    pub remote_url: String,
+    pub context_name: Option<String>,
+    pub default_branch: Option<String>,
+    pub sync_status: Option<String>,
+    pub project_id: String,
+    pub project: Option<RepositoryProject>,
+    pub bead_count: Option<usize>,
+}
+
+/// Project info nested in repository
+#[derive(Debug, Clone, Deserialize)]
+pub struct RepositoryProject {
+    pub name: String,
+    pub slug: String,
+}
+
 /// Import request for /api/beads/import
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -297,6 +319,87 @@ impl WebClient {
         let result: ImportResponse = response.json().await?;
         Ok(result)
     }
+
+    /// List repositories from web API
+    pub async fn list_repositories(&self) -> Result<Vec<Repository>> {
+        let url = format!("{}/api/repositories", self.host);
+
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error: ErrorResponse = response.json().await.unwrap_or(ErrorResponse {
+                error: "Unknown error".to_string(),
+            });
+            return Err(
+                anyhow::anyhow!("Failed to list repositories ({}): {}", status, error.error)
+                    .into(),
+            );
+        }
+
+        let repos: Vec<Repository> = response.json().await?;
+        Ok(repos)
+    }
+
+    /// Find a repository by context name or remote URL
+    pub async fn find_repository(
+        &self,
+        context_name: Option<&str>,
+        remote_url: Option<&str>,
+    ) -> Result<Option<Repository>> {
+        let repos = self.list_repositories().await?;
+
+        // First try exact context name match
+        if let Some(name) = context_name {
+            if let Some(repo) = repos
+                .iter()
+                .find(|r| r.context_name.as_deref() == Some(name))
+            {
+                return Ok(Some(repo.clone()));
+            }
+        }
+
+        // Then try remote URL match (normalize URLs for comparison)
+        if let Some(url) = remote_url {
+            let normalized = normalize_git_url(url);
+            if let Some(repo) = repos
+                .iter()
+                .find(|r| normalize_git_url(&r.remote_url) == normalized)
+            {
+                return Ok(Some(repo.clone()));
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+/// Normalize a git URL for comparison (strip .git suffix, normalize protocol)
+fn normalize_git_url(url: &str) -> String {
+    let url = url.trim();
+    let url = url.strip_suffix(".git").unwrap_or(url);
+
+    // Convert SSH URLs to HTTPS-like format for comparison
+    if url.starts_with("git@") {
+        // git@github.com:owner/repo -> github.com/owner/repo
+        url.strip_prefix("git@")
+            .unwrap_or(url)
+            .replace(':', "/")
+            .to_lowercase()
+    } else if url.starts_with("https://") || url.starts_with("http://") {
+        // https://github.com/owner/repo -> github.com/owner/repo
+        url.split("://")
+            .nth(1)
+            .unwrap_or(url)
+            .to_lowercase()
+    } else {
+        url.to_lowercase()
+    }
 }
 
 #[cfg(test)]
@@ -307,5 +410,34 @@ mod tests {
     fn test_web_client_creation() {
         let client = WebClient::new("https://allbeads.co", "test_token");
         assert_eq!(client.host, "https://allbeads.co");
+    }
+
+    #[test]
+    fn test_normalize_git_url() {
+        // SSH URLs
+        assert_eq!(
+            normalize_git_url("git@github.com:owner/repo.git"),
+            "github.com/owner/repo"
+        );
+        assert_eq!(
+            normalize_git_url("git@github.com:owner/repo"),
+            "github.com/owner/repo"
+        );
+
+        // HTTPS URLs
+        assert_eq!(
+            normalize_git_url("https://github.com/owner/repo.git"),
+            "github.com/owner/repo"
+        );
+        assert_eq!(
+            normalize_git_url("https://github.com/owner/repo"),
+            "github.com/owner/repo"
+        );
+
+        // Case insensitive
+        assert_eq!(
+            normalize_git_url("https://GitHub.com/Owner/Repo"),
+            "github.com/owner/repo"
+        );
     }
 }
