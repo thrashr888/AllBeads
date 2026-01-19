@@ -10882,7 +10882,7 @@ fn handle_jira_command(cmd: &JiraCommands) -> allbeads::Result<()> {
                 token_env: Some("JIRA_API_TOKEN".to_string()),
             };
 
-            let mut adapter = JiraAdapter::new(config);
+            let mut adapter = JiraAdapter::new(config)?;
             if let Some(t) = token {
                 adapter.set_auth_token(t);
             }
@@ -10985,7 +10985,7 @@ fn handle_github_command(cmd: &GitHubCommands) -> allbeads::Result<()> {
                 repo_pattern: repo.clone(),
             };
 
-            let mut adapter = GitHubAdapter::new(config);
+            let mut adapter = GitHubAdapter::new(config)?;
             if let Some(t) = token {
                 adapter.set_auth_token(t);
             }

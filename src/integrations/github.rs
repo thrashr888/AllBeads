@@ -232,7 +232,9 @@ pub struct GitHubSyncStats {
 
 impl GitHubAdapter {
     /// Create a new GitHub adapter
-    pub fn new(config: GitHubIntegration) -> Self {
+    ///
+    /// Returns an error if the HTTP client cannot be created.
+    pub fn new(config: GitHubIntegration) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .default_headers({
@@ -247,8 +249,7 @@ impl GitHubAdapter {
                 );
                 headers
             })
-            .build()
-            .expect("Failed to create HTTP client");
+            .build()?; // reqwest::Error converts to AllBeadsError::Http via #[from]
 
         let base_url = config.url.trim_end_matches('/');
         let (rest_base_url, graphql_url) =
@@ -271,13 +272,13 @@ impl GitHubAdapter {
 
         let auth_token = std::env::var("GITHUB_TOKEN").ok();
 
-        Self {
+        Ok(Self {
             client,
             config,
             rest_base_url,
             graphql_url,
             auth_token,
-        }
+        })
     }
 
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
@@ -557,9 +558,28 @@ impl GitHubAdapter {
         }
     }
 
+    /// Sanitize a label for safe use in GitHub search queries.
+    /// Only allows alphanumeric characters, hyphens, underscores, and spaces.
+    fn sanitize_label(label: &str) -> String {
+        label
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ' ')
+            .collect()
+    }
+
     /// Pull issues from GitHub that have the specified label
     pub async fn pull_agent_issues(&self, label: &str) -> Result<Vec<IssueNode>> {
-        let query = format!("org:{} is:issue is:open label:{}", self.config.owner, label);
+        // Sanitize label to prevent search query injection
+        let safe_label = Self::sanitize_label(label);
+        if safe_label.is_empty() {
+            return Err(crate::AllBeadsError::Integration(
+                "Invalid label: must contain at least one alphanumeric character".to_string(),
+            ));
+        }
+        let query = format!(
+            "org:{} is:issue is:open label:{}",
+            self.config.owner, safe_label
+        );
         self.search_issues(&query, 100).await
     }
 
@@ -761,7 +781,7 @@ mod tests {
     #[test]
     fn test_adapter_creation() {
         let config = test_config();
-        let adapter = GitHubAdapter::new(config);
+        let adapter = GitHubAdapter::new(config).expect("Failed to create adapter");
         assert_eq!(adapter.owner(), "testorg");
         assert!(adapter.graphql_url.contains("api.github.com"));
     }
@@ -773,15 +793,30 @@ mod tests {
             owner: "cloud-team".to_string(),
             repo_pattern: None,
         };
-        let adapter = GitHubAdapter::new(config);
+        let adapter = GitHubAdapter::new(config).expect("Failed to create adapter");
         assert!(adapter.rest_base_url.contains("github.ibm.com/api/v3"));
         assert!(adapter.graphql_url.contains("github.ibm.com/api/graphql"));
     }
 
     #[test]
+    fn test_label_sanitization() {
+        // Valid labels pass through
+        assert_eq!(GitHubAdapter::sanitize_label("ai-agent"), "ai-agent");
+        assert_eq!(GitHubAdapter::sanitize_label("my_label"), "my_label");
+        assert_eq!(GitHubAdapter::sanitize_label("label 123"), "label 123");
+
+        // Injection attempts are sanitized
+        assert_eq!(GitHubAdapter::sanitize_label("\" OR label:*"), " OR label");
+        assert_eq!(
+            GitHubAdapter::sanitize_label("bug\" org:other"),
+            "bug orgother"
+        );
+    }
+
+    #[test]
     fn test_issue_to_shadow_bead() {
         let config = test_config();
-        let adapter = GitHubAdapter::new(config);
+        let adapter = GitHubAdapter::new(config).expect("Failed to create adapter");
 
         let issue = IssueNode {
             id: "MDU6SXNzdWUx".to_string(),

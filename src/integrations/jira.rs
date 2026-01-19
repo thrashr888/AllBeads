@@ -179,11 +179,10 @@ pub struct JiraSyncStats {
 
 impl JiraAdapter {
     /// Create a new JIRA adapter
-    pub fn new(config: JiraIntegration) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("Failed to create HTTP client");
+    ///
+    /// Returns an error if the HTTP client cannot be created.
+    pub fn new(config: JiraIntegration) -> Result<Self> {
+        let client = Client::builder().timeout(Duration::from_secs(30)).build()?; // reqwest::Error converts to AllBeadsError::Http via #[from]
 
         let base_url = format!("{}/rest/api/3", config.url.trim_end_matches('/'));
 
@@ -192,12 +191,12 @@ impl JiraAdapter {
             .as_ref()
             .and_then(|env_var| std::env::var(env_var.trim_start_matches('$')).ok());
 
-        Self {
+        Ok(Self {
             client,
             config,
             base_url,
             auth_token,
-        }
+        })
     }
 
     pub fn with_token(mut self, token: impl Into<String>) -> Self {
@@ -404,11 +403,27 @@ impl JiraAdapter {
         }
     }
 
+    /// Sanitize a label for safe use in JQL queries.
+    /// Only allows alphanumeric characters, hyphens, underscores, and spaces.
+    fn sanitize_label(label: &str) -> String {
+        label
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ' ')
+            .collect()
+    }
+
     /// Pull issues from JIRA that match the specified label
     pub async fn pull_agent_issues(&self, label: &str) -> Result<Vec<JiraIssue>> {
+        // Sanitize label to prevent JQL injection
+        let safe_label = Self::sanitize_label(label);
+        if safe_label.is_empty() {
+            return Err(crate::AllBeadsError::Integration(
+                "Invalid label: must contain at least one alphanumeric character".to_string(),
+            ));
+        }
         let jql = format!(
             "project = {} AND labels = \"{}\" AND status != Done ORDER BY updated DESC",
-            self.config.project, label
+            self.config.project, safe_label
         );
         self.search(&jql, 100).await
     }
@@ -556,15 +571,30 @@ mod tests {
     #[test]
     fn test_adapter_creation() {
         let config = test_config();
-        let adapter = JiraAdapter::new(config);
+        let adapter = JiraAdapter::new(config).expect("Failed to create adapter");
         assert_eq!(adapter.project(), "TEST");
         assert!(adapter.base_url.contains("jira.example.com"));
     }
 
     #[test]
+    fn test_label_sanitization() {
+        // Valid labels pass through
+        assert_eq!(JiraAdapter::sanitize_label("ai-agent"), "ai-agent");
+        assert_eq!(JiraAdapter::sanitize_label("my_label"), "my_label");
+        assert_eq!(JiraAdapter::sanitize_label("label 123"), "label 123");
+
+        // Injection attempts are sanitized (hyphens allowed, quotes/equals removed)
+        assert_eq!(JiraAdapter::sanitize_label("\" OR 1=1 --"), " OR 11 --");
+        assert_eq!(
+            JiraAdapter::sanitize_label("label\" AND project = OTHER"),
+            "label AND project  OTHER"
+        );
+    }
+
+    #[test]
     fn test_issue_to_shadow_bead() {
         let config = test_config();
-        let adapter = JiraAdapter::new(config);
+        let adapter = JiraAdapter::new(config).expect("Failed to create adapter");
 
         let issue = JiraIssue {
             key: "TEST-123".to_string(),

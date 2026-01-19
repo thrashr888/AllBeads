@@ -119,12 +119,28 @@ pub struct ExternalSyncer {
 impl ExternalSyncer {
     /// Create a new external syncer
     pub fn new(config: ExternalSyncConfig) -> Self {
-        let jira_adapter = config.jira.as_ref().map(|c| JiraAdapter::new(c.clone()));
-
-        let github_adapter = config
-            .github
+        let jira_adapter = config
+            .jira
             .as_ref()
-            .map(|c| GitHubAdapter::new(c.clone()));
+            .and_then(|c| match JiraAdapter::new(c.clone()) {
+                Ok(adapter) => Some(adapter),
+                Err(e) => {
+                    tracing::warn!("Failed to create JIRA adapter: {}", e);
+                    None
+                }
+            });
+
+        let github_adapter =
+            config
+                .github
+                .as_ref()
+                .and_then(|c| match GitHubAdapter::new(c.clone()) {
+                    Ok(adapter) => Some(adapter),
+                    Err(e) => {
+                        tracing::warn!("Failed to create GitHub adapter: {}", e);
+                        None
+                    }
+                });
 
         Self {
             config,
