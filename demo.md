@@ -105,6 +105,15 @@ ab agent detect                   # Detect agents in project
 ab agent init <agent>             # Initialize agent config
 ab agent sync                     # Sync context to agents
 
+# Skills (v0.2)
+ab skill list                     # List installed skills
+ab skill list --all               # Include marketplace skills
+ab skill info <name>              # Show skill details
+ab skill install <source>         # Install from GitHub/local
+ab skill install <src> --global   # Install user-level
+ab skill remove <name>            # Remove a skill
+ab skill sync                     # Sync to .claude-plugin/
+
 # Sync (v0.2)
 ab sync                           # Sync config
 ab sync --all                     # Sync all context beads
@@ -810,6 +819,102 @@ ab agent sync --agent claude
 ```bash
 # Preview what a config would look like
 ab agent preview cursor
+```
+
+## Skills (v0.2)
+
+AllBeads can manage Claude Code skills - reusable prompts and configurations that extend agent capabilities.
+
+### List skills
+
+```bash
+# List installed skills (project + user level)
+ab skill list
+
+# Include available skills from marketplaces
+ab skill list --all
+
+# JSON output
+ab skill list --json
+```
+
+Example output:
+
+```
+Skills
+
+  ✓ allbeads [project]
+  ✓ web-design-guidelines [user]
+  ✓ vercel-react-best-practices [user]
+
+  Use --all to show available skills from marketplaces.
+```
+
+### Show skill info
+
+```bash
+# Show detailed skill metadata
+ab skill info allbeads
+
+# Show info for a remote skill
+ab skill info vercel-labs/agent-skills
+```
+
+Example output:
+
+```
+Skill: allbeads
+
+  ✓ Installed
+  Path: skills/allbeads
+
+  Metadata:
+    name: allbeads
+    description: Multi-repo orchestration for AI agent workflows
+    version: "0.2.1"
+    author: "Paul Thrasher"
+```
+
+### Install skills
+
+```bash
+# Install from GitHub (owner/repo format)
+ab skill install vercel-labs/agent-skills
+
+# Install specific skill from multi-skill repo
+ab skill install vercel-labs/agent-skills/skills/deploy
+
+# Install from local path
+ab skill install ./path/to/skill
+
+# Install globally (user-level, available to all projects)
+ab skill install vercel-labs/agent-skills --global
+
+# Skip confirmation
+ab skill install vercel-labs/agent-skills --yes
+```
+
+### Remove skills
+
+```bash
+# Remove project-level skill
+ab skill remove myskill
+
+# Remove global skill
+ab skill remove myskill --global
+
+# Skip confirmation
+ab skill remove myskill --yes
+```
+
+### Sync skills
+
+```bash
+# Sync skills to .claude-plugin/skills/ directory
+ab skill sync
+
+# Sync specific skill
+ab skill sync --name allbeads
 ```
 
 ## Sync (v0.2)
