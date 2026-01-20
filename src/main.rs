@@ -343,7 +343,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_context_command(ctx_cmd, &cli.config);
     }
 
-    // Handle onboard-repo command (don't need graph)
+    // Handle onboard-repo command (don't need graph) - deprecated
     if let Commands::OnboardRepo {
         ref path,
         yes,
@@ -355,6 +355,55 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         use allbeads::onboarding::OnboardingWorkflow;
         let workflow = OnboardingWorkflow::new(path, yes, skip_init, skip_claude, skip_context)?;
         return workflow.run();
+    }
+
+    // Handle onboard command (don't need graph)
+    if let Commands::Onboard {
+        ref target,
+        wizard,
+        non_interactive,
+        skip_clone,
+        skip_beads,
+        skip_skills,
+        skip_hooks,
+        skip_issues,
+        ref context_name,
+        ref path,
+    } = command
+    {
+        if wizard {
+            // Use the guided wizard
+            use allbeads::onboarding::OnboardingWizard;
+            let repo_path = if target == "." {
+                std::env::current_dir()?
+            } else if target.starts_with("http") || target.starts_with("git@") {
+                eprintln!("Wizard mode requires a local path. Use without --wizard for URLs.");
+                return Ok(());
+            } else {
+                std::path::PathBuf::from(target)
+            };
+            let mut wiz = OnboardingWizard::new(&repo_path)?;
+            return wiz.run();
+        } else {
+            // Load config for onboarding (avoid loading full graph)
+            let onboard_config = if let Some(ref config_path) = cli.config {
+                AllBeadsConfig::load(config_path)?
+            } else {
+                AllBeadsConfig::load_default()?
+            };
+            return handle_onboard_repository(
+                target,
+                non_interactive,
+                skip_clone,
+                skip_beads,
+                skip_skills,
+                skip_hooks,
+                skip_issues,
+                context_name.as_deref(),
+                path.as_deref(),
+                &onboard_config,
+            );
+        }
     }
 
     // Handle folder tracking commands (don't need graph)
@@ -1863,47 +1912,6 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             handle_prime_command(&graph)?;
         }
 
-        Commands::Onboard {
-            target,
-            wizard,
-            non_interactive,
-            skip_clone,
-            skip_beads,
-            skip_skills,
-            skip_hooks,
-            skip_issues,
-            context_name,
-            path,
-        } => {
-            if wizard {
-                // Use the guided wizard
-                use allbeads::onboarding::OnboardingWizard;
-                let repo_path = if target == "." {
-                    std::env::current_dir()?
-                } else if target.starts_with("http") || target.starts_with("git@") {
-                    eprintln!("Wizard mode requires a local path. Use without --wizard for URLs.");
-                    return Ok(());
-                } else {
-                    std::path::PathBuf::from(&target)
-                };
-                let mut wiz = OnboardingWizard::new(&repo_path)?;
-                wiz.run()?;
-            } else {
-                handle_onboard_repository(
-                    &target,
-                    non_interactive,
-                    skip_clone,
-                    skip_beads,
-                    skip_skills,
-                    skip_hooks,
-                    skip_issues,
-                    context_name.as_deref(),
-                    path.as_deref(),
-                    &config_for_commands,
-                )?;
-            }
-        }
-
         Commands::Update {
             id,
             status,
@@ -2682,6 +2690,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Context(_)
         | Commands::Init { .. }
         | Commands::OnboardRepo { .. }
+        | Commands::Onboard { .. }
         | Commands::Mail(_)
         | Commands::Folder(_)
         | Commands::Jira(_)
