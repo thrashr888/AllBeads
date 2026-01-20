@@ -5,7 +5,7 @@ description: >
   repositories, manage contexts, and coordinate distributed work across
   microservices and polyrepo architectures.
 allowed-tools: "Read,Bash(allbeads:*)"
-version: "0.2.0"
+version: "0.2.1"
 author: "Paul Thrasher <https://github.com/thrashr888>"
 license: "MIT"
 ---
