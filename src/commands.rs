@@ -95,6 +95,7 @@ Usage:
   human              Send a message to human operator
   swarm              Agent swarm management commands
   agent              Coding agent configuration (Claude Code, Cursor, etc.)
+  skill              Manage skills (list, install, remove, sync)
   handoff            Hand off a bead to an AI agent (fire and forget)
 
 {cyan}Analysis:{reset}
@@ -781,6 +782,10 @@ pub enum Commands {
     /// Coding agent configuration (Claude Code, Cursor, Copilot, etc.)
     #[command(subcommand, name = "agent")]
     CodingAgent(CodingAgentCommands),
+
+    /// Manage skills (install, remove, list)
+    #[command(subcommand)]
+    Skill(SkillCommands),
 
     /// Hand off a bead to an AI agent
     Handoff {
@@ -2162,6 +2167,81 @@ pub enum CodingAgentCommands {
 
     /// Show agent detection status
     Detect {
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+}
+
+// =========================================================================
+// SKILL MANAGEMENT
+// =========================================================================
+
+#[derive(Subcommand, Debug)]
+pub enum SkillCommands {
+    /// List available and installed skills
+    List {
+        /// Show all available skills (including from marketplaces)
+        #[arg(short, long)]
+        all: bool,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Path to project (default: current directory)
+        #[arg(default_value = ".")]
+        path: String,
+    },
+
+    /// Show detailed skill information
+    Info {
+        /// Skill name or source (owner/repo, owner/repo/skills/name)
+        name: String,
+    },
+
+    /// Install a skill from various sources
+    Install {
+        /// Skill source: GitHub shorthand (owner/repo), git URL, or local path
+        source: String,
+
+        /// Install globally (user-level) instead of project-level
+        #[arg(short, long)]
+        global: bool,
+
+        /// Target specific agents (claude-code, cursor, codex, etc.)
+        #[arg(short, long)]
+        agent: Option<Vec<String>>,
+
+        /// Specify skill name(s) to install from a multi-skill repo
+        #[arg(short, long)]
+        skill: Option<Vec<String>>,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Remove an installed skill
+    Remove {
+        /// Skill name to remove
+        name: String,
+
+        /// Remove from global (user-level) instead of project-level
+        #[arg(short, long)]
+        global: bool,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
+    },
+
+    /// Sync skills to Claude config directories
+    Sync {
+        /// Specific skill to sync (default: all)
+        #[arg(short, long)]
+        name: Option<String>,
+
         /// Path to project (default: current directory)
         #[arg(default_value = ".")]
         path: String,

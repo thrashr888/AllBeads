@@ -397,6 +397,11 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         return handle_coding_agent_command(agent_cmd);
     }
 
+    // Handle skill commands (don't need graph)
+    if let Commands::Skill(ref skill_cmd) = command {
+        return handle_skill_command(skill_cmd);
+    }
+
     // Handle handoff command (don't need graph)
     if let Commands::Handoff {
         ref id,
@@ -2688,6 +2693,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Human { .. }
         | Commands::Plugin(_)
         | Commands::CodingAgent(_)
+        | Commands::Skill(_)
         | Commands::Handoff { .. }
         | Commands::Sync { .. }
         | Commands::Check { .. }
@@ -5816,6 +5822,636 @@ fn handle_agent_detect(path: &str) -> allbeads::Result<()> {
     println!();
     println!("  Tip: Use 'ab agent init <agent>' to configure an agent.");
 
+    Ok(())
+}
+
+// ============================================================================
+// Skill Commands
+// ============================================================================
+
+fn handle_skill_command(cmd: &commands::SkillCommands) -> allbeads::Result<()> {
+    use commands::SkillCommands;
+
+    match cmd {
+        SkillCommands::List { all, json, path } => handle_skill_list(*all, *json, path),
+        SkillCommands::Info { name } => handle_skill_info(name),
+        SkillCommands::Install {
+            source,
+            global,
+            agent,
+            skill,
+            yes,
+        } => handle_skill_install(source, *global, agent.as_ref(), skill.as_ref(), *yes),
+        SkillCommands::Remove { name, global, yes } => handle_skill_remove(name, *global, *yes),
+        SkillCommands::Sync { name, path } => handle_skill_sync(name.as_deref(), path),
+    }
+}
+
+/// List installed and available skills
+fn handle_skill_list(all: bool, json: bool, path: &str) -> allbeads::Result<()> {
+    use std::path::Path;
+
+    let project_path = Path::new(path)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(".").to_path_buf());
+
+    // Collect skills from various locations
+    let mut skills = Vec::new();
+
+    // 1. Project-level skills (skills/ directory)
+    let project_skills_dir = project_path.join("skills");
+    if project_skills_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&project_skills_dir) {
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                if entry_path.is_dir() {
+                    let skill_md = entry_path.join("skill.md");
+                    let name = entry_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    let installed = skill_md.exists();
+                    skills.push(SkillInfo {
+                        name,
+                        description: None,
+                        source: "project".to_string(),
+                        installed,
+                        path: Some(entry_path.display().to_string()),
+                    });
+                }
+            }
+        }
+    }
+
+    // 2. User-level skills (~/.claude/skills/)
+    if let Some(home) = dirs::home_dir() {
+        let user_skills_dir = home.join(".claude").join("skills");
+        if user_skills_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(&user_skills_dir) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.is_dir() {
+                        let skill_md = entry_path.join("skill.md");
+                        let name = entry_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        let installed = skill_md.exists();
+                        // Skip if already listed from project
+                        if !skills.iter().any(|s| s.name == name) {
+                            skills.push(SkillInfo {
+                                name,
+                                description: None,
+                                source: "user".to_string(),
+                                installed,
+                                path: Some(entry_path.display().to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. If --all, also show available skills from marketplaces (TODO: implement marketplace fetch)
+    if all {
+        // Placeholder: would fetch from known marketplaces
+        // For now, just note that more skills could be available
+    }
+
+    if json {
+        let output = serde_json::json!({
+            "skills": skills.iter().map(|s| {
+                serde_json::json!({
+                    "name": s.name,
+                    "description": s.description,
+                    "source": s.source,
+                    "installed": s.installed,
+                    "path": s.path,
+                })
+            }).collect::<Vec<_>>()
+        });
+        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", style::header("Skills"));
+    println!();
+
+    if skills.is_empty() {
+        println!("  No skills installed.");
+        println!();
+        println!("  Install skills with:");
+        println!("    ab skill install <owner/repo>        # From GitHub");
+        println!("    ab skill install ./path/to/skill     # From local path");
+        println!();
+        return Ok(());
+    }
+
+    for skill in &skills {
+        let status = if skill.installed {
+            style::success("✓")
+        } else {
+            style::dim("○")
+        };
+        let source_tag = match skill.source.as_str() {
+            "project" => style::dim("[project]"),
+            "user" => style::dim("[user]"),
+            _ => style::dim("[remote]"),
+        };
+        println!(
+            "  {} {} {}",
+            status,
+            style::highlight(&skill.name),
+            source_tag
+        );
+        if let Some(desc) = &skill.description {
+            println!("      {}", style::dim(desc));
+        }
+    }
+
+    println!();
+    if !all {
+        println!(
+            "  Use {} to show available skills from marketplaces.",
+            style::highlight("--all")
+        );
+    }
+
+    Ok(())
+}
+
+#[derive(Debug)]
+struct SkillInfo {
+    name: String,
+    description: Option<String>,
+    source: String,
+    installed: bool,
+    path: Option<String>,
+}
+
+/// Show detailed skill information
+fn handle_skill_info(name: &str) -> allbeads::Result<()> {
+    use std::path::Path;
+
+    // Try to find the skill in various locations
+    let mut skill_path = None;
+
+    // 1. Check project skills
+    let project_skill = Path::new("skills").join(name);
+    if project_skill.exists() {
+        skill_path = Some(project_skill);
+    }
+
+    // 2. Check user skills
+    if skill_path.is_none() {
+        if let Some(home) = dirs::home_dir() {
+            let user_skill = home.join(".claude").join("skills").join(name);
+            if user_skill.exists() {
+                skill_path = Some(user_skill);
+            }
+        }
+    }
+
+    // 3. Parse GitHub shorthand (owner/repo or owner/repo/skills/name)
+    if skill_path.is_none() && name.contains('/') {
+        println!();
+        println!("{}", style::header(&format!("Skill: {}", name)));
+        println!();
+        println!("  {} Not installed locally", style::dim("○"));
+        println!();
+        println!("  Install with:");
+        println!("    ab skill install {}", name);
+        println!();
+        return Ok(());
+    }
+
+    let path = skill_path
+        .ok_or_else(|| allbeads::AllBeadsError::Config(format!("Skill '{}' not found", name)))?;
+
+    // Read skill.md for metadata
+    let skill_md = path.join("skill.md");
+    let metadata = if skill_md.exists() {
+        std::fs::read_to_string(&skill_md).ok()
+    } else {
+        None
+    };
+
+    println!();
+    println!("{}", style::header(&format!("Skill: {}", name)));
+    println!();
+    println!("  {} Installed", style::success("✓"));
+    println!("  Path: {}", style::dim(&path.display().to_string()));
+
+    if let Some(content) = metadata {
+        // Try to extract YAML frontmatter
+        if let Some(stripped) = content.strip_prefix("---") {
+            if let Some(end_idx) = stripped.find("---") {
+                let frontmatter = &stripped[..end_idx];
+                println!();
+                println!("  Metadata:");
+                for line in frontmatter.lines() {
+                    if !line.trim().is_empty() {
+                        println!("    {}", line.trim());
+                    }
+                }
+            }
+        }
+    }
+
+    println!();
+    Ok(())
+}
+
+/// Install a skill from various sources
+fn handle_skill_install(
+    source: &str,
+    global: bool,
+    _agent: Option<&Vec<String>>,
+    _skill_names: Option<&Vec<String>>,
+    yes: bool,
+) -> allbeads::Result<()> {
+    use std::path::Path;
+
+    println!();
+    println!("{}", style::header("Install Skill"));
+    println!();
+
+    // Parse the source
+    let (source_type, repo_info) = parse_skill_source(source)?;
+
+    println!("  Source: {} ({})", style::highlight(source), source_type);
+
+    // Determine install location
+    let install_dir = if global {
+        dirs::home_dir()
+            .ok_or_else(|| allbeads::AllBeadsError::Config("Could not find home directory".into()))?
+            .join(".claude")
+            .join("skills")
+    } else {
+        Path::new("skills").to_path_buf()
+    };
+
+    println!(
+        "  Install to: {}",
+        style::dim(&install_dir.display().to_string())
+    );
+    println!();
+
+    // Confirm unless --yes
+    if !yes {
+        print!("  Proceed? [Y/n] ");
+        std::io::Write::flush(&mut std::io::stdout()).ok();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).ok();
+        if input.trim().to_lowercase() == "n" {
+            println!("  Cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Create install directory if needed
+    std::fs::create_dir_all(&install_dir).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to create skills directory: {}", e))
+    })?;
+
+    match source_type.as_str() {
+        "local" => {
+            // Copy from local path
+            let source_path = Path::new(source);
+            let skill_name = source_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| allbeads::AllBeadsError::Config("Invalid skill path".into()))?;
+
+            let target_path = install_dir.join(skill_name);
+            copy_dir_recursive(source_path, &target_path)?;
+
+            println!(
+                "  {} Installed {} from local path",
+                style::success("✓"),
+                skill_name
+            );
+        }
+        "github" => {
+            // Clone from GitHub
+            let (owner, repo, skill_path) = repo_info
+                .ok_or_else(|| allbeads::AllBeadsError::Config("Invalid GitHub source".into()))?;
+
+            let repo_url = format!("https://github.com/{}/{}.git", owner, repo);
+            println!("  Cloning {}...", style::dim(&repo_url));
+
+            // Create temp directory for clone
+            let temp_dir = tempfile::tempdir().map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to create temp dir: {}", e))
+            })?;
+
+            // Clone the repo
+            let clone_output = std::process::Command::new("git")
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    &repo_url,
+                    temp_dir.path().to_str().unwrap(),
+                ])
+                .output()
+                .map_err(|e| allbeads::AllBeadsError::Config(format!("Git clone failed: {}", e)))?;
+
+            if !clone_output.status.success() {
+                let stderr = String::from_utf8_lossy(&clone_output.stderr);
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Git clone failed: {}",
+                    stderr
+                )));
+            }
+
+            // Determine what to copy
+            let skills_source = if let Some(specific_skill) = skill_path {
+                // Specific skill path: owner/repo/skills/skillname
+                temp_dir.path().join("skills").join(&specific_skill)
+            } else {
+                // Check if there's a skills/ directory
+                let skills_dir = temp_dir.path().join("skills");
+                if skills_dir.exists() {
+                    skills_dir
+                } else {
+                    // Use the root as a single skill
+                    temp_dir.path().to_path_buf()
+                }
+            };
+
+            if !skills_source.exists() {
+                return Err(allbeads::AllBeadsError::Config(format!(
+                    "Skills not found in repository at {}",
+                    skills_source.display()
+                )));
+            }
+
+            // Copy skills
+            if skills_source.join("skill.md").exists() {
+                // Single skill
+                let skill_name = skills_source
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(repo.as_str());
+                let target_path = install_dir.join(skill_name);
+                copy_dir_recursive(&skills_source, &target_path)?;
+                println!("  {} Installed {}", style::success("✓"), skill_name);
+            } else if skills_source.is_dir() {
+                // Multiple skills in skills/ directory
+                let mut installed_count = 0;
+                if let Ok(entries) = std::fs::read_dir(&skills_source) {
+                    for entry in entries.flatten() {
+                        let entry_path = entry.path();
+                        if entry_path.is_dir() && entry_path.join("skill.md").exists() {
+                            let skill_name = entry_path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("unknown");
+                            let target_path = install_dir.join(skill_name);
+                            copy_dir_recursive(&entry_path, &target_path)?;
+                            println!("  {} Installed {}", style::success("✓"), skill_name);
+                            installed_count += 1;
+                        }
+                    }
+                }
+                if installed_count == 0 {
+                    println!("  {} No skills found in repository", style::warning("!"));
+                }
+            }
+        }
+        _ => {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Unsupported source type: {}",
+                source_type
+            )));
+        }
+    }
+
+    println!();
+    Ok(())
+}
+
+/// (owner, repo, optional skill path within repo)
+type GitHubRepoInfo = (String, String, Option<String>);
+
+/// Parse skill source to determine type and extract info
+fn parse_skill_source(source: &str) -> allbeads::Result<(String, Option<GitHubRepoInfo>)> {
+    use std::path::Path;
+
+    // Local path (starts with ./ or / or exists as path)
+    if source.starts_with("./") || source.starts_with('/') || Path::new(source).exists() {
+        return Ok(("local".to_string(), None));
+    }
+
+    // Git URL
+    if source.starts_with("https://") || source.starts_with("git@") {
+        // Parse GitHub URL
+        if source.contains("github.com") {
+            // Extract owner/repo from URL
+            let parts: Vec<&str> = source.trim_end_matches(".git").split('/').collect();
+            if parts.len() >= 2 {
+                let repo = parts[parts.len() - 1].to_string();
+                let owner = parts[parts.len() - 2].to_string();
+                return Ok(("github".to_string(), Some((owner, repo, None))));
+            }
+        }
+        return Ok(("git".to_string(), None));
+    }
+
+    // GitHub shorthand: owner/repo or owner/repo/skills/skillname
+    if source.contains('/') {
+        let parts: Vec<&str> = source.split('/').collect();
+        if parts.len() >= 2 {
+            let owner = parts[0].to_string();
+            let repo = parts[1].to_string();
+            let skill_path = if parts.len() > 2 {
+                // owner/repo/skills/skillname -> extract skill name
+                if parts.len() >= 4 && parts[2] == "skills" {
+                    Some(parts[3..].join("/"))
+                } else {
+                    Some(parts[2..].join("/"))
+                }
+            } else {
+                None
+            };
+            return Ok(("github".to_string(), Some((owner, repo, skill_path))));
+        }
+    }
+
+    Err(allbeads::AllBeadsError::Config(format!(
+        "Unable to parse skill source: {}",
+        source
+    )))
+}
+
+/// Recursively copy a directory
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> allbeads::Result<()> {
+    if !src.is_dir() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Source is not a directory: {}",
+            src.display()
+        )));
+    }
+
+    std::fs::create_dir_all(dst).map_err(|e| {
+        allbeads::AllBeadsError::Config(format!("Failed to create directory: {}", e))
+    })?;
+
+    for entry in std::fs::read_dir(src)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to read directory: {}", e)))?
+    {
+        let entry = entry
+            .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to read entry: {}", e)))?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path).map_err(|e| {
+                allbeads::AllBeadsError::Config(format!("Failed to copy file: {}", e))
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Remove an installed skill
+fn handle_skill_remove(name: &str, global: bool, yes: bool) -> allbeads::Result<()> {
+    use std::path::Path;
+
+    println!();
+    println!("{}", style::header(&format!("Remove Skill: {}", name)));
+    println!();
+
+    // Find the skill
+    let skill_path = if global {
+        dirs::home_dir()
+            .ok_or_else(|| allbeads::AllBeadsError::Config("Could not find home directory".into()))?
+            .join(".claude")
+            .join("skills")
+            .join(name)
+    } else {
+        Path::new("skills").join(name)
+    };
+
+    if !skill_path.exists() {
+        return Err(allbeads::AllBeadsError::Config(format!(
+            "Skill '{}' not found at {}",
+            name,
+            skill_path.display()
+        )));
+    }
+
+    println!("  Path: {}", style::dim(&skill_path.display().to_string()));
+    println!();
+
+    // Confirm unless --yes
+    if !yes {
+        print!("  Remove this skill? [y/N] ");
+        std::io::Write::flush(&mut std::io::stdout()).ok();
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).ok();
+        if input.trim().to_lowercase() != "y" {
+            println!("  Cancelled.");
+            return Ok(());
+        }
+    }
+
+    // Remove the skill directory
+    std::fs::remove_dir_all(&skill_path)
+        .map_err(|e| allbeads::AllBeadsError::Config(format!("Failed to remove skill: {}", e)))?;
+
+    println!("  {} Removed {}", style::success("✓"), name);
+    println!();
+
+    Ok(())
+}
+
+/// Sync skills to Claude config directories
+fn handle_skill_sync(name: Option<&str>, path: &str) -> allbeads::Result<()> {
+    use std::path::Path;
+
+    println!();
+    println!("{}", style::header("Sync Skills"));
+    println!();
+
+    let project_path = Path::new(path)
+        .canonicalize()
+        .unwrap_or_else(|_| Path::new(".").to_path_buf());
+
+    let project_skills_dir = project_path.join("skills");
+
+    if !project_skills_dir.exists() {
+        println!(
+            "  No skills directory found at {}",
+            project_skills_dir.display()
+        );
+        return Ok(());
+    }
+
+    // Sync to .claude-plugin/skills/
+    let plugin_skills_dir = project_path.join(".claude-plugin").join("skills");
+
+    let mut synced_count = 0;
+
+    if let Ok(entries) = std::fs::read_dir(&project_skills_dir) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                let skill_name = entry_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+
+                // Skip if filtering by name and this doesn't match
+                if let Some(filter_name) = name {
+                    if skill_name != filter_name {
+                        continue;
+                    }
+                }
+
+                let target_dir = plugin_skills_dir.join(skill_name);
+                std::fs::create_dir_all(&target_dir).ok();
+
+                // Copy skill.md
+                let skill_md = entry_path.join("skill.md");
+                if skill_md.exists() {
+                    let target_md = target_dir.join("skill.md");
+                    std::fs::copy(&skill_md, &target_md).ok();
+                    println!("  {} Synced {}", style::success("✓"), skill_name);
+                    synced_count += 1;
+                }
+            }
+        }
+    }
+
+    if synced_count == 0 {
+        if let Some(filter_name) = name {
+            println!(
+                "  Skill '{}' not found in {}",
+                filter_name,
+                project_skills_dir.display()
+            );
+        } else {
+            println!("  No skills to sync");
+        }
+    } else {
+        println!();
+        println!(
+            "  Synced {} skill(s) to {}",
+            synced_count,
+            plugin_skills_dir.display()
+        );
+    }
+
+    println!();
     Ok(())
 }
 
