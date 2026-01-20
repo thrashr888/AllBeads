@@ -465,6 +465,13 @@ fn load_config() -> anyhow::Result<Config> {
 - `ab jira status/pull` - JIRA integration
 - `ab github status/pull` - GitHub integration
 
+### Skill Commands
+- `ab skill list` - List installed skills (project + user level)
+- `ab skill info <name>` - Show skill metadata
+- `ab skill install <source>` - Install from GitHub or local path
+- `ab skill remove <name>` - Remove an installed skill
+- `ab skill sync` - Sync skills to .claude-plugin/
+
 ### TUI Commands
 - `ab tui` - Launch dashboard (Tab switches Kanban/Mail)
 
