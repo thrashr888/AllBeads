@@ -149,6 +149,12 @@ pub struct OnboardingConfig {
     /// Default: beads and allbeads marketplaces
     #[serde(default = "default_marketplaces")]
     pub marketplaces: Vec<String>,
+
+    /// Skills to install during onboarding
+    /// Each entry can be: GitHub shorthand (owner/repo), git URL, or local path
+    /// Default: empty (no skills installed by default)
+    #[serde(default)]
+    pub default_skills: Vec<String>,
 }
 
 fn default_onboarding_agent() -> String {
@@ -167,6 +173,7 @@ impl Default for OnboardingConfig {
         Self {
             default_agent: default_onboarding_agent(),
             marketplaces: default_marketplaces(),
+            default_skills: Vec::new(),
         }
     }
 }

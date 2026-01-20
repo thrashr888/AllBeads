@@ -707,16 +707,27 @@ pub fn create_onboarding_beads(
     Ok((epic_id, created))
 }
 
-/// Stage 5: Configure skills marketplace
+/// Stage 5: Configure skills marketplace and install default skills
 ///
 /// Configures Claude plugin marketplaces from the provided list.
 /// Only enables beads and allbeads plugins - other plugins from marketplaces
 /// are made available but not auto-enabled (users can enable what they need).
 ///
+/// Also installs any configured default skills into the project's skills/ directory.
+///
 /// Each marketplace can be specified as:
 /// - GitHub repo: "owner/repo" or "github.com/owner/repo"
 /// - Git URL: "git@github.com:owner/repo.git" or "<https://github.com/owner/repo.git>"
-pub fn configure_skills(path: &Path, configured_marketplaces: &[String]) -> Result<()> {
+///
+/// Each skill can be specified as:
+/// - GitHub repo: "owner/repo" (installs all skills from skills/ directory)
+/// - GitHub repo with path: "owner/repo/skills/skillname"
+/// - Local path: "./path/to/skill"
+pub fn configure_skills(
+    path: &Path,
+    configured_marketplaces: &[String],
+    default_skills: &[String],
+) -> Result<()> {
     let claude_dir = path.join(".claude");
     let settings_file = claude_dir.join("settings.json");
 
@@ -793,6 +804,195 @@ pub fn configure_skills(path: &Path, configured_marketplaces: &[String]) -> Resu
         marketplace_count
     );
     println!("    Enabled: beads, allbeads");
+
+    // Install default skills if configured
+    if !default_skills.is_empty() {
+        println!();
+        println!("  Installing default skills:");
+        let skills_dir = path.join("skills");
+
+        for skill_source in default_skills {
+            match install_skill_from_source(skill_source, &skills_dir) {
+                Ok(installed_names) => {
+                    for name in installed_names {
+                        println!("    ✓ Installed: {}", name);
+                    }
+                }
+                Err(e) => {
+                    println!("    ✗ Failed to install {}: {}", skill_source, e);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Install a skill from various sources into the target directory
+///
+/// Returns the names of installed skills on success.
+fn install_skill_from_source(source: &str, target_dir: &Path) -> Result<Vec<String>> {
+    // Create skills directory if needed
+    fs::create_dir_all(target_dir)?;
+
+    // Determine source type
+    if source.starts_with("./") || source.starts_with('/') || Path::new(source).exists() {
+        // Local path
+        install_skill_from_local(source, target_dir)
+    } else if source.contains('/') {
+        // GitHub shorthand or URL
+        install_skill_from_github(source, target_dir)
+    } else {
+        Err(crate::AllBeadsError::Config(format!(
+            "Unable to parse skill source: {}",
+            source
+        )))
+    }
+}
+
+/// Install a skill from a local path
+fn install_skill_from_local(source: &str, target_dir: &Path) -> Result<Vec<String>> {
+    let source_path = Path::new(source);
+    if !source_path.exists() {
+        return Err(crate::AllBeadsError::Config(format!(
+            "Skill path does not exist: {}",
+            source
+        )));
+    }
+
+    let skill_name = source_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| crate::AllBeadsError::Config("Invalid skill path".to_string()))?;
+
+    let dest_path = target_dir.join(skill_name);
+    copy_dir_recursive(source_path, &dest_path)?;
+
+    Ok(vec![skill_name.to_string()])
+}
+
+/// Install skills from a GitHub repository
+fn install_skill_from_github(source: &str, target_dir: &Path) -> Result<Vec<String>> {
+    // Parse GitHub source (owner/repo or owner/repo/skills/skillname)
+    let parts: Vec<&str> = source.split('/').collect();
+    if parts.len() < 2 {
+        return Err(crate::AllBeadsError::Config(format!(
+            "Invalid GitHub source: {}",
+            source
+        )));
+    }
+
+    let owner = parts[0];
+    let repo = parts[1];
+    let specific_skill = if parts.len() > 2 {
+        if parts.len() >= 4 && parts[2] == "skills" {
+            Some(parts[3..].join("/"))
+        } else {
+            Some(parts[2..].join("/"))
+        }
+    } else {
+        None
+    };
+
+    let repo_url = format!("https://github.com/{}/{}.git", owner, repo);
+
+    // Create temp directory for clone
+    let temp_dir = tempfile::tempdir()
+        .map_err(|e| crate::AllBeadsError::Config(format!("Failed to create temp dir: {}", e)))?;
+
+    // Clone the repo
+    let clone_output = std::process::Command::new("git")
+        .args([
+            "clone",
+            "--depth",
+            "1",
+            &repo_url,
+            temp_dir.path().to_str().unwrap(),
+        ])
+        .output()
+        .map_err(|e| crate::AllBeadsError::Config(format!("Git clone failed: {}", e)))?;
+
+    if !clone_output.status.success() {
+        let stderr = String::from_utf8_lossy(&clone_output.stderr);
+        return Err(crate::AllBeadsError::Config(format!(
+            "Git clone failed: {}",
+            stderr
+        )));
+    }
+
+    // Determine what to copy
+    let skills_source = if let Some(ref skill_path) = specific_skill {
+        temp_dir.path().join("skills").join(skill_path)
+    } else {
+        let skills_dir = temp_dir.path().join("skills");
+        if skills_dir.exists() {
+            skills_dir
+        } else {
+            temp_dir.path().to_path_buf()
+        }
+    };
+
+    if !skills_source.exists() {
+        return Err(crate::AllBeadsError::Config(format!(
+            "Skills not found in repository at {}",
+            skills_source.display()
+        )));
+    }
+
+    let mut installed = Vec::new();
+
+    // Copy skills
+    if skills_source.join("skill.md").exists() {
+        // Single skill
+        let skill_name = skills_source
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(repo);
+        let dest_path = target_dir.join(skill_name);
+        copy_dir_recursive(&skills_source, &dest_path)?;
+        installed.push(skill_name.to_string());
+    } else if skills_source.is_dir() {
+        // Multiple skills
+        for entry in fs::read_dir(&skills_source)? {
+            let entry = entry?;
+            let entry_path = entry.path();
+            if entry_path.is_dir() && entry_path.join("skill.md").exists() {
+                let skill_name = entry_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("unknown");
+                let dest_path = target_dir.join(skill_name);
+                copy_dir_recursive(&entry_path, &dest_path)?;
+                installed.push(skill_name.to_string());
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
+/// Recursively copy a directory
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !src.is_dir() {
+        return Err(crate::AllBeadsError::Config(format!(
+            "Source is not a directory: {}",
+            src.display()
+        )));
+    }
+
+    fs::create_dir_all(dst)?;
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
 
     Ok(())
 }
