@@ -80,7 +80,7 @@ See [DEMO.md](DEMO.md) for usage examples.
 #### Homebrew (macOS/Linux)
 
 ```bash
-brew tap thrashr888/allbeads
+brew tap thrashr888/tap
 brew install allbeads
 ```
 
