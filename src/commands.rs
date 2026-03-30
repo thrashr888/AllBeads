@@ -713,7 +713,7 @@ pub enum Commands {
     // =========================================================================
     /// Sync AllBeads state (config and/or context beads)
     Sync {
-        /// Sync all contexts' beads (runs bd sync in each context)
+        /// Sync all contexts' beads using current official beads semantics
         #[arg(long)]
         all: bool,
 
@@ -731,6 +731,24 @@ pub enum Commands {
         /// Also sync beads to web platform (allbeads.co)
         #[arg(long)]
         web: bool,
+    },
+
+    /// Check or apply migration fixes for official Dolt-backed beads
+    Upgrade {
+        /// Check all configured contexts
+        #[arg(long)]
+        all: bool,
+
+        /// Specific context to inspect or upgrade
+        context: Option<String>,
+
+        /// Apply safe AllBeads-owned migration fixes
+        #[arg(long)]
+        apply: bool,
+
+        /// Output report as JSON
+        #[arg(long)]
+        report_json: bool,
     },
 
     /// Run the Sheriff daemon (background sync)

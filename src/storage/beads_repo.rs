@@ -216,10 +216,18 @@ impl BeadsRepo {
 
     // --- Sync operations ---
 
-    /// Sync with remote repository
+    /// Pull latest beads state from the configured Dolt remote.
     pub fn sync(&self) -> Result<()> {
         self.bd
             .sync()
+            .map_err(|e| crate::AllBeadsError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Push local beads state to the configured Dolt remote.
+    pub fn push(&self) -> Result<()> {
+        self.bd
+            .push()
             .map_err(|e| crate::AllBeadsError::Storage(e.to_string()))?;
         Ok(())
     }

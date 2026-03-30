@@ -775,14 +775,19 @@ impl Beads {
 
     // --- Sync and admin ---
 
-    /// Sync with remote
+    /// Pull latest beads state from the configured Dolt remote.
     pub fn sync(&self) -> Result<CommandOutput> {
-        self.run_command(&["sync"])
+        self.run_command(&["dolt", "pull"])
     }
 
-    /// Check sync status
+    /// Show current Dolt remote/server sync status.
     pub fn sync_status(&self) -> Result<CommandOutput> {
-        self.run_command(&["sync", "--status"])
+        self.run_command(&["dolt", "status"])
+    }
+
+    /// Push local beads state to the configured Dolt remote.
+    pub fn push(&self) -> Result<CommandOutput> {
+        self.run_command(&["dolt", "push"])
     }
 
     /// Initialize beads in current directory

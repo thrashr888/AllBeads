@@ -5,6 +5,7 @@
 mod commands;
 
 use allbeads::aggregator::{Aggregator, AggregatorConfig, RefreshProgress, SyncMode};
+use allbeads::beads_compat::{self, BeadsCapabilityReport};
 use allbeads::cache::{Cache, CacheConfig};
 use allbeads::config::{AllBeadsConfig, AuthStrategy, BossContext};
 use allbeads::graph::{BeadId, FederatedGraph, IssueType, Priority, Status};
@@ -537,6 +538,16 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
             web,
             &cli.config,
         );
+    }
+
+    if let Commands::Upgrade {
+        all,
+        ref context,
+        apply,
+        report_json,
+    } = command
+    {
+        return handle_upgrade_command(all, context.as_deref(), apply, report_json, &cli.config);
     }
 
     // Handle agent commands that don't need graph
@@ -2705,6 +2716,7 @@ fn run(mut cli: Cli) -> allbeads::Result<()> {
         | Commands::Skill(_)
         | Commands::Handoff { .. }
         | Commands::Sync { .. }
+        | Commands::Upgrade { .. }
         | Commands::Check { .. }
         | Commands::Hooks(_)
         | Commands::Aiki(_)
@@ -7454,6 +7466,133 @@ fn handle_handoff_ready(agent: Option<&str>) -> allbeads::Result<()> {
 // Sync Command
 // ============================================================================
 
+fn load_allbeads_config(config_path: &Option<String>) -> allbeads::Result<AllBeadsConfig> {
+    if let Some(path) = config_path {
+        AllBeadsConfig::load(path)
+    } else {
+        AllBeadsConfig::load_default().or_else(|_| Ok(AllBeadsConfig::new()))
+    }
+}
+
+fn collect_upgrade_reports(
+    config: &AllBeadsConfig,
+    all: bool,
+    context: Option<&str>,
+) -> allbeads::Result<Vec<BeadsCapabilityReport>> {
+    let contexts: Vec<_> = if let Some(ctx_name) = context {
+        let filtered: Vec<_> = config.contexts.iter().filter(|c| c.name == ctx_name).collect();
+        if filtered.is_empty() {
+            return Err(allbeads::AllBeadsError::Config(format!(
+                "Context '{}' not found",
+                ctx_name
+            )));
+        }
+        filtered
+    } else if all || !config.contexts.is_empty() {
+        config.contexts.iter().collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(contexts
+        .into_iter()
+        .map(beads_compat::inspect_context)
+        .collect())
+}
+
+fn print_upgrade_report(report: &BeadsCapabilityReport) {
+    println!("  {}", style::highlight(&report.context_name));
+    println!("    Path: {}", report.path.display());
+    println!(
+        "    Beads: {}",
+        if report.has_beads_dir {
+            style::success("present")
+        } else {
+            style::dim("missing")
+        }
+    );
+    println!(
+        "    Backend: {}",
+        report
+            .backend
+            .as_deref()
+            .unwrap_or(if report.bd_context_ok { "unknown" } else { "unavailable" })
+    );
+    println!(
+        "    Dolt mode: {}",
+        report.dolt_mode.as_deref().unwrap_or("unknown")
+    );
+    println!(
+        "    bd version: {}",
+        report.bd_version.as_deref().unwrap_or("unknown")
+    );
+    println!(
+        "    Dolt remote: {}",
+        if report.has_dolt_remote {
+            style::success("configured")
+        } else {
+            style::warning("not configured")
+        }
+    );
+
+    if report.problems.is_empty() {
+        println!("    {} No upgrade blockers detected", style::success("✓"));
+    } else {
+        println!("    {} Problems:", style::warning("!"));
+        for problem in &report.problems {
+            println!("      - {}", problem);
+        }
+    }
+
+    if !report.recommended_actions.is_empty() {
+        println!("    Recommended actions:");
+        for action in &report.recommended_actions {
+            println!("      - {}", action);
+        }
+    }
+}
+
+fn handle_upgrade_command(
+    all: bool,
+    context: Option<&str>,
+    apply: bool,
+    report_json: bool,
+    config_path: &Option<String>,
+) -> allbeads::Result<()> {
+    let config = load_allbeads_config(config_path)?;
+    let reports = collect_upgrade_reports(&config, all, context)?;
+
+    if report_json {
+        println!("{}", serde_json::to_string_pretty(&reports)?);
+        return Ok(());
+    }
+
+    println!();
+    println!("{}", style::header("AllBeads Upgrade Check"));
+    println!();
+
+    if reports.is_empty() {
+        println!("  No configured contexts to inspect.");
+        println!("  Add a context first or use 'ab context add <path>'.");
+        return Ok(());
+    }
+
+    for report in &reports {
+        print_upgrade_report(report);
+        println!();
+    }
+
+    if apply {
+        println!("  {} Safe apply mode is currently limited to runtime migration behavior.", style::warning("!"));
+        println!("    - ab sync now uses 'bd dolt pull' semantics when a Dolt remote exists");
+        println!("    - use this report to update docs and legacy JSONL assumptions in remaining code paths");
+    } else {
+        println!("  Run 'ab upgrade --apply' to enable safe runtime migration behavior where available.");
+    }
+
+    Ok(())
+}
+
 fn handle_sync_command(
     all: bool,
     context: Option<&str>,
@@ -7467,11 +7606,7 @@ fn handle_sync_command(
     println!();
 
     // Load config
-    let config = if let Some(path) = config_path {
-        AllBeadsConfig::load(path)?
-    } else {
-        AllBeadsConfig::load_default().unwrap_or_else(|_| AllBeadsConfig::new())
-    };
+    let config = load_allbeads_config(config_path)?;
 
     // Get config directory
     let config_dir = if let Some(path) = config_path {
@@ -7687,30 +7822,19 @@ fn handle_sync_command(
                     continue;
                 }
 
-                // Run bd sync in the context directory
-                let sync_result = std::process::Command::new("bd")
-                    .arg("sync")
-                    .current_dir(&ctx_path)
-                    .output();
-
-                match sync_result {
-                    Ok(output) if output.status.success() => {
-                        println!("    {} Beads synced", style::success("✓"));
+                match beads_compat::sync_context(&ctx_path, &ctx.name) {
+                    Ok(outcome) if outcome.pulled => {
+                        println!("    {} {}", style::success("✓"), outcome.pull_message);
                     }
-                    Ok(output) => {
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        if stdout.contains("Sync complete") || stdout.contains("no changes") {
-                            println!("    {} Beads synced", style::success("✓"));
-                        } else {
-                            println!("    {} Sync issue: {}", style::warning("!"), stderr.trim());
-                        }
+                    Ok(outcome) if outcome.push_configured => {
+                        println!("    {} {}", style::warning("!"), outcome.pull_message);
+                        println!("    {} {}", style::dim("○"), outcome.push_message);
                     }
-                    Err(_) => {
-                        println!(
-                            "    {} 'bd' command not found - install beads CLI",
-                            style::error("✗")
-                        );
+                    Ok(outcome) => {
+                        println!("    {} {}", style::dim("○"), outcome.pull_message);
+                    }
+                    Err(err) => {
+                        println!("    {} {}", style::error("✗"), err);
                     }
                 }
             }
