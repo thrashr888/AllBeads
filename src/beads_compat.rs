@@ -1,5 +1,8 @@
 use crate::config::BossContext;
+use crate::graph::Bead;
+use crate::storage::issues_to_beads;
 use crate::{AllBeadsError, Result};
+use beads::Beads;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -98,6 +101,27 @@ pub fn supports_bd_sync(path: &Path) -> bool {
     match run_bd(path, &["sync", "--help"]) {
         Ok(output) => output.status.success(),
         Err(_) => false,
+    }
+}
+
+pub fn list_all_beads(path: &Path) -> Result<Vec<Bead>> {
+    let bd = Beads::with_workdir(path);
+    let output = bd
+        .run(&["list", "--status", "all", "--json"])
+        .map_err(|e| {
+            AllBeadsError::Storage(format!("Failed to list beads in {}: {}", path.display(), e))
+        })?;
+
+    match serde_json::from_str::<Vec<beads::Issue>>(&output.stdout) {
+        Ok(issues) => issues_to_beads(issues),
+        Err(issue_parse_error) => serde_json::from_str::<Vec<Bead>>(&output.stdout).map_err(|bead_parse_error| {
+            AllBeadsError::Parse(format!(
+                "Failed to parse 'bd list --status all --json' output in {} as either beads::Issue ({}) or graph::Bead ({})",
+                path.display(),
+                issue_parse_error,
+                bead_parse_error
+            ))
+        }),
     }
 }
 

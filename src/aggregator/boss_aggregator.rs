@@ -1,9 +1,9 @@
 //! Boss repository aggregator implementation
 
+use crate::beads_compat;
 use crate::config::{AllBeadsConfig, BossContext};
 use crate::git::BossRepo;
 use crate::graph::{FederatedGraph, Rig, RigAuthStrategy};
-use crate::storage::JsonlReader;
 use crate::{AllBeadsError, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -252,6 +252,53 @@ impl Aggregator {
         Ok(())
     }
 
+    fn load_context_beads(
+        &self,
+        context_name: &str,
+        repo: &BossRepo,
+    ) -> Result<Vec<crate::graph::Bead>> {
+        tracing::debug!(
+            context = %context_name,
+            path = %repo.path().display(),
+            "Loading beads from Boss repository via bd CLI"
+        );
+
+        beads_compat::list_all_beads(repo.path())
+    }
+
+    fn add_context_to_graph(
+        &self,
+        graph: &mut FederatedGraph,
+        context_name: &str,
+        repo: &BossRepo,
+    ) -> Result<()> {
+        let beads = self.load_context_beads(context_name, repo)?;
+
+        tracing::debug!(
+            context = %context_name,
+            count = beads.len(),
+            "Loaded beads"
+        );
+
+        for bead in beads {
+            let mut bead = bead;
+            bead.add_label(format!("@{}", context_name));
+            graph.add_bead(bead);
+        }
+
+        let rig = Rig::builder()
+            .id(format!("boss-{}", context_name))
+            .path(repo.path().to_string_lossy().to_string())
+            .remote(repo.context().url.clone())
+            .auth_strategy(RigAuthStrategy::SshAgent)
+            .prefix("beads")
+            .context(context_name.to_string())
+            .build()?;
+
+        graph.add_rig(rig);
+        Ok(())
+    }
+
     /// Sync all repositories in parallel with progress reporting
     ///
     /// This is the recommended method for refreshing beads as it runs
@@ -458,52 +505,17 @@ impl Aggregator {
 
         // Load beads from each Boss repository
         for (context_name, repo) in &self.repos {
-            if !repo.has_issues_jsonl() {
-                tracing::debug!(
-                    context = %context_name,
-                    "No issues.jsonl found, skipping"
-                );
-                continue;
+            match self.add_context_to_graph(&mut graph, context_name, repo) {
+                Ok(()) => {}
+                Err(e) if self.agg_config.skip_errors => {
+                    tracing::warn!(
+                        context = %context_name,
+                        error = %e,
+                        "Skipping context due to beads load error"
+                    );
+                }
+                Err(e) => return Err(e),
             }
-
-            tracing::info!(
-                context = %context_name,
-                path = %repo.issues_jsonl_path().display(),
-                "Loading beads from Boss repository"
-            );
-
-            // Read beads from issues.jsonl
-            let mut reader = JsonlReader::open(repo.issues_jsonl_path())?;
-            let beads: Vec<crate::graph::Bead> = reader.read_all()?;
-
-            tracing::debug!(
-                context = %context_name,
-                count = beads.len(),
-                "Loaded beads"
-            );
-
-            // Add beads to graph with context information
-            for bead in beads {
-                let mut bead = bead;
-                // Tag bead with context
-                let label = format!("@{}", context_name);
-                bead.add_label(label);
-
-                graph.add_bead(bead);
-            }
-
-            // Create a Rig for this Boss repository
-            let rig = Rig::builder()
-                .id(format!("boss-{}", context_name))
-                .path(repo.path().to_string_lossy().to_string())
-                .remote(repo.context().url.clone())
-                .auth_strategy(RigAuthStrategy::SshAgent) // TODO: Map from BossContext auth
-                .prefix("beads")
-                .context(context_name.clone())
-                .build()?;
-
-            // Add rig to graph
-            graph.add_rig(rig);
         }
 
         tracing::info!(
@@ -543,52 +555,17 @@ impl Aggregator {
 
         // Load beads from each Boss repository
         for (context_name, repo) in &self.repos {
-            if !repo.has_issues_jsonl() {
-                tracing::debug!(
-                    context = %context_name,
-                    "No issues.jsonl found, skipping"
-                );
-                continue;
+            match self.add_context_to_graph(&mut graph, context_name, repo) {
+                Ok(()) => {}
+                Err(e) if self.agg_config.skip_errors => {
+                    tracing::warn!(
+                        context = %context_name,
+                        error = %e,
+                        "Skipping context due to beads load error"
+                    );
+                }
+                Err(e) => return Err(e),
             }
-
-            tracing::debug!(
-                context = %context_name,
-                path = %repo.issues_jsonl_path().display(),
-                "Loading beads from Boss repository"
-            );
-
-            // Read beads from issues.jsonl
-            let mut reader = JsonlReader::open(repo.issues_jsonl_path())?;
-            let beads: Vec<crate::graph::Bead> = reader.read_all()?;
-
-            tracing::debug!(
-                context = %context_name,
-                count = beads.len(),
-                "Loaded beads"
-            );
-
-            // Add beads to graph with context information
-            for bead in beads {
-                let mut bead = bead;
-                // Tag bead with context
-                let label = format!("@{}", context_name);
-                bead.add_label(label);
-
-                graph.add_bead(bead);
-            }
-
-            // Create a Rig for this Boss repository
-            let rig = Rig::builder()
-                .id(format!("boss-{}", context_name))
-                .path(repo.path().to_string_lossy().to_string())
-                .remote(repo.context().url.clone())
-                .auth_strategy(RigAuthStrategy::SshAgent)
-                .prefix("beads")
-                .context(context_name.clone())
-                .build()?;
-
-            // Add rig to graph
-            graph.add_rig(rig);
         }
 
         tracing::info!(
