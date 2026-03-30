@@ -12,16 +12,13 @@ use std::time::Duration;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "mode")]
 pub enum BeadsMode {
-    /// SQLite + JSONL (default)
+    /// Official Dolt-backed beads mode (default)
     #[default]
     Standard,
-    /// JSONL only, no SQLite
-    JsonlOnly,
-    /// Dedicated sync branch
-    SyncBranch {
-        /// Branch name for beads sync
-        branch: String,
-    },
+    /// Stealth local-only setup managed by bd
+    Stealth,
+    /// Team-oriented setup managed by bd
+    Team,
     /// Background daemon sync
     Daemon {
         /// Sync interval in seconds
@@ -269,11 +266,8 @@ mod tests {
 
     #[test]
     fn test_beads_mode_serialization() {
-        let mode = BeadsMode::SyncBranch {
-            branch: "beads-sync".to_string(),
-        };
+        let mode = BeadsMode::Stealth;
         let json = serde_json::to_string(&mode).unwrap();
-        assert!(json.contains("sync_branch"));
-        assert!(json.contains("beads-sync"));
+        assert!(json.contains("stealth"));
     }
 }

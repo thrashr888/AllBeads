@@ -195,8 +195,7 @@ impl HealthChecks {
 /// Beads initialization mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BeadsInitMode {
-    Standard, // SQLite database + git hooks
-    NoDb,     // JSONL only, no SQLite
+    Standard, // Official Dolt-backed mode
     Stealth,  // Personal, git-ignored
     Team,     // Team workflow setup
     Skip,     // Skip beads initialization
@@ -205,8 +204,7 @@ pub enum BeadsInitMode {
 impl BeadsInitMode {
     pub fn label(&self) -> &'static str {
         match self {
-            BeadsInitMode::Standard => "Standard (SQLite database + git hooks)",
-            BeadsInitMode::NoDb => "No-DB mode (JSONL only, no SQLite)",
+            BeadsInitMode::Standard => "Standard (official Dolt-backed beads + git hooks)",
             BeadsInitMode::Stealth => "Stealth mode (personal, git-ignored)",
             BeadsInitMode::Team => "Team mode (team workflow setup)",
             BeadsInitMode::Skip => "Skip beads initialization",
@@ -354,7 +352,6 @@ impl OnboardingWizard {
 
         let modes = [
             BeadsInitMode::Standard,
-            BeadsInitMode::NoDb,
             BeadsInitMode::Stealth,
             BeadsInitMode::Team,
             BeadsInitMode::Skip,
@@ -365,7 +362,7 @@ impl OnboardingWizard {
             .items(modes.iter().map(|m| m.label()).collect::<Vec<_>>())
             .default(0)
             .interact()
-            .unwrap_or(4);
+            .unwrap_or(3);
 
         let mode = modes[selection];
 
@@ -377,7 +374,6 @@ impl OnboardingWizard {
 
         let args = match mode {
             BeadsInitMode::Standard => vec!["init"],
-            BeadsInitMode::NoDb => vec!["init", "--no-db"],
             BeadsInitMode::Stealth => vec!["init", "--stealth"],
             BeadsInitMode::Team => vec!["init", "--team"],
             BeadsInitMode::Skip => unreachable!(),

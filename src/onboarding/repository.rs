@@ -291,11 +291,9 @@ pub fn clone_repository(url: &str, path: &Path, non_interactive: bool) -> Result
 /// Stage 3: Initialize beads via bd init
 pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
     let beads_dir = path.join(".beads");
-    let db_path = beads_dir.join("beads.db");
-    let jsonl_path = beads_dir.join("issues.jsonl");
 
-    // Check if fully initialized (has both .beads/ and database)
-    if beads_dir.exists() && db_path.exists() {
+    // Check if already initialized enough for modern official beads
+    if beads_dir.exists() {
         println!("  ✓ Beads already initialized");
         return Ok(());
     }
@@ -308,16 +306,8 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
         ));
     }
 
-    // Check if this is a cloned repo (has JSONL but no database)
-    let is_cloned_repo = jsonl_path.exists() && !db_path.exists();
-
     if non_interactive {
-        if is_cloned_repo {
-            // Cloned repo - just need to create database from existing JSONL
-            println!("  Running: bd init --quiet (creating database from existing JSONL)");
-        } else {
-            println!("  Running: bd init --quiet");
-        }
+        println!("  Running: bd init --quiet");
         let status = Command::new("bd")
             .arg("init")
             .arg("--quiet")
@@ -335,11 +325,10 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
     } else {
         // Interactive mode selection
         println!("  Initialize beads tracking?");
-        println!("    [1] Standard mode (SQLite database + git hooks)");
-        println!("    [2] No-DB mode (JSONL only, no SQLite)");
-        println!("    [3] Stealth mode (personal, git-ignored)");
-        println!("    [4] Team mode (team workflow setup)");
-        println!("    [5] Skip beads setup");
+        println!("    [1] Standard mode (official Dolt-backed beads + git hooks)");
+        println!("    [2] Stealth mode (personal, git-ignored)");
+        println!("    [3] Team mode (team workflow setup)");
+        println!("    [4] Skip beads setup");
         print!("  Choice [1]: ");
 
         use std::io::{self, Write};
@@ -361,19 +350,6 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
                 println!("  ✓ Beads initialized (standard mode)");
             }
             "2" => {
-                println!("  Running: bd init --no-db");
-                let status = Command::new("bd")
-                    .args(["init", "--no-db"])
-                    .current_dir(path)
-                    .status()?;
-                if !status.success() {
-                    return Err(crate::AllBeadsError::Config(
-                        "bd init --no-db failed".to_string(),
-                    ));
-                }
-                println!("  ✓ Beads initialized (no-db mode)");
-            }
-            "3" => {
                 println!("  Running: bd init --stealth");
                 let status = Command::new("bd")
                     .args(["init", "--stealth"])
@@ -386,7 +362,7 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
                 }
                 println!("  ✓ Beads initialized (stealth mode)");
             }
-            "4" => {
+            "3" => {
                 println!("  Running: bd init --team");
                 let status = Command::new("bd")
                     .args(["init", "--team"])
@@ -399,7 +375,7 @@ pub fn initialize_beads(path: &Path, non_interactive: bool) -> Result<()> {
                 }
                 println!("  ✓ Beads initialized (team mode)");
             }
-            "5" => {
+            "4" => {
                 println!("  Skipped beads initialization");
                 return Ok(());
             }
@@ -607,16 +583,8 @@ pub fn create_onboarding_beads(
         return Ok((None, 0));
     }
 
-    // Check if we need --no-db mode (JSONL exists but no database)
-    let jsonl_path = path.join(".beads/issues.jsonl");
-    let db_path = path.join(".beads/beads.db");
-    let use_no_db = jsonl_path.exists() && !db_path.exists();
-
-    // First, create the parent epic for Agent Onboarding
+    // Create the parent epic for Agent Onboarding using the official bd CLI.
     let mut epic_cmd = Command::new("bd");
-    if use_no_db {
-        epic_cmd.arg("--no-db");
-    }
     epic_cmd
         .arg("create")
         .arg("--title")
@@ -652,10 +620,6 @@ pub fn create_onboarding_beads(
         let labels = issue.labels.join(",");
         let mut cmd = Command::new("bd");
 
-        if use_no_db {
-            cmd.arg("--no-db");
-        }
-
         cmd.arg("create")
             .arg("--title")
             .arg(&issue.title)
@@ -689,9 +653,6 @@ pub fn create_onboarding_beads(
     if let Some(ref epic) = epic_id {
         for task_id in &task_ids {
             let mut dep_cmd = Command::new("bd");
-            if use_no_db {
-                dep_cmd.arg("--no-db");
-            }
             // bd dep add <issue> <depends-on>
             // epic depends on task (task blocks epic)
             dep_cmd

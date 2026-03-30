@@ -9785,15 +9785,15 @@ fn handle_worktree_command(cmd: &WorktreeCommands) -> allbeads::Result<()> {
             );
 
             if abs_path.join(".beads").exists() {
-                // Detect beads mode
-                let mode = if abs_path.join(".beads/beads.db").exists() {
-                    "standard"
-                } else if abs_path.join(".beads/issues.jsonl").exists() {
-                    "jsonl-only"
-                } else {
-                    "unknown"
+                let mode = match allbeads::beads_compat::bd_context(&abs_path) {
+                    Ok(info) => match (info.backend.as_deref(), info.dolt_mode.as_deref()) {
+                        (Some("dolt"), Some(mode)) => format!("dolt:{}", mode),
+                        (Some(backend), _) => backend.to_string(),
+                        _ => "configured".to_string(),
+                    },
+                    Err(_) => "configured".to_string(),
                 };
-                println!("  Beads Mode:  {}", style::dim(mode));
+                println!("  Beads Mode:  {}", style::dim(&mode));
             }
             println!();
         }
@@ -10208,10 +10208,13 @@ fn handle_template_create(
         },
         beads: TemplateBeads {
             mode: if has_beads {
-                if source_path.join(".beads/beads.db").exists() {
-                    "standard".to_string()
-                } else {
-                    "jsonl-only".to_string()
+                match allbeads::beads_compat::bd_context(&source_path) {
+                    Ok(info) => match (info.backend.as_deref(), info.dolt_mode.as_deref()) {
+                        (Some("dolt"), Some(mode)) => format!("dolt:{}", mode),
+                        (Some(backend), _) => backend.to_string(),
+                        _ => "configured".to_string(),
+                    },
+                    Err(_) => "configured".to_string(),
                 }
             } else {
                 "standard".to_string()
@@ -10788,9 +10791,9 @@ fn handle_folder_setup(
 
             // Beads mode selection
             let mode_options = &[
-                "Standard (SQLite + JSONL)",
-                "JSONL-only",
-                "Sync branch mode",
+                "Standard (official Dolt-backed beads)",
+                "Stealth mode",
+                "Team mode",
             ];
             let mode_idx = if yes {
                 0
@@ -10804,8 +10807,8 @@ fn handle_folder_setup(
             };
 
             let bd_args = match mode_idx {
-                1 => vec!["init", "--prefix", &prefix, "--no-db"],
-                2 => vec!["init", "--prefix", &prefix, "--sync-branch"],
+                1 => vec!["init", "--prefix", &prefix, "--stealth"],
+                2 => vec!["init", "--prefix", &prefix, "--team"],
                 _ => vec!["init", "--prefix", &prefix],
             };
 

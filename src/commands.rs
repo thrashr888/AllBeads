@@ -133,14 +133,14 @@ Flags:
   -v, --verbose              Enable verbose/debug output
 
 {cyan}Database/Storage:{reset}
-      --db string            Database path (default: auto-discover .beads/*.db)
-      --no-db                Use no-db mode: load from JSONL, no SQLite
+      --db string            Backend-specific database override (legacy/advanced use)
+      --no-db                Legacy compatibility flag (official beads ignores this)
       --readonly             Read-only mode: block write operations
 
 {cyan}Sync Behavior:{reset}
-      --no-auto-flush        Disable automatic JSONL sync after CRUD operations
-      --no-auto-import       Disable automatic JSONL import when newer than DB
-      --no-daemon            Force direct storage mode, bypass daemon if running
+      --no-auto-flush        Legacy compatibility flag from pre-Dolt beads flows
+      --no-auto-import       Legacy compatibility flag from pre-Dolt beads flows
+      --no-daemon            Legacy compatibility flag from pre-Dolt beads flows
       --sandbox              Sandbox mode: disables daemon and auto-sync
       --allow-stale          Allow operations on potentially stale data
 
@@ -192,11 +192,11 @@ pub struct Cli {
     // =========================================================================
     // DATABASE/STORAGE FLAGS (bd-compatible)
     // =========================================================================
-    /// Database path (default: auto-discover .beads/*.db)
+    /// Backend-specific database override (legacy/advanced use)
     #[arg(long, global = true)]
     pub db: Option<String>,
 
-    /// Use no-db mode: load from JSONL, no SQLite
+    /// Legacy compatibility flag from pre-Dolt beads flows
     #[arg(long, global = true)]
     pub no_db: bool,
 
@@ -207,15 +207,15 @@ pub struct Cli {
     // =========================================================================
     // SYNC BEHAVIOR FLAGS (bd-compatible)
     // =========================================================================
-    /// Disable automatic JSONL sync after CRUD operations
+    /// Legacy compatibility flag from pre-Dolt beads flows
     #[arg(long, global = true)]
     pub no_auto_flush: bool,
 
-    /// Disable automatic JSONL import when newer than DB
+    /// Legacy compatibility flag from pre-Dolt beads flows
     #[arg(long, global = true)]
     pub no_auto_import: bool,
 
-    /// Force direct storage mode, bypass daemon if running
+    /// Legacy compatibility flag from pre-Dolt beads flows
     #[arg(long, global = true)]
     pub no_daemon: bool,
 
@@ -234,7 +234,7 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub actor: Option<String>,
 
-    /// SQLite busy timeout (0 = fail immediately if locked) (default 30s)
+    /// Legacy busy-timeout compatibility flag (default 30s)
     #[arg(long, global = true)]
     pub lock_timeout: Option<String>,
 
