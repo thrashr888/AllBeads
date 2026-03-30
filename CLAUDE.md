@@ -311,7 +311,8 @@ AllBeads pre-creates the branch. After agent completes:
 ```bash
 git add -A
 git commit -m "feat(<bead-id>): <description>"
-bd sync && git push -u origin bead/<bead-id>
+bd dolt push   # if a Dolt remote is configured
+git push -u origin bead/<bead-id>
 ```
 
 ### Key Learnings
@@ -509,10 +510,9 @@ Before ending any session, you **MUST**:
 ```bash
 [ ] 1. git status              # Check what changed
 [ ] 2. git add <files>         # Stage code changes
-[ ] 3. bd sync                 # Commit beads changes
+[ ] 3. bd dolt push            # Push beads state if a Dolt remote is configured
 [ ] 4. git commit -m "..."     # Commit code
-[ ] 5. bd sync                 # Commit any new beads
-[ ] 6. git push                # Push to remote
+[ ] 5. git push                # Push code to remote
 ```
 
 **CRITICAL:** Work is NOT complete until `git push` succeeds. Never leave work uncommitted locally.
@@ -678,7 +678,7 @@ All three repos use beads for issue tracking. Use `ab create --context=<name>` t
 ## Project-Specific Notes
 
 - The PRD references Go and bubbletea, but we use Rust and ratatui
-- The beads integration is critical - deep familiarity with beads' JSONL format is essential
+- The beads integration is critical - prefer official bd CLI / Dolt-backed state over legacy JSONL mirrors
 - All async code uses tokio runtime
 - SQLite (rusqlite) is used for caching, mail storage, and locks
 - JIRA uses REST API v3, GitHub uses GraphQL for search + REST for mutations

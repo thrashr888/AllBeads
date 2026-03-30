@@ -925,7 +925,7 @@ Unified synchronization for AllBeads config and context beads.
 # Sync AllBeads config directory (if tracked in git)
 ab sync
 
-# Sync all context beads (runs bd sync in each context)
+# Sync all context beads (uses bd dolt pull when a Dolt remote is configured)
 ab sync --all
 
 # Sync specific context

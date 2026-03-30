@@ -444,7 +444,8 @@ Some agents run in sandboxes that prevent git operations. AllBeads handles this 
 ```bash
 # After Codex completes:
 git add -A && git commit -m "feat(<bead-id>): ..."
-bd sync && git push -u origin bead/<bead-id>
+bd dolt push   # if a Dolt remote is configured
+git push -u origin bead/<bead-id>
 ```
 
 **Queue Mode (--queue):**

@@ -2780,25 +2780,11 @@ fn handle_rename_prefix_command(
                     }
                 }
 
-                // If not found in config, check issues.jsonl for issue IDs with this prefix
+                // If not found in config, ask official beads for the inferred prefix.
                 if found_path.is_none() {
-                    let jsonl_file = ctx_path.join(".beads/issues.jsonl");
-                    if jsonl_file.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&jsonl_file) {
-                            if let Some(first_line) = content.lines().next() {
-                                if let Ok(issue) =
-                                    serde_json::from_str::<serde_json::Value>(first_line)
-                                {
-                                    if let Some(id) = issue.get("id").and_then(|v| v.as_str()) {
-                                        if let Some(dash_pos) = id.rfind('-') {
-                                            let prefix = &id[..dash_pos];
-                                            if prefix == old_prefix {
-                                                found_path = Some(ctx_path.clone());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                    if let Ok(Some(prefix)) = allbeads::beads_compat::infer_issue_prefix(ctx_path) {
+                        if prefix == old_prefix {
+                            found_path = Some(ctx_path.clone());
                         }
                     }
                 }
@@ -6571,19 +6557,11 @@ fn handle_handoff_command(
                         }
                     }
                 }
-                // Also check if issues.jsonl has IDs with this prefix
-                let jsonl_path = ctx_path.join(".beads/issues.jsonl");
-                if let Ok(content) = std::fs::read_to_string(&jsonl_path) {
-                    if let Some(first_line) = content.lines().next() {
-                        if let Ok(issue) = serde_json::from_str::<serde_json::Value>(first_line) {
-                            if let Some(id) = issue.get("id").and_then(|v| v.as_str()) {
-                                if let Some(found_prefix) = id.split('-').next() {
-                                    if found_prefix.eq_ignore_ascii_case(prefix) {
-                                        return Some(ctx_path.clone());
-                                    }
-                                }
-                            }
-                        }
+                // Fall back to official beads prefix inference instead of JSONL.
+                if let Ok(Some(found_prefix)) = allbeads::beads_compat::infer_issue_prefix(ctx_path)
+                {
+                    if found_prefix.eq_ignore_ascii_case(prefix) {
+                        return Some(ctx_path.clone());
                     }
                 }
             }
@@ -7276,7 +7254,7 @@ the changes will be committed and pushed externally.
 
 5. **Sync and push**:
    ```bash
-   bd sync
+   bd dolt push   # if a Dolt remote is configured
    git push -u origin bead/{}
    ```
 
@@ -9711,15 +9689,10 @@ fn handle_worktree_command(cmd: &WorktreeCommands) -> allbeads::Result<()> {
             for wt in &worktrees {
                 let status = detect_folder_status(&PathBuf::from(&wt.path));
                 let beads_info = if PathBuf::from(&wt.path).join(".beads").exists() {
-                    // Count issues
-                    let issues_file = PathBuf::from(&wt.path).join(".beads/issues.jsonl");
-                    let count = if issues_file.exists() {
-                        std::fs::read_to_string(&issues_file)
-                            .map(|s| s.lines().count())
-                            .unwrap_or(0)
-                    } else {
-                        0
-                    };
+                    let wt_path = PathBuf::from(&wt.path);
+                    let count = allbeads::beads_compat::list_all_beads(&wt_path)
+                        .map(|beads| beads.len())
+                        .unwrap_or(0);
                     format!("{} issues", count)
                 } else {
                     "no beads".to_string()

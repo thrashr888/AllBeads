@@ -125,6 +125,32 @@ pub fn list_all_beads(path: &Path) -> Result<Vec<Bead>> {
     }
 }
 
+pub fn infer_issue_prefix(path: &Path) -> Result<Option<String>> {
+    let config_path = path.join(".beads/config.yaml");
+    if let Ok(content) = std::fs::read_to_string(&config_path) {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            if let Some(value) = trimmed.strip_prefix("issue-prefix:") {
+                let prefix = value.trim().trim_matches('"').trim_matches('\'');
+                if !prefix.is_empty() {
+                    return Ok(Some(prefix.to_string()));
+                }
+            }
+        }
+    }
+
+    let beads = list_all_beads(path)?;
+    let prefix = beads.into_iter().find_map(|bead| {
+        let id = bead.id.as_str();
+        id.rfind('-').map(|idx| id[..idx].to_string())
+    });
+
+    Ok(prefix)
+}
+
 pub fn sync_context(path: &Path, context_name: &str) -> Result<BeadsSyncOutcome> {
     let remote_configured = has_dolt_remote(path);
 
