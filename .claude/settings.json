@@ -23,12 +23,12 @@
       {
         "hooks": [
           {
-            "command": "allbeads sync --status 2>/dev/null || true",
+            "command": "allbeads sync --status 2\u003e/dev/null || true",
             "statusMessage": "Checking AllBeads sync status",
             "type": "command"
           },
           {
-            "command": "echo '📬 Mail:' && allbeads mail unread 2>/dev/null || true",
+            "command": "echo '📬 Mail:' \u0026\u0026 allbeads mail unread 2\u003e/dev/null || true",
             "statusMessage": "Checking agent mail",
             "type": "command"
           }

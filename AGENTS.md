@@ -565,9 +565,9 @@ Tasks can be linked to express relationships. Use `aiki task link` to create lin
 **Cycle detection:** `blocked-by` and `subtask-of` links are checked for cycles at write time.
 </aiki>
 
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -585,7 +585,7 @@ From specs/PRD-00.md, AllBeads implements:
 
 ### Current State (v0.2.0)
 
-PRD-00 (Core Architecture) and PRD-01 (Context Onboarding) are complete. Phase 10 of PRD-01 (Registry Integration) is deferred pending Claude marketplace registry API availability.
+PRD-00 (Core Architecture) and PRD-01 (Context Onboarding) are complete. Phase 10 of PRD-01 (Registry Integration) is deferred pending Codex marketplace registry API availability.
 
 **Implemented:**
 - Multi-repository aggregation from git remotes (SSH/HTTPS)
@@ -601,14 +601,14 @@ PRD-00 (Core Architecture) and PRD-01 (Context Onboarding) are complete. Phase 1
 - Janitor workflow for automated issue discovery
 - JIRA bi-directional sync (REST API)
 - GitHub Issues integration (GraphQL + REST)
-- Plugin system with Claude marketplace integration
+- Plugin system with Codex marketplace integration
 - Plugin recommendations based on project analysis
-- Multi-agent support (Claude Code, Cursor, Copilot, Aider)
+- Multi-agent support (Codex, Cursor, Copilot, Aider)
 - Agent configuration sync (`ab agent sync`)
 - Unified sync command (`ab sync`)
 
 **Deferred (Phase 10 - Registry Integration):**
-- Official Claude marketplace registry API integration
+- Official Codex marketplace registry API integration
 - Plugin discovery from registry
 - Automatic version checking and updates
 
@@ -853,7 +853,7 @@ The recommended workflow for managing work across AllBeads repositories:
 # Onboard existing repo (requires: clean git, main branch)
 ab onboard /path/to/repo
 
-# Creates: .beads/, .claude/settings.json, AllBeads context
+# Creates: .beads/, .Codex/settings.json, AllBeads context
 # Creates: Epic + task beads (epic depends on tasks)
 ```
 
@@ -1038,7 +1038,7 @@ fn load_config() -> anyhow::Result<Config> {
 - `ab skill info <name>` - Show skill metadata
 - `ab skill install <source>` - Install from GitHub or local path
 - `ab skill remove <name>` - Remove an installed skill
-- `ab skill sync` - Sync skills to .claude-plugin/
+- `ab skill sync` - Sync skills to .Codex-plugin/
 
 ### TUI Commands
 - `ab tui` - Launch dashboard (Tab switches Kanban/Mail)
@@ -1164,7 +1164,7 @@ Before closing any task:
 - [ ] No secrets committed
 - [ ] Changes pushed to remote
 
-## Recommended Claude Agents
+## Recommended Codex Agents
 
 The following agent types are useful for AllBeads workflows:
 
@@ -1181,7 +1181,7 @@ ab ready && ab handoff <bead-id>
 ### Documentation Agent
 Maintains project documentation including:
 - Updating DEMO.md with new features
-- Keeping CLAUDE.md current with codebase changes
+- Keeping AGENTS.md current with codebase changes
 - Writing spec documents for new features
 - Generating API documentation
 
@@ -1249,7 +1249,6 @@ All three repos use beads for issue tracking. Use `ab create --context=<name>` t
 - All async code uses tokio runtime
 - SQLite (rusqlite) is used for caching, mail storage, and locks
 - JIRA uses REST API v3, GitHub uses GraphQL for search + REST for mutations
-
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:7510c1e2 -->
 ## Beads Issue Tracker
