@@ -1,0 +1,1 @@
+{"id":"int-666206ff","kind":"field_change","created_at":"2026-08-30T08:10:24.508546Z","actor":"Paul Thrasher","issue_id":"ab-eo5n","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"AllBeads 0.10.0 TUI launched; five recent missing repositories onboarded, committed, pushed, and verified in context onboarding status."}}
